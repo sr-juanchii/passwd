@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
+from app.api.v1 import api_v1_router
 from app.api.dependencies.auth import init_jwt_verifier
 from app.config.settings import Settings, get_settings
 from app.infrastructure.database.session import dispose_db_engine, init_db_engine
@@ -78,6 +79,8 @@ def create_app() -> FastAPI:
     )
 
     _register_security_headers(app)
+
+    app.include_router(api_v1_router)
 
     @app.get("/health", tags=["infra"], include_in_schema=False)
     async def health() -> dict[str, str]:

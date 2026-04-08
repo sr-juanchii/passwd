@@ -1,0 +1,10 @@
+{
+  "issuer": "http://localhost:8080/realms/inventory",
+  "authorization_endpoint": "http://localhost:8080/realms/inventory/protocol/openid-connect/auth",
+  "token_endpoint": "http://localhost:8080/realms/inventory/protocol/openid-connect/token",
+  "userinfo_endpoint": "http://localhost:8080/realms/inventory/protocol/openid-connect/userinfo",
+  "jwks_uri": "http://localhost:8080/realms/inventory/protocol/openid-connect/certs",
+  "end_session_endpoint": "http://localhost:8080/realms/inventory/protocol/openid-connect/logout",
+  "check_session_iframe": "http://localhost:8080/realms/inventory/protocol/openid-connect/login-status-iframe.html",
+  "revocation_endpoint": "http://localhost:8080/realms/inventory/protocol/openid-connect/revoke"
+}
