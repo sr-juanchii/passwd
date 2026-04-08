@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  backend:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  frontend:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  keycloak:
+    security_opt:
+      - no-new-privileges:true
+
+  mysql:
+    security_opt:
+      - no-new-privileges:true

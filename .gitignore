@@ -1,0 +1,42 @@
+# .gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Datos sensibles
+secrets/
+data/*.xlsx
+data/*.xls
+data/*.csv
+
+# Docker
+mysql_data/
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Backups
+backups/

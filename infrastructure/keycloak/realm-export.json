@@ -1,0 +1,103 @@
+{
+  "realm": "inventory",
+  "enabled": true,
+  "sslRequired": "external",
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN",
+        "description": "Acceso total: Commands + Queries"
+      },
+      {
+        "name": "EDITOR",
+        "description": "Commands + Queries sobre recursos propios"
+      },
+      {
+        "name": "VIEWER",
+        "description": "Solo Queries sobre recursos propios"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "inventory-api",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "inventory-spa",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:4200/*"],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "inventory-scope",
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "realm-roles-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "realm_roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin-test",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Admin123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["ADMIN"]
+    },
+    {
+      "username": "editor-test",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Editor123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["EDITOR"]
+    },
+    {
+      "username": "viewer-test",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Viewer123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["VIEWER"]
+    }
+  ]
+}
