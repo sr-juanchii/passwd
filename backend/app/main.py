@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
+from app.api.dependencies.auth import init_jwt_verifier
 from app.config.settings import Settings, get_settings
 from app.infrastructure.database.session import dispose_db_engine, init_db_engine
 from app.shared.logging_config import setup_logging
@@ -22,6 +23,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     setup_logging(settings.log_level)
     await init_db_engine(settings)
+    init_jwt_verifier(settings)
     logger.info("Application started", extra={"version": settings.app_version})
 
     yield

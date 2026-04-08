@@ -20,11 +20,10 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
-def _build_ssl_context(cafile: str) -> ssl.SSLContext | None:
+def _build_ssl_context(cafile: str) -> ssl.SSLContext:
     ca_path = Path(cafile)
     if not ca_path.is_file():
-        logger.warning("Database CA file not found", extra={"cafile": cafile})
-        return None
+        raise FileNotFoundError(f"Database CA file not found: {cafile}")
 
     context = ssl.create_default_context(cafile=str(ca_path))
     context.verify_mode = ssl.CERT_REQUIRED
@@ -41,13 +40,15 @@ async def init_db_engine(settings: Settings) -> None:
 
     engine_kwargs: dict[str, object] = {
         "echo": False,
+        "pool_size": 10,
+        "max_overflow": 5,
+        "pool_timeout": 30,
         "pool_pre_ping": True,
         "pool_recycle": 1800,
     }
 
     ssl_context = _build_ssl_context(settings.database_ssl_ca)
-    if ssl_context is not None:
-        engine_kwargs["connect_args"] = {"ssl": ssl_context}
+    engine_kwargs["connect_args"] = {"ssl": ssl_context}
 
     _engine = create_async_engine(settings.async_database_url, **engine_kwargs)
     _session_factory = async_sessionmaker(

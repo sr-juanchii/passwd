@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,10 +47,16 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _hydrate(self) -> Settings:
         if self.database_password is None and self.database_password_file is not None:
-            if self.database_password_file.is_file():
-                secret = self.database_password_file.read_text(encoding="utf-8").strip()
-                if secret:
-                    self.database_password = SecretStr(secret)
+            if not self.database_password_file.is_file():
+                raise FileNotFoundError(
+                    f"DATABASE_PASSWORD_FILE not found: {self.database_password_file}"
+                )
+
+            secret = self.database_password_file.read_text(encoding="utf-8").strip()
+            if not secret:
+                raise ValueError("DATABASE_PASSWORD_FILE is empty")
+
+            self.database_password = SecretStr(secret)
 
         if not self.oidc_jwks_url:
             self.oidc_jwks_url = (
@@ -74,7 +81,7 @@ class Settings(BaseSettings):
     @property
     def async_database_url(self) -> str:
         password = (
-            self.database_password.get_secret_value()
+            quote(self.database_password.get_secret_value(), safe="")
             if self.database_password is not None
             else ""
         )
