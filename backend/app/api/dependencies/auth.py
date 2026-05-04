@@ -12,7 +12,7 @@ from app.infrastructure.auth.jwt_verifier import JWTVerificationError, JWTVerifi
 
 logger = logging.getLogger(__name__)
 
-_bearer_scheme = HTTPBearer(auto_error=True)
+_bearer_scheme = HTTPBearer(auto_error=False)
 _jwt_verifier: JWTVerifier | None = None
 
 
@@ -59,12 +59,20 @@ def _coerce_role(value: Any) -> Role | None:
 
 async def get_current_user(
     credentials: Annotated[
-        HTTPAuthorizationCredentials,
+        HTTPAuthorizationCredentials | None,
         Depends(_bearer_scheme),
     ],
     verifier: Annotated[JWTVerifier, Depends(_get_verifier)],
 ) -> AuthenticatedUser:
     """Validate the access token and return the authenticated user identity."""
+
+    if credentials is None or not credentials.credentials:
+        logger.warning("Authentication failed", extra={"reason": "missing credentials"})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     try:
         payload = await verifier.verify_token(credentials.credentials)

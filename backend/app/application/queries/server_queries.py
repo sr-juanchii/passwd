@@ -37,7 +37,7 @@ class ListServersHandler:
             count_stmt = count_stmt.where(ServerEntity.owner_user_id == user.sub)
 
         total_result = await self._session.execute(count_stmt)
-        total = total_result.scalar_one()
+        total = total_result.scalar_one() or 0
 
         stmt = (
             base_stmt.order_by(ServerEntity.created_at.desc())
