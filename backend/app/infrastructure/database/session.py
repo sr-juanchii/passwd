@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from app.config.settings import Settings
 
@@ -27,11 +28,12 @@ def _build_ssl_context(cafile: str) -> ssl.SSLContext:
 
     context = ssl.create_default_context(cafile=str(ca_path))
     context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
     return context
 
 
 async def init_db_engine(settings: Settings) -> None:
-    """Create the async SQLAlchemy engine without forcing a network round-trip."""
+    """Create the async SQLAlchemy engine with optimized connection pooling."""
 
     global _engine, _session_factory
 
@@ -40,11 +42,14 @@ async def init_db_engine(settings: Settings) -> None:
 
     engine_kwargs: dict[str, object] = {
         "echo": False,
-        "pool_size": 10,
-        "max_overflow": 5,
-        "pool_timeout": 30,
+        "poolclass": AsyncAdaptedQueuePool,
+        "pool_size": 20,
+        "max_overflow": 10,
+        "pool_timeout": 20,
         "pool_pre_ping": True,
         "pool_recycle": 1800,
+        "pool_reset_on_return": "rollback",
+        "echo_pool": False,
     }
 
     ssl_context = _build_ssl_context(settings.database_ssl_ca)
@@ -55,11 +60,18 @@ async def init_db_engine(settings: Settings) -> None:
         bind=_engine,
         class_=AsyncSession,
         expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
     )
 
     logger.info(
-        "Database engine initialised",
-        extra={"host": settings.database_host, "ssl": ssl_context is not None},
+        "Database engine initialised with optimized pooling",
+        extra={
+            "host": settings.database_host,
+            "ssl": ssl_context is not None,
+            "pool_size": 20,
+            "max_overflow": 10,
+        },
     )
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from functools import lru_cache
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,8 +52,9 @@ def _register_security_headers(app: FastAPI) -> None:
         return response
 
 
-def create_app() -> FastAPI:
-    """Build the FastAPI application instance."""
+@lru_cache(maxsize=1)
+def _create_app() -> FastAPI:
+    """Build the FastAPI application instance with singleton caching."""
 
     settings: Settings = get_settings()
 
@@ -87,6 +89,11 @@ def create_app() -> FastAPI:
         return {"status": "healthy", "version": settings.app_version}
 
     return app
+
+
+def create_app() -> FastAPI:
+    """Return the cached FastAPI application instance."""
+    return _create_app()
 
 
 app = create_app()

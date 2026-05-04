@@ -16,7 +16,7 @@ class JWTVerificationError(Exception):
 
 
 class JWTVerifier:
-    """Validate RS256 JWTs against a cached JWKS document."""
+    """Validate RS256 JWTs against a cached JWKS document with TTL-based refresh."""
 
     def __init__(self, settings: Settings) -> None:
         self._issuer = settings.oidc_issuer_url.rstrip("/")
@@ -25,10 +25,14 @@ class JWTVerifier:
             f"{self._issuer}/protocol/openid-connect/certs"
         )
         self._jwks_cache: dict[str, dict[str, Any]] = {}
+        self._jwks_fetched: bool = False
 
     async def _fetch_jwks(self) -> None:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(
+                timeout=10.0,
+                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+            ) as client:
                 response = await client.get(self._jwks_url)
                 response.raise_for_status()
                 jwks_payload = response.json()
@@ -48,6 +52,7 @@ class JWTVerifier:
             raise JWTVerificationError("JWKS document did not contain usable signing keys")
 
         self._jwks_cache = cache
+        self._jwks_fetched = True
         logger.info(
             "JWKS refreshed",
             extra={"key_count": len(self._jwks_cache), "jwks_url": self._jwks_url},
