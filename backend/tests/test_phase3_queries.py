@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.credentials_queries import get_credential
-from app.api.v1.servers_queries import get_server
+from app.api.v1.credentials import get_credential
+from app.api.v1.servers import get_server
 from app.application.queries.credential_queries import GetCredentialHandler, ListCredentialsHandler
 from app.application.queries.schemas import CredentialResponse, ServerResponse
 from app.application.queries.server_queries import GetServerHandler, ListServersHandler
