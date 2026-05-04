@@ -1,42 +1,29 @@
-# .gitignore
-
+```
 # Python
 __pycache__/
 *.pyc
 *.pyo
-.venv/
+*.pyd
+*.egg-info/
+.Python
 venv/
-
-# Environment
+.venv/
 .env
 .env.local
-.env.production
+.env.*
 
-# Datos sensibles
-secrets/
-data/*.xlsx
-data/*.xls
-data/*.csv
+# Logs and temp files
+*.log
+*.tmp
 
-# Docker
-mysql_data/
-
-# Node / Angular
-node_modules/
-dist/
-.angular/
-
-# IDE
+# Editors
 .vscode/
 .idea/
-*.swp
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Backups
-backups/
+# Testing
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+```
