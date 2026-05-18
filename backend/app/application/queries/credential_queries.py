@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.queries.schemas import CredentialListResponse, CredentialResponse
 from app.domain.entities.credential import CredentialEntity
 from app.domain.entities.server import ServerEntity
+from app.domain.entities.server_access import ServerAccessEntity
 from app.domain.identity import AuthenticatedUser
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,10 @@ class ListCredentialsHandler:
         server_stmt = select(ServerEntity).where(ServerEntity.id == server_id)
 
         if not user.is_admin:
-            server_stmt = server_stmt.where(ServerEntity.owner_user_id == user.sub)
+            server_stmt = server_stmt.join(
+                ServerAccessEntity,
+                ServerAccessEntity.server_id == ServerEntity.id
+            ).where(ServerAccessEntity.user_id == user.sub)
 
         server_result = await self._session.execute(server_stmt)
         server = server_result.scalar_one_or_none()
@@ -47,7 +51,10 @@ class ListCredentialsHandler:
             CredentialEntity.server_id == server_id,
         )
         if not user.is_admin:
-            credential_stmt = credential_stmt.where(CredentialEntity.owner_user_id == user.sub)
+            credential_stmt = credential_stmt.join(
+                ServerAccessEntity,
+                ServerAccessEntity.server_id == CredentialEntity.server_id
+            ).where(ServerAccessEntity.user_id == user.sub)
 
         result = await self._session.execute(credential_stmt)
         credentials = result.scalars().all()
@@ -82,7 +89,10 @@ class GetCredentialHandler:
         stmt = select(CredentialEntity).where(CredentialEntity.id == credential_id)
 
         if not user.is_admin:
-            stmt = stmt.where(CredentialEntity.owner_user_id == user.sub)
+            stmt = stmt.join(
+                ServerAccessEntity,
+                ServerAccessEntity.server_id == CredentialEntity.server_id
+            ).where(ServerAccessEntity.user_id == user.sub)
 
         result = await self._session.execute(stmt)
         credential = result.scalar_one_or_none()
