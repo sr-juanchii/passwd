@@ -1,0 +1,300 @@
+"""Modelo de datos relacional.
+
+Jerarquía del inventario (segmentación lógica solicitada):
+
+    ServidorFisico (tipo = funcion_unica)      → servidor físico dedicado a un solo sistema
+    ServidorFisico (tipo = host_virtualizacion) → servidor físico sin función única que aloja
+        └── Hipervisor (Proxmox, ESXi, Hyper-V, …)
+                └── MaquinaVirtual (cada una con su sistema y función)
+
+Cada nivel (servidor físico, hipervisor o máquina virtual) puede tener una o
+varias credenciales (usuario + contraseña cifrada en reposo + descripción del
+sistema o servicio al que da acceso). La integridad se garantiza con claves
+foráneas y una restricción CHECK que obliga a que cada credencial pertenezca
+exactamente a un activo.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+
+def ahora_utc() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+# ---------------------------------------------------------------------------
+# Identidad y control de acceso
+# ---------------------------------------------------------------------------
+
+ROL_ADMIN = "admin"
+ROL_OPERADOR = "operador"
+ROL_AUDITOR = "auditor"
+ROLES_VALIDOS = (ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR)
+
+
+class Usuario(Base):
+    """Cuenta de usuario con MFA obligatorio (CIS 5.x / 6.x)."""
+
+    __tablename__ = "usuarios"
+    __table_args__ = (
+        CheckConstraint("rol IN ('admin', 'operador', 'auditor')", name="ck_usuarios_rol"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    nombre_completo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    rol: Mapped[str] = mapped_column(String(16), nullable=False, default=ROL_OPERADOR)
+
+    # MFA TOTP — el secreto se guarda cifrado en reposo; el último código
+    # aceptado se retiene para impedir su reutilización (RFC 6238 §5.2)
+    totp_secret_cifrado: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    mfa_habilitado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ultimo_otp_usado: Mapped[str | None] = mapped_column(String(8), nullable=True)
+
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    debe_cambiar_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    intentos_fallidos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bloqueado_hasta: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    password_cambiada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    ultimo_acceso: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+
+    sesiones: Mapped[list[SesionWeb]] = relationship(back_populates="usuario", cascade="all, delete-orphan")
+
+    def esta_bloqueado(self) -> bool:
+        return self.bloqueado_hasta is not None and self.bloqueado_hasta > ahora_utc()
+
+
+ETAPA_CAMBIO_PASSWORD = "cambio_password"  # noqa: S105 — nombre de etapa, no es una contraseña
+ETAPA_MFA_ENROLAMIENTO = "mfa_enrolamiento"
+ETAPA_MFA_PENDIENTE = "mfa_pendiente"
+ETAPA_ACTIVA = "activa"
+ETAPAS_VALIDAS = (ETAPA_CAMBIO_PASSWORD, ETAPA_MFA_ENROLAMIENTO, ETAPA_MFA_PENDIENTE, ETAPA_ACTIVA)
+
+
+class SesionWeb(Base):
+    """Sesión gestionada en servidor: revocable y con doble expiración.
+
+    Solo se persiste el hash SHA-256 del token; la cookie lleva el valor
+    original, de modo que un volcado de la BD no permite secuestrar sesiones.
+    """
+
+    __tablename__ = "sesiones_web"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    etapa: Mapped[str] = mapped_column(String(20), nullable=False, default=ETAPA_MFA_PENDIENTE)
+    csrf_token: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    creada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    ultima_actividad: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    expira_en: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revocada_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    direccion_ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+    agente_usuario: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+
+    usuario: Mapped[Usuario] = relationship(back_populates="sesiones")
+
+
+# ---------------------------------------------------------------------------
+# Inventario relacional
+# ---------------------------------------------------------------------------
+
+TIPO_FUNCION_UNICA = "funcion_unica"
+TIPO_HOST_VIRTUALIZACION = "host_virtualizacion"
+TIPOS_SERVIDOR = (TIPO_FUNCION_UNICA, TIPO_HOST_VIRTUALIZACION)
+
+ETIQUETAS_TIPO_SERVIDOR = {
+    TIPO_FUNCION_UNICA: "Servidor físico de función única",
+    TIPO_HOST_VIRTUALIZACION: "Servidor físico host de virtualización",
+}
+
+
+class ServidorFisico(Base):
+    """Servidor físico: dedicado a una sola función o host de hipervisores."""
+
+    __tablename__ = "servidores_fisicos"
+    __table_args__ = (
+        CheckConstraint(
+            f"tipo IN ('{TIPO_FUNCION_UNICA}', '{TIPO_HOST_VIRTUALIZACION}')",
+            name="ck_servidores_tipo",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    tipo: Mapped[str] = mapped_column(String(32), nullable=False, default=TIPO_FUNCION_UNICA)
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    sistema_operativo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    marca_modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    ubicacion: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    ip_gestion: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+
+    hipervisores: Mapped[list[Hipervisor]] = relationship(
+        back_populates="servidor_fisico", cascade="all, delete-orphan", order_by="Hipervisor.nombre"
+    )
+    credenciales: Mapped[list[Credencial]] = relationship(
+        back_populates="servidor_fisico", cascade="all, delete-orphan"
+    )
+
+    @property
+    def etiqueta_tipo(self) -> str:
+        return ETIQUETAS_TIPO_SERVIDOR.get(self.tipo, self.tipo)
+
+
+class Hipervisor(Base):
+    """Hipervisor instalado en un servidor físico host de virtualización."""
+
+    __tablename__ = "hipervisores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    servidor_fisico_id: Mapped[int] = mapped_column(
+        ForeignKey("servidores_fisicos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    plataforma: Mapped[str] = mapped_column(String(60), nullable=False, default="")  # Proxmox, ESXi, Hyper-V…
+    version: Mapped[str] = mapped_column(String(60), nullable=False, default="")
+    ip_gestion: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+
+    servidor_fisico: Mapped[ServidorFisico] = relationship(back_populates="hipervisores")
+    maquinas_virtuales: Mapped[list[MaquinaVirtual]] = relationship(
+        back_populates="hipervisor", cascade="all, delete-orphan", order_by="MaquinaVirtual.nombre"
+    )
+    credenciales: Mapped[list[Credencial]] = relationship(back_populates="hipervisor", cascade="all, delete-orphan")
+
+
+class MaquinaVirtual(Base):
+    """Máquina virtual alojada dentro de un hipervisor."""
+
+    __tablename__ = "maquinas_virtuales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hipervisor_id: Mapped[int] = mapped_column(
+        ForeignKey("hipervisores.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    sistema_operativo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+
+    hipervisor: Mapped[Hipervisor] = relationship(back_populates="maquinas_virtuales")
+    credenciales: Mapped[list[Credencial]] = relationship(
+        back_populates="maquina_virtual", cascade="all, delete-orphan"
+    )
+
+
+ACTIVO_FISICO = "fisico"
+ACTIVO_HIPERVISOR = "hipervisor"
+ACTIVO_VM = "vm"
+
+
+class Credencial(Base):
+    """Credencial de acceso a un activo del inventario.
+
+    La contraseña se cifra en reposo (Fernet/AES) antes de persistirse.
+    Exactamente una de las tres claves foráneas debe estar presente.
+    """
+
+    __tablename__ = "credenciales"
+    __table_args__ = (
+        CheckConstraint(
+            "(CASE WHEN servidor_fisico_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN hipervisor_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN maquina_virtual_id IS NULL THEN 0 ELSE 1 END) = 1",
+            name="ck_credenciales_un_activo",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    servidor_fisico_id: Mapped[int | None] = mapped_column(
+        ForeignKey("servidores_fisicos.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    hipervisor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("hipervisores.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    maquina_virtual_id: Mapped[int | None] = mapped_column(
+        ForeignKey("maquinas_virtuales.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+    usuario_acceso: Mapped[str] = mapped_column(String(120), nullable=False)
+    password_cifrada: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    servicio: Mapped[str] = mapped_column(String(60), nullable=False, default="SSH")  # SSH, RDP, iLO/IPMI, Web…
+    puerto: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    creado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+
+    servidor_fisico: Mapped[ServidorFisico | None] = relationship(back_populates="credenciales")
+    hipervisor: Mapped[Hipervisor | None] = relationship(back_populates="credenciales")
+    maquina_virtual: Mapped[MaquinaVirtual | None] = relationship(back_populates="credenciales")
+    creado_por: Mapped[Usuario | None] = relationship()
+
+    @property
+    def tipo_activo(self) -> str:
+        if self.servidor_fisico_id is not None:
+            return ACTIVO_FISICO
+        if self.hipervisor_id is not None:
+            return ACTIVO_HIPERVISOR
+        return ACTIVO_VM
+
+    @property
+    def nombre_activo(self) -> str:
+        if self.servidor_fisico is not None:
+            return self.servidor_fisico.nombre
+        if self.hipervisor is not None:
+            return self.hipervisor.nombre
+        if self.maquina_virtual is not None:
+            return self.maquina_virtual.nombre
+        return "—"
+
+
+# ---------------------------------------------------------------------------
+# Auditoría (CIS 8.x — gestión de registros de auditoría)
+# ---------------------------------------------------------------------------
+
+
+class RegistroAuditoria(Base):
+    """Bitácora inmutable de eventos de seguridad y acceso a credenciales."""
+
+    __tablename__ = "registros_auditoria"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fecha: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, index=True)
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
+    accion: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    objeto_tipo: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    objeto_id: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    detalle: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    direccion_ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+    agente_usuario: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    exito: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

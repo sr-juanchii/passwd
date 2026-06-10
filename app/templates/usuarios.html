@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block titulo %}Usuarios — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="encabezado-seccion">
+  <h1>Gestión de usuarios</h1>
+  <a class="boton boton-primario" href="/usuarios/nuevo">+ Usuario</a>
+</div>
+<div class="tarjeta">
+<table class="tabla">
+  <thead>
+    <tr><th>Usuario</th><th>Nombre</th><th>Correo</th><th>Rol</th><th>MFA</th><th>Estado</th><th>Último acceso</th><th>Acciones</th></tr>
+  </thead>
+  <tbody>
+    {% for u in usuarios %}
+    <tr>
+      <td class="texto-mono">{{ u.username }}</td>
+      <td>{{ u.nombre_completo or '—' }}</td>
+      <td>{{ u.email }}</td>
+      <td>
+        {% if u.id != usuario_actual.id %}
+        <form method="post" action="/usuarios/{{ u.id }}/rol" class="form-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <select name="rol">
+            {% for r in roles %}<option value="{{ r }}" {{ 'selected' if u.rol == r }}>{{ etiquetas_rol[r] }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="boton boton-suave">Cambiar</button>
+        </form>
+        {% else %}
+        <span class="insignia insignia-rol">{{ etiquetas_rol[u.rol] }}</span>
+        {% endif %}
+      </td>
+      <td>{{ '✅' if u.mfa_habilitado else '⏳ pendiente' }}</td>
+      <td>{{ '🟢 activo' if u.activo else '🔴 desactivado' }}{% if u.esta_bloqueado() %} · 🔒 bloqueado{% endif %}</td>
+      <td>{{ u.ultimo_acceso.strftime('%d/%m/%Y %H:%M') ~ ' UTC' if u.ultimo_acceso else 'Nunca' }}</td>
+      <td class="celda-acciones">
+        <form method="post" action="/usuarios/{{ u.id }}/reset-password" class="form-inline"
+              data-confirmar="¿Emitir contraseña temporal para {{ u.username }}? Sus sesiones se cerrarán.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="boton boton-suave">Restablecer clave</button>
+        </form>
+        <form method="post" action="/usuarios/{{ u.id }}/reset-mfa" class="form-inline"
+              data-confirmar="¿Reiniciar el MFA de {{ u.username }}? Deberá enrolarse de nuevo.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="boton boton-suave">Reiniciar MFA</button>
+        </form>
+        {% if u.id != usuario_actual.id %}
+          {% if u.activo %}
+          <form method="post" action="/usuarios/{{ u.id }}/desactivar" class="form-inline"
+                data-confirmar="¿Desactivar la cuenta de {{ u.username }}?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="boton boton-peligro">Desactivar</button>
+          </form>
+          {% else %}
+          <form method="post" action="/usuarios/{{ u.id }}/reactivar" class="form-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="boton">Reactivar</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="texto-suave">Las cuentas se desactivan en lugar de eliminarse para preservar la trazabilidad
+   de la auditoría (CIS 5.3). Toda revocación cierra las sesiones abiertas del usuario al instante.</p>
+{% endblock %}

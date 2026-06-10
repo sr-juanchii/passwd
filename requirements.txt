@@ -1,0 +1,13 @@
+# Dependencias de ejecución
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+jinja2>=3.1,<4.0
+python-multipart>=0.0.9,<1.0
+SQLAlchemy>=2.0,<3.0
+argon2-cffi>=23.1
+pyotp>=2.9,<3.0
+segno>=1.6,<2.0
+cryptography>=41.0
+
+# Controlador MySQL opcional (descomentar si se usa PASSWD_DATABASE_URL con MySQL)
+# pymysql>=1.1

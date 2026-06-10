@@ -1,0 +1,49 @@
+{# Tabla de credenciales de un activo: requiere `credenciales`, `tipo_activo`, `activo_id` #}
+<div class="encabezado-seccion">
+  <h2>Credenciales de acceso</h2>
+  {% if puede('credenciales.gestionar') %}
+  <a class="boton" href="/credenciales/nueva?activo={{ tipo_activo }}&amp;activo_id={{ activo_id }}">+ Credencial</a>
+  {% endif %}
+</div>
+{% if credenciales %}
+<table class="tabla">
+  <thead>
+    <tr>
+      <th>Usuario</th><th>Servicio</th><th>Puerto</th><th>Descripción</th><th>Contraseña</th>
+      {% if puede('credenciales.gestionar') %}<th>Acciones</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for credencial in credenciales %}
+    <tr>
+      <td class="texto-mono">{{ credencial.usuario_acceso }}</td>
+      <td>{{ credencial.servicio }}</td>
+      <td>{{ credencial.puerto or '—' }}</td>
+      <td>{{ credencial.descripcion or '—' }}</td>
+      <td>
+        {% if puede('credenciales.revelar') %}
+        <span class="texto-mono campo-password" id="password-{{ credencial.id }}">••••••••</span>
+        <button type="button" class="boton boton-suave" data-revelar="{{ credencial.id }}"
+                data-destino="password-{{ credencial.id }}">Revelar</button>
+        {% else %}
+        <span class="texto-suave">Oculta (rol sin permiso)</span>
+        {% endif %}
+      </td>
+      {% if puede('credenciales.gestionar') %}
+      <td class="celda-acciones">
+        <a class="boton boton-suave" href="/credenciales/{{ credencial.id }}/editar">Editar</a>
+        <form method="post" action="/credenciales/{{ credencial.id }}/eliminar" class="form-inline"
+              data-confirmar="¿Eliminar la credencial {{ credencial.usuario_acceso }}? Esta acción no se puede deshacer.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="boton boton-peligro">Eliminar</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="texto-suave">Cada revelado de contraseña queda registrado en la bitácora de auditoría.</p>
+{% else %}
+<p class="texto-suave">Este activo no tiene credenciales registradas.</p>
+{% endif %}

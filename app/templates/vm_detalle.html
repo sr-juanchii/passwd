@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block titulo %}{{ vm.nombre }} — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="/hipervisores/{{ vm.hipervisor_id }}">← Volver a {{ vm.hipervisor.nombre }}</a></p>
+<div class="encabezado-seccion">
+  <h1>🗔 {{ vm.nombre }}</h1>
+  {% if puede('inventario.gestionar') %}
+  <div class="celda-acciones">
+    <a class="boton" href="/vms/{{ vm.id }}/editar">Editar</a>
+    <form method="post" action="/vms/{{ vm.id }}/eliminar" class="form-inline"
+          data-confirmar="¿Eliminar la máquina virtual {{ vm.nombre }} y sus credenciales?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="boton boton-peligro">Eliminar</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="tarjeta">
+  <dl class="lista-datos">
+    <dt>Hipervisor</dt>
+    <dd><a href="/hipervisores/{{ vm.hipervisor_id }}">{{ vm.hipervisor.nombre }}</a>
+        ({{ vm.hipervisor.plataforma }}) en
+        <a href="/servidores/{{ vm.hipervisor.servidor_fisico_id }}">{{ vm.hipervisor.servidor_fisico.nombre }}</a></dd>
+    <dt>Sistema / función</dt><dd>{{ vm.descripcion or '—' }}</dd>
+    <dt>Sistema operativo</dt><dd>{{ vm.sistema_operativo or '—' }}</dd>
+    <dt>Dirección IP</dt><dd class="texto-mono">{{ vm.ip or '—' }}</dd>
+    <dt>Registrada</dt><dd>{{ vm.creado_en.strftime('%d/%m/%Y %H:%M') }} UTC</dd>
+  </dl>
+</div>
+
+<div class="tarjeta">
+  {% with credenciales = vm.credenciales, tipo_activo = 'vm', activo_id = vm.id %}
+    {% include "_credenciales.html" %}
+  {% endwith %}
+</div>
+{% endblock %}

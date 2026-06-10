@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar' if hipervisor else 'Nuevo' }} hipervisor — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="{{ '/hipervisores/' ~ hipervisor.id if hipervisor else '/servidores/' ~ servidor.id }}">← Volver</a></p>
+<div class="tarjeta tarjeta-formulario">
+  <h1>{{ 'Editar hipervisor' if hipervisor else 'Nuevo hipervisor en ' ~ servidor.nombre }}</h1>
+  <form method="post"
+        action="{{ '/hipervisores/' ~ hipervisor.id ~ '/editar' if hipervisor else '/servidores/' ~ servidor.id ~ '/hipervisores/nuevo' }}"
+        class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label for="nombre">Nombre *</label>
+    <input id="nombre" name="nombre" type="text" required maxlength="120"
+           value="{{ hipervisor.nombre if hipervisor else '' }}" placeholder="Ej.: pve-nodo-01">
+
+    <label for="plataforma">Plataforma *</label>
+    <input id="plataforma" name="plataforma" type="text" required maxlength="60" list="plataformas"
+           value="{{ hipervisor.plataforma if hipervisor else '' }}" placeholder="Ej.: Proxmox VE">
+    <datalist id="plataformas">
+      <option value="Proxmox VE"><option value="VMware ESXi"><option value="Microsoft Hyper-V">
+      <option value="KVM / libvirt"><option value="XCP-ng"><option value="Citrix XenServer">
+    </datalist>
+
+    <label for="version">Versión</label>
+    <input id="version" name="version" type="text" maxlength="60"
+           value="{{ hipervisor.version if hipervisor else '' }}" placeholder="Ej.: 8.2">
+
+    <label for="ip_gestion">IP / URL de gestión</label>
+    <input id="ip_gestion" name="ip_gestion" type="text" maxlength="45"
+           value="{{ hipervisor.ip_gestion if hipervisor else '' }}" placeholder="Ej.: 192.168.10.6">
+
+    <label for="descripcion">Descripción</label>
+    <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
+      placeholder="Ej.: Nodo principal del clúster de virtualización">{{ hipervisor.descripcion if hipervisor else '' }}</textarea>
+
+    <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if hipervisor else 'Registrar hipervisor' }}</button>
+  </form>
+</div>
+{% endblock %}

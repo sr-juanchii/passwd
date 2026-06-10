@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block titulo %}{{ hipervisor.nombre }} — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="/servidores/{{ hipervisor.servidor_fisico_id }}">← Volver a {{ hipervisor.servidor_fisico.nombre }}</a></p>
+<div class="encabezado-seccion">
+  <h1>⚙️ {{ hipervisor.nombre }}
+    <span class="insignia insignia-plataforma">{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</span>
+  </h1>
+  {% if puede('inventario.gestionar') %}
+  <div class="celda-acciones">
+    <a class="boton" href="/hipervisores/{{ hipervisor.id }}/editar">Editar</a>
+    <form method="post" action="/hipervisores/{{ hipervisor.id }}/eliminar" class="form-inline"
+          data-confirmar="¿Eliminar el hipervisor {{ hipervisor.nombre }} con TODAS sus VMs y credenciales?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="boton boton-peligro">Eliminar</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="tarjeta">
+  <dl class="lista-datos">
+    <dt>Servidor físico anfitrión</dt>
+    <dd><a href="/servidores/{{ hipervisor.servidor_fisico_id }}">{{ hipervisor.servidor_fisico.nombre }}</a></dd>
+    <dt>Descripción</dt><dd>{{ hipervisor.descripcion or '—' }}</dd>
+    <dt>IP de gestión</dt><dd class="texto-mono">{{ hipervisor.ip_gestion or '—' }}</dd>
+    <dt>Registrado</dt><dd>{{ hipervisor.creado_en.strftime('%d/%m/%Y %H:%M') }} UTC</dd>
+  </dl>
+</div>
+
+<div class="tarjeta">
+  <div class="encabezado-seccion">
+    <h2>Máquinas virtuales</h2>
+    {% if puede('inventario.gestionar') %}
+    <a class="boton" href="/hipervisores/{{ hipervisor.id }}/vms/nueva">+ Máquina virtual</a>
+    {% endif %}
+  </div>
+  {% if hipervisor.maquinas_virtuales %}
+  <table class="tabla">
+    <thead><tr><th>Nombre</th><th>Sistema operativo</th><th>IP</th><th>Descripción</th><th>Credenciales</th></tr></thead>
+    <tbody>
+      {% for vm in hipervisor.maquinas_virtuales %}
+      <tr>
+        <td><a href="/vms/{{ vm.id }}">{{ vm.nombre }}</a></td>
+        <td>{{ vm.sistema_operativo or '—' }}</td>
+        <td class="texto-mono">{{ vm.ip or '—' }}</td>
+        <td>{{ vm.descripcion or '—' }}</td>
+        <td>{{ vm.credenciales|length }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="texto-suave">Sin máquinas virtuales registradas.</p>
+  {% endif %}
+</div>
+
+<div class="tarjeta">
+  {% with credenciales = hipervisor.credenciales, tipo_activo = 'hipervisor', activo_id = hipervisor.id %}
+    {% include "_credenciales.html" %}
+  {% endwith %}
+</div>
+{% endblock %}

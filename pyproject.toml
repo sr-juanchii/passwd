@@ -1,0 +1,23 @@
+[project]
+name = "gestor-passwd"
+version = "1.0.0"
+description = "Gestor de contraseñas de servidores con inventario relacional, MFA y auditoría"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = [
+    "S101",  # asserts: usados en dependencias internas y pruebas
+    "B008",  # Depends(...) en valores por defecto es el patrón de FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]  # contraseñas de prueba intencionales

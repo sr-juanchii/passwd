@@ -1,0 +1,49 @@
+# Despliegue de referencia.
+#
+# IMPORTANTE: la aplicación debe publicarse SIEMPRE detrás de un proxy TLS
+# (nginx, Caddy, Traefik…). Las cookies de sesión se emiten con el atributo
+# `Secure`; sin HTTPS el navegador las descartará. Para pruebas locales sin
+# TLS puede fijarse PASSWD_COOKIE_SECURE=false (nunca en producción).
+#
+# El primer administrador se crea con las variables PASSWD_ADMIN_* definidas
+# en el archivo .env (ver .env.example); nace con cambio de contraseña
+# forzado y enrolamiento MFA obligatorio en su primer acceso.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"   # solo loopback; el proxy TLS publica hacia fuera
+    volumes:
+      - datos-passwd:/srv/passwd/data
+    networks:
+      - red-passwd
+
+  # Base de datos MySQL opcional. Por defecto la aplicación usa SQLite en el
+  # volumen de datos; para usar MySQL active el perfil y defina en .env:
+  #   PASSWD_DATABASE_URL=mysql+pymysql://passwd:${MYSQL_PASSWORD}@db:3306/passwd
+  # (e instale pymysql añadiéndolo a requirements.txt)
+  db:
+    image: mysql:8.4
+    profiles: ["mysql"]
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: passwd
+      MYSQL_USER: passwd
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Definir MYSQL_PASSWORD en .env}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    command: ["mysqld", "--require-secure-transport=OFF", "--mysql-native-password=OFF"]
+    volumes:
+      - datos-mysql:/var/lib/mysql
+    networks:
+      - red-passwd
+
+volumes:
+  datos-passwd:
+  datos-mysql:
+
+networks:
+  red-passwd:
+    driver: bridge
