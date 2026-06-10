@@ -14,6 +14,7 @@ erDiagram
     USUARIO ||--o{ SESION_WEB : "abre"
     USUARIO ||--o{ CREDENCIAL : "registró"
     USUARIO ||--o{ REGISTRO_AUDITORIA : "genera"
+    USUARIO ||--o{ CODIGO_RECUPERACION_MFA : "posee"
 
     SERVIDOR_FISICO {
         int id PK
@@ -53,6 +54,13 @@ erDiagram
         int puerto
         text descripcion
         int creado_por_id FK
+        datetime password_rotada_en "alertas de rotacion"
+    }
+    CODIGO_RECUPERACION_MFA {
+        int id PK
+        int usuario_id FK
+        string codigo_hash UK "SHA-256, un solo uso"
+        datetime usado_en
     }
     USUARIO {
         int id PK

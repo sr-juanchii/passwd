@@ -35,7 +35,7 @@ interna de gestión de credenciales y su estado.
 
 | Salvaguarda | Descripción | Estado | Implementación / evidencia |
 |---|---|---|---|
-| 5.2 | Usar contraseñas únicas y robustas | ✅ | Política: mínimo 12 caracteres (CIS exige 8 con MFA), lista de contraseñas comunes prohibidas, sin nombre de usuario embebido. `app/security/passwords.py` |
+| 5.2 | Usar contraseñas únicas y robustas | ✅ | Política: mínimo 12 caracteres (CIS exige 8 con MFA), lista de contraseñas comunes prohibidas, sin nombre de usuario embebido; generador CSPRNG de 20 caracteres para credenciales de activos y alerta visual cuando una credencial supera el umbral configurable sin rotarse. `app/security/passwords.py`, `app/static/app.js`, `app/models.py` (`dias_sin_rotar`) |
 | 5.3 | Deshabilitar cuentas inactivas | ✅/📋 | Desactivación inmediata con revocación de sesiones desde la consola admin; la revisión periódica de cuentas sin uso (campo «último acceso» visible) es proceso organizativo. `app/routes/users.py` |
 | 5.4 | Restringir privilegios de administrador a cuentas dedicadas | ✅ | Rol `admin` separado; operación diaria posible con roles `operador`/`auditor` de menor privilegio. `app/rbac.py` |
 | 5.6 | Centralizar la gestión de cuentas | ✅ | Toda alta, baja, rol y restablecimiento se gestiona en un único módulo auditado. `app/routes/users.py` |
@@ -62,6 +62,15 @@ interna de gestión de credenciales y su estado.
 | 8.10 | Retener registros ≥ 90 días | ✅ | Retención por defecto 365 días; el purgado nunca baja del mínimo de 90 días aunque se configure menos. `app/audit.py` (`purgar_antiguos`) |
 | 8.11 | Revisar los registros de auditoría | ✅/📋 | Vista dedicada con filtros por usuario y acción para roles admin/auditor; la cadencia de revisión es proceso organizativo. `app/routes/audit_view.py` |
 
+## Control 11 — Recuperación de datos
+
+| Salvaguarda | Descripción | Estado | Implementación / evidencia |
+|---|---|---|---|
+| 11.1 | Establecer proceso de recuperación de datos | ✅/📋 | Comandos `respaldo`/`restaurar` documentados en README; la programación periódica (cron) y la prueba de restauración son proceso organizativo. `app/cli.py` |
+| 11.2 | Realizar respaldos automatizables | ✅ | Exportación completa (usuarios, inventario, credenciales, bitácora) en un archivo único apto para automatizar por cron. `app/backup.py` |
+| 11.3 | Proteger los datos de recuperación | ✅ | Respaldo cifrado con clave derivada por scrypt de una frase (mín. 12 caracteres) + Fernet; sin la frase el archivo es irrecuperable; escritura con permisos 0600. `app/backup.py` |
+| 11.4 | Mantener instancias aisladas de respaldo | 📋 | El archivo es portable (independiente de las claves de la instancia); su custodia fuera de línea corresponde a la institución. |
+
 ## Control 12 — Gestión de la infraestructura de red
 
 | Salvaguarda | Descripción | Estado | Implementación / evidencia |
@@ -79,8 +88,7 @@ interna de gestión de credenciales y su estado.
 ## Controles fuera del alcance técnico de esta aplicación
 
 Los controles CIS 2 (inventario de software), 7 (gestión de vulnerabilidades de plataforma),
-9 (correo/navegador), 10 (antimalware), 11 (recuperación de datos: programar respaldo del
-volumen `datos-passwd`), 13 (monitoreo de red), 14 (concienciación), 15 (proveedores),
-17 (respuesta a incidentes) y 18 (pentesting) corresponden al entorno y a los procesos de la
-institución. La bitácora de auditoría y el inventario de este sistema sirven como insumo y
-evidencia para varios de ellos.
+9 (correo/navegador), 10 (antimalware), 13 (monitoreo de red), 14 (concienciación),
+15 (proveedores), 17 (respuesta a incidentes) y 18 (pentesting) corresponden al entorno y a
+los procesos de la institución. La bitácora de auditoría y el inventario de este sistema
+sirven como insumo y evidencia para varios de ellos.

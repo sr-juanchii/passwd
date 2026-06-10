@@ -252,6 +252,8 @@ class Credencial(Base):
     creado_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+    # Fecha de la última rotación de la contraseña (alertas de antigüedad)
+    password_rotada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
 
     servidor_fisico: Mapped[ServidorFisico | None] = relationship(back_populates="credenciales")
     hipervisor: Mapped[Hipervisor | None] = relationship(back_populates="credenciales")
@@ -275,6 +277,30 @@ class Credencial(Base):
         if self.maquina_virtual is not None:
             return self.maquina_virtual.nombre
         return "—"
+
+    @property
+    def dias_sin_rotar(self) -> int:
+        return max((ahora_utc() - self.password_rotada_en).days, 0)
+
+
+class CodigoRecuperacionMFA(Base):
+    """Código de recuperación de un solo uso para acceso sin dispositivo TOTP.
+
+    Solo se persiste el hash SHA-256; el valor en claro se muestra una única
+    vez al usuario durante el enrolamiento del MFA.
+    """
+
+    __tablename__ = "codigos_recuperacion_mfa"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    codigo_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    usado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    usuario: Mapped[Usuario] = relationship()
 
 
 # ---------------------------------------------------------------------------

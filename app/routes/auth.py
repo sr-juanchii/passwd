@@ -14,6 +14,7 @@ import hmac
 import secrets
 from datetime import timedelta
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -41,7 +42,7 @@ from app.models import (
     Usuario,
     ahora_utc,
 )
-from app.security import mfa, ratelimit
+from app.security import mfa, ratelimit, recovery
 from app.security.crypto import cifrar, descifrar
 from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
 from app.security.sessions import (
@@ -311,10 +312,17 @@ def mfa_configurar(
     usuario.ultimo_acceso = ahora_utc()
     sesion.etapa = ETAPA_ACTIVA
     token = rotar_token(db, sesion)
-    audit.registrar(db, audit.MFA_ENROLADO, request=request, usuario=usuario)
+    codigos_recuperacion = recovery.emitir_codigos(db, usuario)
+    audit.registrar(db, audit.MFA_ENROLADO, request=request, usuario=usuario,
+                    detalle=f"{len(codigos_recuperacion)} códigos de recuperación emitidos.")
     audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
 
-    respuesta = RedirectResponse("/?msg=MFA configurado correctamente. Bienvenido.", status_code=303)
+    # Los códigos de recuperación se muestran una única vez
+    respuesta = render(request, "mfa_codigos.html", {
+        "usuario_actual": usuario,
+        "codigos": codigos_recuperacion,
+        "csrf_token": sesion.csrf_token,
+    })
     configurar_cookie(respuesta, token)
     return respuesta
 
@@ -346,7 +354,13 @@ def mfa_verificar(
     secreto = descifrar(usuario.totp_secret_cifrado)
     reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
 
-    if reutilizado or not mfa.verificar_codigo(secreto, codigo):
+    totp_valido = not reutilizado and mfa.verificar_codigo(secreto, codigo)
+    recuperacion_usada = False
+    if not totp_valido:
+        # Alternativa: código de recuperación de un solo uso
+        recuperacion_usada = recovery.consumir_codigo(db, usuario, codigo)
+
+    if not totp_valido and not recuperacion_usada:
         _registrar_fallo(db, request, usuario)
         audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
                         detalle="Código reutilizado." if reutilizado else "Código incorrecto.", exito=False)
@@ -359,13 +373,24 @@ def mfa_verificar(
                       {"csrf_token": sesion.csrf_token, "error": "Código incorrecto."}, status_code=401)
 
     usuario.intentos_fallidos = 0
-    usuario.ultimo_otp_usado = codigo_limpio
+    if totp_valido:
+        usuario.ultimo_otp_usado = codigo_limpio
     usuario.ultimo_acceso = ahora_utc()
     sesion.etapa = ETAPA_ACTIVA
     token = rotar_token(db, sesion)
-    audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
 
-    respuesta = RedirectResponse("/", status_code=303)
+    if recuperacion_usada:
+        restantes = recovery.codigos_restantes(db, usuario)
+        audit.registrar(db, audit.MFA_RECUPERACION, request=request, usuario=usuario,
+                        detalle=f"Quedan {restantes} código(s) de recuperación sin usar.")
+        aviso = (f"Código de recuperación aceptado; le quedan {restantes}. "
+                 "Si perdió su dispositivo, pida al administrador reiniciar su MFA.")
+        destino = f"/?msg={quote(aviso)}"
+    else:
+        audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
+        destino = "/"
+
+    respuesta = RedirectResponse(destino, status_code=303)
     configurar_cookie(respuesta, token)
     return respuesta
 

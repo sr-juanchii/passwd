@@ -25,11 +25,13 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 
 | Ámbito | Control |
 |---|---|
-| Autenticación | Contraseña (hash **Argon2id**) + **MFA TOTP obligatorio** (RFC 6238) con QR de enrolamiento generado localmente; anti-replay del último código usado |
+| Autenticación | Contraseña (hash **Argon2id**) + **MFA TOTP obligatorio** (RFC 6238) con QR de enrolamiento generado localmente; anti-replay del último código usado; **códigos de recuperación de un solo uso** (8 por usuario, solo hashes en BD) por si se pierde el dispositivo |
 | Sesiones | Gestionadas en servidor (revocables), token rotado al elevar privilegios, cookie `HttpOnly` + `Secure` + `SameSite=Strict`, expiración por inactividad (15 min) y absoluta (8 h) |
 | Cuentas | Bloqueo tras 5 intentos fallidos, límite de tasa por IP, contraseñas temporales de un solo uso con cambio forzado, política de contraseñas (mín. 12, lista de comunes prohibidas), desactivación con revocación inmediata |
 | Autorización | RBAC con tres roles: **admin**, **operador** y **auditor** (solo lectura, sin acceso a contraseñas) — matriz en [`app/rbac.py`](app/rbac.py) |
-| Datos | Contraseñas de activos y semillas TOTP **cifradas con Fernet (AES)** antes de tocar la base de datos; claves criptográficas fuera del repositorio |
+| Datos | Contraseñas de activos y semillas TOTP **cifradas con Fernet (AES)** antes de tocar la base de datos; claves criptográficas fuera del repositorio; **generador de contraseñas robustas** (CSPRNG, 20 caracteres) en el formulario |
+| Rotación | **Alerta visual** en el panel y en cada activo cuando una credencial supera los 90 días (configurable) sin rotarse; el contador se reinicia al cambiar la contraseña |
+| Respaldo | **Respaldo cifrado portátil** por CLI (`respaldo`/`restaurar`): todo el sistema en un archivo cifrado con frase (scrypt + Fernet), restaurable incluso en otra instancia con claves distintas |
 | Auditoría | Bitácora completa: logins (éxito/fallo), MFA, bloqueos, gestión de usuarios, CRUD del inventario, accesos denegados y **cada revelado de contraseña**, con usuario, IP y agente; retención configurable (mínimo 90 días) |
 | Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff), mensajes genéricos anti enumeración de usuarios, API docs deshabilitadas |
 
@@ -79,6 +81,17 @@ uvicorn app.main:app
 
 También puede crearse un administrador por CLI: `python -m app.cli crear-admin --username admin --email admin@dominio`.
 
+### Respaldo y restauración
+
+```bash
+python -m app.cli respaldo --salida copia.passwd          # pide una frase de cifrado (mín. 12)
+python -m app.cli restaurar --entrada copia.passwd --sobrescribir
+```
+
+El archivo incluye usuarios, inventario completo, credenciales y bitácora, cifrado con una
+clave derivada de la frase (scrypt); es portable entre instancias aunque tengan claves de
+cifrado distintas. Sin la frase, el respaldo es irrecuperable: custódiela aparte del archivo.
+
 ### Base de datos
 
 Por defecto **SQLite** en el directorio de datos (cero configuración). Para **MySQL 8**,
@@ -94,7 +107,7 @@ lista completa con sus valores por defecto (sesiones, bloqueo, retención de aud
 
 ```bash
 pip install -r requirements-dev.txt
-pytest          # 36 pruebas: flujo MFA, RBAC, CSRF, cifrado, cascadas, auditoría
+pytest          # 43 pruebas: flujo MFA, códigos de recuperación, RBAC, CSRF, cifrado, respaldo, cascadas, auditoría
 ruff check app tests
 bandit -r app --severity-level medium
 ```
@@ -121,10 +134,13 @@ tests/                 # suite completa de pruebas de seguridad y funcionalidad
 docs/                  # cumplimiento CIS v8.1, ISO/IEC 27003 y modelo de datos
 ```
 
-## Posibles adiciones (pendientes de aprobación)
+## Adiciones aprobadas e incorporadas
+
+Tras consulta, se aprobaron e implementaron: **generador de contraseñas**, **alertas de
+rotación**, **respaldo cifrado** y **códigos de recuperación MFA**.
+
+## Posibles adiciones futuras (pendientes de aprobación)
 
 Por decisión del proyecto, **ninguna funcionalidad extra se incorpora sin consultarla
-antes**. Candidatas identificadas: generador de contraseñas aleatorias en el formulario,
-recordatorios de rotación por antigüedad, exportación cifrada / respaldo automatizado,
-integración con un directorio corporativo (LDAP/OIDC), códigos de recuperación MFA y
+antes**. Candidatas restantes: integración con un directorio corporativo (LDAP/OIDC) y
 campos adicionales de hardware (RAM/CPU/almacenamiento).

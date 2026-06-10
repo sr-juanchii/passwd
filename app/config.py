@@ -68,6 +68,9 @@ class Settings:
     # Auditoría (CIS 8.10 — retención mínima de 90 días; por defecto 365)
     audit_retention_days: int = field(default_factory=lambda: _env_int("AUDIT_RETENTION_DAYS", 365))
 
+    # Rotación de credenciales: días sin rotar antes de alertar
+    rotation_max_days: int = field(default_factory=lambda: _env_int("ROTATION_MAX_DAYS", 90))
+
     # MFA
     totp_issuer: str = field(default_factory=lambda: _env("TOTP_ISSUER", "Gestor-Passwd"))
 

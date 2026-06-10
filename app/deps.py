@@ -106,12 +106,14 @@ async def verificar_csrf(
 def render(request: Request, plantilla: str, contexto: dict | None = None, status_code: int = 200):
     """Renderiza una plantilla inyectando el contexto global de la aplicación."""
     sesion = getattr(request.state, "sesion", None)
+    settings = get_settings()
     ctx: dict = {
-        "app_name": get_settings().app_name,
+        "app_name": settings.app_name,
         "usuario_actual": None,
         "csrf_token": sesion.csrf_token if sesion is not None else "",
         "puede": lambda _p: False,
         "etiquetas_rol": ETIQUETAS_ROL,
+        "rotacion_max_dias": settings.rotation_max_days,
     }
     if contexto:
         ctx.update(contexto)

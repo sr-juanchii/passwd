@@ -17,6 +17,7 @@ PASS_USUARIO = "Clave-De-Usuario-2026!"
 
 RE_CSRF = re.compile(r'name="csrf_token" value="([^"]+)"')
 RE_SECRETO = re.compile(r'<code class="codigo-secreto">([^<]+)</code>')
+RE_CODIGO_RECUPERACION = re.compile(r'<code class="codigo-recuperacion">([^<]+)</code>')
 
 
 @pytest.fixture()
@@ -94,14 +95,22 @@ def cambiar_password(client: TestClient, actual: str, nueva: str):
     })
 
 
-def enrolar_mfa(client: TestClient) -> str:
-    """Completa el enrolamiento TOTP y devuelve el secreto para usos futuros."""
+def enrolar_mfa_con_codigos(client: TestClient) -> tuple[str, list[str]]:
+    """Completa el enrolamiento TOTP; devuelve (secreto, códigos de recuperación)."""
     pagina = client.get("/mfa/configurar")
     assert pagina.status_code == 200
     secreto = extraer_secreto(pagina.text)
     csrf = extraer_csrf(pagina.text)
     respuesta = client.post("/mfa/configurar", data={"codigo": codigo_totp(secreto), "csrf_token": csrf})
-    assert respuesta.status_code == 303, f"Enrolamiento MFA falló: {respuesta.status_code}"
+    assert respuesta.status_code == 200, f"Enrolamiento MFA falló: {respuesta.status_code}"
+    codigos = RE_CODIGO_RECUPERACION.findall(respuesta.text)
+    assert codigos, "No se mostraron códigos de recuperación tras el enrolamiento"
+    return secreto, codigos
+
+
+def enrolar_mfa(client: TestClient) -> str:
+    """Completa el enrolamiento TOTP y devuelve el secreto para usos futuros."""
+    secreto, _codigos = enrolar_mfa_con_codigos(client)
     return secreto
 
 

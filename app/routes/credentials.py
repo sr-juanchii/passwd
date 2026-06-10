@@ -27,6 +27,7 @@ from app.models import (
     MaquinaVirtual,
     ServidorFisico,
     Usuario,
+    ahora_utc,
 )
 from app.security.crypto import cifrar, descifrar
 
@@ -184,6 +185,7 @@ def credencial_editar(
     rotada = bool(password)
     if rotada:  # contraseña en blanco = conservar la actual
         credencial.password_cifrada = cifrar(password)
+        credencial.password_rotada_en = ahora_utc()
     audit.registrar(db, audit.CREDENCIAL_ACTUALIZADA, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,
                     detalle=f"{credencial.usuario_acceso}@{instancia.nombre}"

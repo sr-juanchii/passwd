@@ -22,8 +22,11 @@
            autocomplete="off" value="{{ credencial.usuario_acceso if credencial else '' }}" placeholder="Ej.: root">
 
     <label for="password">Contraseña {{ '' if credencial else '*' }}</label>
-    <input id="password" name="password" type="password" maxlength="500"
-           autocomplete="new-password" {{ '' if credencial else 'required' }}>
+    <div class="campo-con-boton">
+      <input id="password" name="password" type="password" maxlength="500"
+             autocomplete="new-password" {{ '' if credencial else 'required' }}>
+      <button type="button" class="boton" data-generar="password" title="Generar contraseña aleatoria robusta">🎲 Generar</button>
+    </div>
     {% if credencial %}<p class="texto-suave">Déjela en blanco para conservar la contraseña actual.</p>{% endif %}
 
     <label for="servicio">Servicio / protocolo</label>

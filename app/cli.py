@@ -3,6 +3,8 @@
 Uso:
     python -m app.cli init-db
     python -m app.cli crear-admin --username admin --email admin@ejemplo.com
+    python -m app.cli respaldo --salida respaldo.passwd
+    python -m app.cli restaurar --entrada respaldo.passwd [--sobrescribir]
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import sys
+from pathlib import Path
 
 from sqlalchemy import func, select
 
@@ -55,6 +58,59 @@ def _cmd_crear_admin(args: argparse.Namespace) -> int:
         db.close()
 
 
+def _pedir_frase(confirmar: bool) -> str:
+    frase = getpass.getpass("Frase de cifrado del respaldo (mínimo 12 caracteres): ")
+    if confirmar and getpass.getpass("Confirme la frase: ") != frase:
+        raise SystemExit("Las frases no coinciden.")
+    return frase
+
+
+def _cmd_respaldo(args: argparse.Namespace) -> int:
+    from app import backup
+
+    init_db()
+    db = next(get_db())
+    try:
+        frase = args.passphrase or _pedir_frase(confirmar=True)
+        datos = backup.exportar(db, frase)
+        db.commit()
+        ruta = Path(args.salida)
+        ruta.touch(mode=0o600, exist_ok=True)
+        ruta.write_bytes(datos)
+        print(f"Respaldo cifrado escrito en {ruta} ({len(datos)} bytes).")
+        print("Guarde la frase en un lugar seguro: sin ella el respaldo es irrecuperable.")
+        return 0
+    except backup.ErrorRespaldo as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+
+
+def _cmd_restaurar(args: argparse.Namespace) -> int:
+    from app import backup
+
+    init_db()
+    db = next(get_db())
+    try:
+        datos = Path(args.entrada).read_bytes()
+        frase = args.passphrase or _pedir_frase(confirmar=False)
+        resumen = backup.restaurar(db, datos, frase, sobrescribir=args.sobrescribir)
+        db.commit()
+        print("Restauración completada:")
+        for clave, cantidad in resumen.items():
+            print(f"  - {clave}: {cantidad}")
+        return 0
+    except FileNotFoundError:
+        print(f"Error: no existe el archivo {args.entrada}", file=sys.stderr)
+        return 1
+    except backup.ErrorRespaldo as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description="Utilidades administrativas.")
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -67,11 +123,25 @@ def main(argv: list[str] | None = None) -> int:
     p_admin.add_argument("--nombre", default="")
     p_admin.add_argument("--password", default="", help="Si se omite, se solicita de forma interactiva.")
 
+    p_respaldo = sub.add_parser("respaldo", help="Exporta un respaldo cifrado de todo el sistema.")
+    p_respaldo.add_argument("--salida", required=True, help="Ruta del archivo de respaldo a crear.")
+    p_respaldo.add_argument("--passphrase", default="", help="Si se omite, se solicita de forma interactiva.")
+
+    p_restaurar = sub.add_parser("restaurar", help="Restaura un respaldo cifrado.")
+    p_restaurar.add_argument("--entrada", required=True, help="Ruta del archivo de respaldo.")
+    p_restaurar.add_argument("--passphrase", default="", help="Si se omite, se solicita de forma interactiva.")
+    p_restaurar.add_argument("--sobrescribir", action="store_true",
+                             help="Reemplaza los datos existentes (obligatorio si la BD no está vacía).")
+
     args = parser.parse_args(argv)
     if args.comando == "init-db":
         return _cmd_init_db(args)
     if args.comando == "crear-admin":
         return _cmd_crear_admin(args)
+    if args.comando == "respaldo":
+        return _cmd_respaldo(args)
+    if args.comando == "restaurar":
+        return _cmd_restaurar(args)
     return 1
 
 

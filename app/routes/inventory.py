@@ -10,6 +10,7 @@ Reglas de negocio:
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Annotated
 from urllib.parse import quote
 
@@ -19,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import audit
+from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
@@ -30,6 +32,7 @@ from app.models import (
     MaquinaVirtual,
     ServidorFisico,
     Usuario,
+    ahora_utc,
 )
 
 router = APIRouter()
@@ -72,11 +75,15 @@ def dashboard(
         )
         .order_by(ServidorFisico.nombre)
     ).all()
+    limite_rotacion = ahora_utc() - timedelta(days=get_settings().rotation_max_days)
     totales = {
         "fisicos": len(servidores),
         "hipervisores": db.scalar(select(func.count(Hipervisor.id))) or 0,
         "vms": db.scalar(select(func.count(MaquinaVirtual.id))) or 0,
         "credenciales": db.scalar(select(func.count(Credencial.id))) or 0,
+        "rotacion_vencida": db.scalar(
+            select(func.count(Credencial.id)).where(Credencial.password_rotada_en < limite_rotacion)
+        ) or 0,
     }
     return render(request, "dashboard.html", {
         "usuario_actual": usuario, "servidores": servidores, "totales": totales, "msg": msg,

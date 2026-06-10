@@ -22,6 +22,7 @@ from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import ROLES_VALIDOS, Usuario
 from app.rbac import ETIQUETAS_ROL
 from app.security.passwords import hashear_password
+from app.security.recovery import eliminar_codigos
 from app.security.sessions import revocar_sesiones_de_usuario
 
 router = APIRouter()
@@ -170,6 +171,7 @@ def usuario_reset_mfa(
     objetivo.mfa_habilitado = False
     objetivo.totp_secret_cifrado = None
     objetivo.ultimo_otp_usado = None
+    eliminar_codigos(db, objetivo.id)
     revocar_sesiones_de_usuario(db, objetivo.id)
     audit.registrar(db, audit.MFA_REINICIADO, request=request, usuario=usuario,
                     objeto_tipo="usuario", objeto_id=objetivo.id,

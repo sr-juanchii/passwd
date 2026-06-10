@@ -71,6 +71,8 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
   display: flex; align-items: baseline; gap: 0.5rem;
 }
 .tarjeta-resumen .cifra { font-size: 1.5rem; font-weight: 700; color: var(--tinta); }
+.tarjeta-resumen-alerta { border-color: var(--peligro); background: var(--error-fondo); color: #7f1d1d; }
+.tarjeta-resumen-alerta .cifra { color: var(--peligro); }
 
 .formulario { display: flex; flex-direction: column; gap: 0.35rem; }
 .formulario label { font-weight: 600; font-size: 0.85rem; margin-top: 0.55rem; }
@@ -120,6 +122,7 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
   border-radius: 999px; vertical-align: middle;
 }
 .insignia-rol { background: #2b3c5e; color: #cfe0ff; }
+.insignia-alerta { background: var(--error-fondo); color: var(--peligro); border: 1px solid #f0b9b4; }
 .insignia-unico { background: #e6f4ea; color: #1e7e34; border: 1px solid #b7dec2; }
 .insignia-host { background: #fdf3e0; color: #8a5a00; border: 1px solid #ecd9ae; }
 .insignia-plataforma { background: #e8f0fe; color: #173a69; border: 1px solid #c4d6f5; }
@@ -154,6 +157,15 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
   padding: 0.45rem 0.8rem; font-size: 1rem; letter-spacing: 0.08em; word-break: break-all;
 }
 .password-temporal { margin: 1rem 0; }
+.cuadricula-codigos {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin: 1rem 0;
+}
+.codigo-recuperacion {
+  background: #f0f2f8; border: 1px dashed var(--borde); border-radius: 6px;
+  padding: 0.45rem 0.6rem; font-size: 0.95rem; letter-spacing: 0.06em; text-align: center;
+}
+.campo-con-boton { display: flex; gap: 0.4rem; align-items: stretch; }
+.campo-con-boton input { flex: 1; }
 .campo-password { letter-spacing: 0.08em; }
 .paginacion { display: flex; gap: 0.8rem; align-items: center; justify-content: center; margin-top: 0.9rem; }
 

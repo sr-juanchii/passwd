@@ -25,6 +25,7 @@ MFA_OK = "mfa_correcto"
 MFA_FALLIDO = "mfa_fallido"
 MFA_ENROLADO = "mfa_enrolado"
 MFA_REINICIADO = "mfa_reiniciado"
+MFA_RECUPERACION = "mfa_codigo_recuperacion_usado"
 LOGOUT = "cierre_sesion"
 PASSWORD_CAMBIADA = "password_cambiada"  # noqa: S105 — nombre de acción, no es una contraseña
 CUENTA_BLOQUEADA = "cuenta_bloqueada"
@@ -44,6 +45,9 @@ CREDENCIAL_ELIMINADA = "credencial_eliminada"
 CREDENCIAL_REVELADA = "credencial_revelada"
 
 ACCESO_DENEGADO = "acceso_denegado"
+
+RESPALDO_CREADO = "respaldo_creado"
+RESPALDO_RESTAURADO = "respaldo_restaurado"
 
 
 def registrar(

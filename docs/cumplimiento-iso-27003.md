@@ -27,11 +27,12 @@ ISO/IEC 27001:2022 que implementa técnicamente.
 | A.5.9 | Inventario de información y otros activos | Inventario relacional completo con descripción de función por activo. |
 | A.5.15 | Control de acceso | RBAC aplicado en cada ruta mediante dependencias de autorización. |
 | A.5.16 | Gestión de identidades | Cuentas individuales únicas; sin cuentas compartidas; identidad trazable en cada evento. |
-| A.5.17 | Información de autenticación | Contraseñas con Argon2id; temporales de un solo uso con cambio forzado; política contra contraseñas comunes; secretos TOTP cifrados. |
+| A.5.17 | Información de autenticación | Contraseñas con Argon2id; temporales de un solo uso con cambio forzado; política contra contraseñas comunes; secretos TOTP cifrados; códigos de recuperación MFA de un solo uso almacenados solo como hash; generador de contraseñas robustas y alertas de rotación para credenciales de activos. |
 | A.5.18 | Derechos de acceso | Concesión por rol en el alta; revocación inmediata (desactivación/cambio de rol revoca sesiones). |
 | A.8.2 | Derechos de acceso privilegiados | Rol admin separado; MFA obligatorio también para administradores. |
 | A.8.3 | Restricción de acceso a la información | El rol auditor consulta el inventario sin poder revelar contraseñas. |
 | A.8.5 | Autenticación segura | Flujo de dos factores (contraseña + TOTP), mensajes genéricos anti enumeración, límite de tasa, bloqueo de cuenta, rotación de token de sesión. |
+| A.8.13 | Copia de seguridad de la información | Respaldo cifrado completo por CLI (scrypt + Fernet), portable entre instancias, con restauración verificada por pruebas automatizadas. |
 | A.8.15 | Registro de eventos (logging) | Bitácora estructurada e íntegra de autenticación, gestión y acceso a secretos, con IP y agente. |
 | A.8.24 | Uso de criptografía | Fernet (AES-CBC + HMAC-SHA256) para secretos en reposo; Argon2id para contraseñas; SHA-256 para tokens de sesión; gestión de claves fuera del repositorio. |
 | A.8.26 | Requisitos de seguridad de las aplicaciones | Cabeceras endurecidas (CSP, X-Frame-Options, HSTS), anti-CSRF, cookies seguras, sin documentación de API expuesta. |
@@ -39,7 +40,8 @@ ISO/IEC 27001:2022 que implementa técnicamente.
 ## Responsabilidades que permanecen en la organización
 
 Para completar el SGSI conforme a 27003, la institución debe mantener: la política general
-aprobada por la dirección, la apreciación formal de riesgos, el plan de tratamiento, los
-respaldos del volumen de datos y su prueba de restauración, la revisión periódica de la
-bitácora y de las cuentas, y la gestión segura de las claves (`PASSWD_SECRET_KEY`,
+aprobada por la dirección, la apreciación formal de riesgos, el plan de tratamiento, la
+programación periódica del respaldo cifrado (`python -m app.cli respaldo`) con prueba de
+restauración y custodia de la frase fuera de línea, la revisión periódica de la bitácora y
+de las cuentas, y la gestión segura de las claves (`PASSWD_SECRET_KEY`,
 `PASSWD_ENCRYPTION_KEY`) en un custodio adecuado.

@@ -2,6 +2,23 @@
 // (sin código embebido en el HTML).
 "use strict";
 
+// Genera una cadena aleatoria uniforme (sin sesgo de módulo) con el CSPRNG
+// del navegador.
+function generarAleatoria(alfabeto, longitud) {
+  var limite = Math.floor(256 / alfabeto.length) * alfabeto.length;
+  var resultado = "";
+  var buffer = new Uint8Array(64);
+  while (resultado.length < longitud) {
+    crypto.getRandomValues(buffer);
+    for (var i = 0; i < buffer.length && resultado.length < longitud; i++) {
+      if (buffer[i] < limite) {
+        resultado += alfabeto[buffer[i] % alfabeto.length];
+      }
+    }
+  }
+  return resultado;
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   // Confirmación previa en formularios destructivos.
   document.querySelectorAll("form[data-confirmar]").forEach(function (formulario) {
@@ -9,6 +26,19 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!window.confirm(formulario.dataset.confirmar)) {
         evento.preventDefault();
       }
+    });
+  });
+
+  // Generador de contraseñas robustas para credenciales de servidores.
+  document.querySelectorAll("button[data-generar]").forEach(function (boton) {
+    boton.addEventListener("click", function () {
+      var campo = document.getElementById(boton.dataset.generar);
+      if (!campo) return;
+      var alfabeto =
+        "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!#$%&*+-=?@_";
+      campo.value = generarAleatoria(alfabeto, 20);
+      campo.type = "text"; // visible para poder copiarla al servidor
+      campo.focus();
     });
   });
 

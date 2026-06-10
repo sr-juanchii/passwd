@@ -13,6 +13,12 @@
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.hipervisores }}</span> Hipervisores</div>
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.vms }}</span> Máquinas virtuales</div>
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.credenciales }}</span> Credenciales</div>
+  {% if totales.rotacion_vencida > 0 %}
+  <div class="tarjeta-resumen tarjeta-resumen-alerta">
+    <span class="cifra">{{ totales.rotacion_vencida }}</span>
+    ⚠ Con rotación vencida (&gt;{{ rotacion_max_dias }} días)
+  </div>
+  {% endif %}
 </div>
 
 {% if not servidores %}

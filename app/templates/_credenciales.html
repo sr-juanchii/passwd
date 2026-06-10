@@ -9,7 +9,7 @@
 <table class="tabla">
   <thead>
     <tr>
-      <th>Usuario</th><th>Servicio</th><th>Puerto</th><th>Descripción</th><th>Contraseña</th>
+      <th>Usuario</th><th>Servicio</th><th>Puerto</th><th>Descripción</th><th>Rotación</th><th>Contraseña</th>
       {% if puede('credenciales.gestionar') %}<th>Acciones</th>{% endif %}
     </tr>
   </thead>
@@ -20,6 +20,13 @@
       <td>{{ credencial.servicio }}</td>
       <td>{{ credencial.puerto or '—' }}</td>
       <td>{{ credencial.descripcion or '—' }}</td>
+      <td>
+        {% if credencial.dias_sin_rotar >= rotacion_max_dias %}
+        <span class="insignia insignia-alerta">⚠ {{ credencial.dias_sin_rotar }} días sin rotar</span>
+        {% else %}
+        <span class="texto-suave">hace {{ credencial.dias_sin_rotar }} día(s)</span>
+        {% endif %}
+      </td>
       <td>
         {% if puede('credenciales.revelar') %}
         <span class="texto-mono campo-password" id="password-{{ credencial.id }}">••••••••</span>
