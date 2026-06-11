@@ -36,8 +36,12 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff), mensajes genéricos anti enumeración de usuarios, API docs deshabilitadas |
 
 Cumplimiento documentado con evidencia por control:
-- [`docs/cumplimiento-cis-v8.1.md`](docs/cumplimiento-cis-v8.1.md)
-- [`docs/cumplimiento-iso-27003.md`](docs/cumplimiento-iso-27003.md)
+- [`docs/cumplimiento-cis-v8.1.md`](docs/cumplimiento-cis-v8.1.md) — matriz CIS Controls v8.1
+- [`docs/cumplimiento-iso-27003.md`](docs/cumplimiento-iso-27003.md) — alineación ISO/IEC 27003 y Anexo A
+- [`docs/verificacion-cumplimiento.md`](docs/verificacion-cumplimiento.md) — **informe de verificación** (pruebas, SAST y evidencia dinámica)
+
+Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a producción):
+- [`docs/guia-implementacion.md`](docs/guia-implementacion.md) — **guía de implementación completa**
 
 ## Roles
 
@@ -107,7 +111,7 @@ lista completa con sus valores por defecto (sesiones, bloqueo, retención de aud
 
 ```bash
 pip install -r requirements-dev.txt
-pytest          # 43 pruebas: flujo MFA, códigos de recuperación, RBAC, CSRF, cifrado, respaldo, cascadas, auditoría
+pytest          # 45 pruebas: flujo MFA, códigos de recuperación, RBAC, CSRF, cifrado, respaldo, expiración de sesión, cascadas, auditoría
 ruff check app tests
 bandit -r app --severity-level medium
 ```
@@ -131,7 +135,8 @@ app/
 ├── templates/         # interfaz en español (Jinja2)
 └── static/            # CSS y JS compatibles con la CSP estricta
 tests/                 # suite completa de pruebas de seguridad y funcionalidad
-docs/                  # cumplimiento CIS v8.1, ISO/IEC 27003 y modelo de datos
+docs/                  # guía de implementación, cumplimiento CIS v8.1 / ISO 27000,
+                       # informe de verificación y modelo de datos
 ```
 
 ## Adiciones aprobadas e incorporadas

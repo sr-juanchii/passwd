@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sys
 from pathlib import Path
 
@@ -65,13 +66,23 @@ def _pedir_frase(confirmar: bool) -> str:
     return frase
 
 
+def _frase_respaldo(args: argparse.Namespace, confirmar: bool) -> str:
+    """Prioridad: --passphrase, variable PASSWD_BACKUP_PASSPHRASE, interactivo."""
+    if args.passphrase:
+        return args.passphrase
+    desde_entorno = os.environ.get("PASSWD_BACKUP_PASSPHRASE", "")
+    if desde_entorno:
+        return desde_entorno
+    return _pedir_frase(confirmar)
+
+
 def _cmd_respaldo(args: argparse.Namespace) -> int:
     from app import backup
 
     init_db()
     db = next(get_db())
     try:
-        frase = args.passphrase or _pedir_frase(confirmar=True)
+        frase = _frase_respaldo(args, confirmar=True)
         datos = backup.exportar(db, frase)
         db.commit()
         ruta = Path(args.salida)
@@ -94,7 +105,7 @@ def _cmd_restaurar(args: argparse.Namespace) -> int:
     db = next(get_db())
     try:
         datos = Path(args.entrada).read_bytes()
-        frase = args.passphrase or _pedir_frase(confirmar=False)
+        frase = _frase_respaldo(args, confirmar=False)
         resumen = backup.restaurar(db, datos, frase, sobrescribir=args.sobrescribir)
         db.commit()
         print("Restauración completada:")
@@ -125,11 +136,13 @@ def main(argv: list[str] | None = None) -> int:
 
     p_respaldo = sub.add_parser("respaldo", help="Exporta un respaldo cifrado de todo el sistema.")
     p_respaldo.add_argument("--salida", required=True, help="Ruta del archivo de respaldo a crear.")
-    p_respaldo.add_argument("--passphrase", default="", help="Si se omite, se solicita de forma interactiva.")
+    p_respaldo.add_argument("--passphrase", default="",
+                            help="Si se omite, se usa PASSWD_BACKUP_PASSPHRASE o se solicita interactivamente.")
 
     p_restaurar = sub.add_parser("restaurar", help="Restaura un respaldo cifrado.")
     p_restaurar.add_argument("--entrada", required=True, help="Ruta del archivo de respaldo.")
-    p_restaurar.add_argument("--passphrase", default="", help="Si se omite, se solicita de forma interactiva.")
+    p_restaurar.add_argument("--passphrase", default="",
+                             help="Si se omite, se usa PASSWD_BACKUP_PASSPHRASE o se solicita interactivamente.")
     p_restaurar.add_argument("--sobrescribir", action="store_true",
                              help="Reemplaza los datos existentes (obligatorio si la BD no está vacía).")
 

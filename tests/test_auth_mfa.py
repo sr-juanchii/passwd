@@ -132,6 +132,43 @@ def test_relogin_con_mfa(client):
     assert client.get("/").status_code == 200
 
 
+def test_sesion_expira_por_inactividad(client):
+    autenticar_admin(client)
+    assert client.get("/").status_code == 200
+
+    db = sesion_bd()
+    try:
+        import datetime
+
+        from app.models import SesionWeb
+
+        sesion = db.scalar(select(SesionWeb).where(SesionWeb.revocada_en.is_(None)))
+        sesion.ultima_actividad -= datetime.timedelta(minutes=16)  # supera los 15 min
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.get("/").status_code == 303  # CIS 4.3: bloqueo por inactividad
+
+
+def test_sesion_expira_por_vida_maxima(client):
+    autenticar_admin(client)
+
+    db = sesion_bd()
+    try:
+        import datetime
+
+        from app.models import SesionWeb, ahora_utc
+
+        sesion = db.scalar(select(SesionWeb).where(SesionWeb.revocada_en.is_(None)))
+        sesion.expira_en = ahora_utc() - datetime.timedelta(minutes=1)
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.get("/").status_code == 303  # expiración absoluta (8 h)
+
+
 def test_logout_revoca_la_sesion(client):
     autenticar_admin(client)
     csrf = csrf_de(client, "/")
