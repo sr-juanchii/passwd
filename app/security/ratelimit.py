@@ -1,7 +1,9 @@
-"""Limitación de tasa en memoria para el inicio de sesión.
+"""Limitación de tasa en memoria.
 
 Complementa el bloqueo de cuenta persistente: frena la enumeración de
-usuarios y los ataques de fuerza bruta distribuidos por IP de origen.
+usuarios y la fuerza bruta por IP en el inicio de sesión, y limita el
+volumen de revelados/copiados de contraseñas por usuario (anti-exfiltración,
+OWASP API4/API6).
 """
 
 from __future__ import annotations
@@ -16,16 +18,24 @@ _lock = threading.Lock()
 _eventos: dict[str, deque[float]] = defaultdict(deque)
 
 
-def permitir_intento(clave: str) -> bool:
-    """True si la clave (p. ej. la IP) no superó el límite en la ventana."""
+def permitir_intento(clave: str, limite: int | None = None, ventana_minutos: int | None = None) -> bool:
+    """True si la clave (IP, usuario…) no superó el límite en la ventana.
+
+    Sin parámetros aplica los valores del inicio de sesión; otros controles
+    pasan su propio límite y ventana (p. ej. revelado de credenciales).
+    """
     settings = get_settings()
-    ventana = settings.login_rate_window_minutes * 60
+    if limite is None:
+        limite = settings.login_rate_limit
+    if ventana_minutos is None:
+        ventana_minutos = settings.login_rate_window_minutes
+    ventana = ventana_minutos * 60
     ahora = time.monotonic()
     with _lock:
         cola = _eventos[clave]
         while cola and ahora - cola[0] > ventana:
             cola.popleft()
-        if len(cola) >= settings.login_rate_limit:
+        if len(cola) >= limite:
             return False
         cola.append(ahora)
         return True

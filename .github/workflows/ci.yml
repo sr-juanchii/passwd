@@ -30,5 +30,8 @@ jobs:
       - name: Análisis estático de seguridad (bandit)
         run: bandit -r app --severity-level medium -q
 
+      - name: Vulnerabilidades en dependencias (pip-audit, OWASP A06)
+        run: pip-audit -r requirements.txt
+
       - name: Pruebas (pytest)
         run: pytest

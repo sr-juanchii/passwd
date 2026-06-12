@@ -39,11 +39,28 @@ class CabecerasSeguridadMiddleware(BaseHTTPMiddleware):
         respuesta.headers["X-Frame-Options"] = "DENY"
         respuesta.headers["Referrer-Policy"] = "no-referrer"
         respuesta.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        respuesta.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        respuesta.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        respuesta.headers["X-Permitted-Cross-Domain-Policies"] = "none"
         if get_settings().cookie_secure:
             respuesta.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if not request.url.path.startswith("/static"):
             respuesta.headers["Cache-Control"] = "no-store"
         return respuesta
+
+
+class LimiteTamanoPeticionMiddleware(BaseHTTPMiddleware):
+    """Rechaza cuerpos desproporcionados (OWASP API4 — consumo de recursos).
+
+    La aplicación solo recibe formularios pequeños; cualquier cuerpo mayor
+    al límite configurado (64 KB por defecto) se corta antes de procesarse.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        largo = request.headers.get("content-length", "")
+        if largo.isdigit() and int(largo) > get_settings().max_request_bytes:
+            return JSONResponse({"detail": "La petición excede el tamaño permitido."}, status_code=413)
+        return await call_next(request)
 
 
 def _bootstrap_admin() -> None:
@@ -100,6 +117,7 @@ def create_app() -> FastAPI:
         openapi_url=None,
     )
     app.add_middleware(CabecerasSeguridadMiddleware)
+    app.add_middleware(LimiteTamanoPeticionMiddleware)
 
     init_db()
     _bootstrap_admin()
