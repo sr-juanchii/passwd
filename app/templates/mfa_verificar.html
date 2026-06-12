@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Verificación MFA — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="tarjeta tarjeta-centrada">
+  <h1>Verificación en dos pasos</h1>
+  <p class="texto-suave">Ingrese el código de 6 dígitos de su aplicación autenticadora,
+     o uno de sus códigos de recuperación si perdió el dispositivo.</p>
+  <form method="post" action="/mfa/verificar" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="codigo">Código de verificación o de recuperación</label>
+    <input id="codigo" name="codigo" type="text" autocomplete="one-time-code"
+           required maxlength="14" autofocus>
+    <button type="submit" class="boton boton-primario">Verificar</button>
+  </form>
+</div>
+{% endblock %}

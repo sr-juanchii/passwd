@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar' if credencial else 'Nueva' }} credencial — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="{{ url_volver }}">← Volver a {{ activo.nombre }}</a></p>
+<div class="tarjeta tarjeta-formulario">
+  <h1>{{ 'Editar credencial' if credencial else 'Nueva credencial' }}</h1>
+  <p class="texto-suave">Activo:
+    <strong>{{ activo.nombre }}</strong>
+    ({{ {'fisico': 'servidor físico', 'hipervisor': 'hipervisor', 'vm': 'máquina virtual'}[tipo_activo] }})
+  </p>
+  <form method="post"
+        action="{{ '/credenciales/' ~ credencial.id ~ '/editar' if credencial else '/credenciales/nueva' }}"
+        class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if not credencial %}
+    <input type="hidden" name="activo" value="{{ tipo_activo }}">
+    <input type="hidden" name="activo_id" value="{{ activo.id }}">
+    {% endif %}
+
+    <label for="usuario_acceso">Usuario de acceso *</label>
+    <input id="usuario_acceso" name="usuario_acceso" type="text" required maxlength="120"
+           autocomplete="off" value="{{ credencial.usuario_acceso if credencial else '' }}" placeholder="Ej.: root">
+
+    <label for="password">Contraseña {{ '' if credencial else '*' }}</label>
+    <div class="campo-con-boton">
+      <input id="password" name="password" type="password" maxlength="500"
+             autocomplete="new-password" {{ '' if credencial else 'required' }}>
+      <button type="button" class="boton" data-generar="password" title="Generar contraseña aleatoria robusta">🎲 Generar</button>
+    </div>
+    {% if credencial %}<p class="texto-suave">Déjela en blanco para conservar la contraseña actual.</p>{% endif %}
+
+    <label for="servicio">Servicio / protocolo</label>
+    <input id="servicio" name="servicio" type="text" maxlength="60" list="servicios"
+           value="{{ credencial.servicio if credencial else 'SSH' }}">
+    <datalist id="servicios">
+      {% for s in servicios %}<option value="{{ s }}">{% endfor %}
+    </datalist>
+
+    <label for="puerto">Puerto</label>
+    <input id="puerto" name="puerto" type="text" inputmode="numeric" maxlength="5"
+           value="{{ credencial.puerto if credencial and credencial.puerto else '' }}" placeholder="Ej.: 22">
+
+    <label for="descripcion">Descripción (a qué sistema o panel da acceso)</label>
+    <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
+      placeholder="Ej.: Acceso SSH de administración del sistema de nómina">{{ credencial.descripcion if credencial else '' }}</textarea>
+
+    <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if credencial else 'Registrar credencial' }}</button>
+  </form>
+  <p class="texto-suave">La contraseña se cifra antes de guardarse; nadie puede verla sin la acción
+     «Revelar», que queda registrada en auditoría.</p>
+</div>
+{% endblock %}

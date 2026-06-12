@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar' if vm else 'Nueva' }} máquina virtual — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="{{ '/vms/' ~ vm.id if vm else '/hipervisores/' ~ hipervisor.id }}">← Volver</a></p>
+<div class="tarjeta tarjeta-formulario">
+  <h1>{{ 'Editar máquina virtual' if vm else 'Nueva máquina virtual en ' ~ hipervisor.nombre }}</h1>
+  <form method="post"
+        action="{{ '/vms/' ~ vm.id ~ '/editar' if vm else '/hipervisores/' ~ hipervisor.id ~ '/vms/nueva' }}"
+        class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label for="nombre">Nombre *</label>
+    <input id="nombre" name="nombre" type="text" required maxlength="120"
+           value="{{ vm.nombre if vm else '' }}" placeholder="Ej.: vm-correo">
+
+    <label for="sistema_operativo">Sistema operativo</label>
+    <input id="sistema_operativo" name="sistema_operativo" type="text" maxlength="120"
+           value="{{ vm.sistema_operativo if vm else '' }}" placeholder="Ej.: Ubuntu Server 24.04">
+
+    <label for="ip">Dirección IP</label>
+    <input id="ip" name="ip" type="text" maxlength="45"
+           value="{{ vm.ip if vm else '' }}" placeholder="Ej.: 192.168.20.15">
+
+    <label for="descripcion">Sistema / función que cumple</label>
+    <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
+      placeholder="Ej.: Servidor de correo institucional (Postfix + Dovecot)">{{ vm.descripcion if vm else '' }}</textarea>
+
+    <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if vm else 'Registrar máquina virtual' }}</button>
+  </form>
+</div>
+{% endblock %}

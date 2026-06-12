@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block titulo %}Configurar MFA — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="tarjeta tarjeta-centrada">
+  <h1>Configurar verificación en dos pasos</h1>
+  <p>El doble factor (MFA) es <strong>obligatorio</strong>. Escanee el código QR con su aplicación
+     autenticadora (Aegis, FreeOTP, Google Authenticator, Microsoft Authenticator…) e ingrese el
+     código de 6 dígitos para confirmar.</p>
+  <div class="qr-contenedor">
+    <img src="{{ qr_data_uri }}" alt="Código QR para la aplicación autenticadora" width="220" height="220">
+  </div>
+  <details class="detalle-suave">
+    <summary>¿No puede escanear el código?</summary>
+    <p>Ingrese esta clave manualmente en su aplicación (TOTP, SHA-1, 6 dígitos, 30 s):</p>
+    <code class="codigo-secreto">{{ secreto }}</code>
+  </details>
+  <form method="post" action="/mfa/configurar" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="codigo">Código de verificación</label>
+    <input id="codigo" name="codigo" type="text" inputmode="numeric" pattern="[0-9 ]*"
+           autocomplete="one-time-code" required maxlength="7" autofocus>
+    <button type="submit" class="boton boton-primario">Activar MFA</button>
+  </form>
+</div>
+{% endblock %}

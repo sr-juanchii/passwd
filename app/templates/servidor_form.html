@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar' if servidor else 'Nuevo' }} servidor — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="{{ '/servidores/' ~ servidor.id if servidor else '/' }}">← Volver</a></p>
+<div class="tarjeta tarjeta-formulario">
+  <h1>{{ 'Editar servidor físico' if servidor else 'Nuevo servidor físico' }}</h1>
+  <form method="post" action="{{ '/servidores/' ~ servidor.id ~ '/editar' if servidor else '/servidores/nuevo' }}" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label for="nombre">Nombre / hostname *</label>
+    <input id="nombre" name="nombre" type="text" required maxlength="120" value="{{ servidor.nombre if servidor else '' }}">
+
+    <label for="tipo">Tipo de servidor *</label>
+    <select id="tipo" name="tipo">
+      <option value="funcion_unica" {{ 'selected' if servidor and servidor.tipo == 'funcion_unica' }}>
+        Función única — servidor físico dedicado a un solo sistema
+      </option>
+      <option value="host_virtualizacion" {{ 'selected' if servidor and servidor.tipo == 'host_virtualizacion' }}>
+        Host de virtualización — sin función única; aloja hipervisores y VMs
+      </option>
+    </select>
+
+    <label for="descripcion">Descripción del sistema / función</label>
+    <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
+      placeholder="Ej.: Servidor de base de datos del sistema de nómina">{{ servidor.descripcion if servidor else '' }}</textarea>
+
+    <label for="sistema_operativo">Sistema operativo</label>
+    <input id="sistema_operativo" name="sistema_operativo" type="text" maxlength="120"
+           value="{{ servidor.sistema_operativo if servidor else '' }}" placeholder="Ej.: Debian 12, Windows Server 2022">
+
+    <label for="marca_modelo">Marca y modelo</label>
+    <input id="marca_modelo" name="marca_modelo" type="text" maxlength="120"
+           value="{{ servidor.marca_modelo if servidor else '' }}" placeholder="Ej.: Dell PowerEdge R740">
+
+    <label for="ubicacion">Ubicación física</label>
+    <input id="ubicacion" name="ubicacion" type="text" maxlength="120"
+           value="{{ servidor.ubicacion if servidor else '' }}" placeholder="Ej.: Sala de servidores, rack 2">
+
+    <label for="ip_gestion">IP de gestión</label>
+    <input id="ip_gestion" name="ip_gestion" type="text" maxlength="45"
+           value="{{ servidor.ip_gestion if servidor else '' }}" placeholder="Ej.: 192.168.10.5">
+
+    <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if servidor else 'Registrar servidor' }}</button>
+  </form>
+</div>
+{% endblock %}

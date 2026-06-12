@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="cabecera">
+  <div class="cabecera-marca">🔐 {{ app_name }}</div>
+  {% if usuario_actual %}
+  <nav class="navegacion">
+    <a href="/">Inventario</a>
+    {% if puede('usuarios.gestionar') %}<a href="/usuarios">Usuarios</a>{% endif %}
+    {% if puede('auditoria.ver') %}<a href="/auditoria">Auditoría</a>{% endif %}
+  </nav>
+  <div class="cabecera-usuario">
+    <span class="usuario-nombre">{{ usuario_actual.username }}</span>
+    <span class="insignia insignia-rol">{{ etiquetas_rol.get(usuario_actual.rol, usuario_actual.rol) }}</span>
+    <a class="enlace-suave" href="/password/cambiar">Cambiar contraseña</a>
+    <form method="post" action="/logout" class="form-inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="boton boton-suave">Cerrar sesión</button>
+    </form>
+  </div>
+  {% endif %}
+</header>
+<main class="contenido">
+  {% if msg %}<div class="aviso aviso-exito">{{ msg }}</div>{% endif %}
+  {% if error %}<div class="aviso aviso-error">{{ error }}</div>{% endif %}
+  {% block contenido %}{% endblock %}
+</main>
+<footer class="pie">
+  Acceso restringido al personal autorizado. Todas las acciones quedan registradas en la bitácora de auditoría.
+</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

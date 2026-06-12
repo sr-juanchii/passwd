@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block titulo %}Nuevo usuario — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="/usuarios">← Volver a usuarios</a></p>
+<div class="tarjeta tarjeta-formulario">
+  <h1>Crear usuario</h1>
+  <p class="texto-suave">Se generará una contraseña temporal que el usuario deberá cambiar en su
+     primer acceso, seguido del enrolamiento obligatorio de MFA.</p>
+  <form method="post" action="/usuarios/nuevo" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label for="username">Nombre de usuario *</label>
+    <input id="username" name="username" type="text" required maxlength="64" autocomplete="off"
+           placeholder="Ej.: jperez">
+
+    <label for="email">Correo electrónico *</label>
+    <input id="email" name="email" type="email" required maxlength="255" autocomplete="off">
+
+    <label for="nombre_completo">Nombre completo</label>
+    <input id="nombre_completo" name="nombre_completo" type="text" maxlength="120">
+
+    <label for="rol">Rol *</label>
+    <select id="rol" name="rol">
+      <option value="operador">Operador — gestiona inventario y credenciales</option>
+      <option value="auditor">Auditor — solo lectura y bitácora; no ve contraseñas</option>
+      <option value="admin">Administrador — control total</option>
+    </select>
+
+    <button type="submit" class="boton boton-primario">Crear usuario</button>
+  </form>
+</div>
+{% endblock %}

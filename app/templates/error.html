@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block titulo %}Error {{ codigo }} — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="tarjeta tarjeta-centrada">
+  <h1>{{ '⛔ Acceso denegado' if codigo == 403 else '🔍 No encontrado' }}</h1>
+  <p>{{ detalle }}</p>
+  <a class="boton boton-primario" href="/">Volver al inventario</a>
+</div>
+{% endblock %}

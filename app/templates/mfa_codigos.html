@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block titulo %}Códigos de recuperación — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="tarjeta tarjeta-centrada">
+  <h1>✅ MFA activado</h1>
+  <p>Guarde estos <strong>códigos de recuperación</strong> en un lugar seguro (impreso o en un
+     gestor personal). Cada código sirve <strong>una sola vez</strong> para entrar si pierde su
+     dispositivo autenticador. <strong>No volverán a mostrarse.</strong></p>
+  <div class="cuadricula-codigos">
+    {% for codigo in codigos %}
+    <code class="codigo-recuperacion">{{ codigo }}</code>
+    {% endfor %}
+  </div>
+  <p class="texto-suave">Si agota o pierde los códigos, un administrador puede reiniciar su MFA.</p>
+  <a class="boton boton-primario" href="/">He guardado mis códigos — continuar</a>
+</div>
+{% endblock %}
