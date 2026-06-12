@@ -9,5 +9,5 @@ pyotp>=2.9,<3.0
 segno>=1.6,<2.0
 cryptography>=41.0
 
-# Controlador MySQL opcional (descomentar si se usa PASSWD_DATABASE_URL con MySQL)
-# pymysql>=1.1
+# Controlador MySQL (usado por docker-compose.mysql.yml; inofensivo con SQLite)
+pymysql>=1.1

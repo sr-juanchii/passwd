@@ -99,8 +99,9 @@ cifrado distintas. Sin la frase, el respaldo es irrecuperable: custódiela apart
 ### Base de datos
 
 Por defecto **SQLite** en el directorio de datos (cero configuración). Para **MySQL 8**,
-defina `PASSWD_DATABASE_URL=mysql+pymysql://usuario:clave@host:3306/passwd`, añada
-`pymysql` a `requirements.txt` y, con Docker, active el perfil: `docker compose --profile mysql up -d`.
+defina `MYSQL_PASSWORD` en `.env` (línea sin comentar) y arranque con el archivo adicional:
+`docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build`.
+Sin Docker: `PASSWD_DATABASE_URL=mysql+pymysql://usuario:clave@host:3306/passwd`.
 
 ### Variables de entorno
 

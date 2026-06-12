@@ -1,0 +1,36 @@
+# Variante con MySQL 8 en lugar de SQLite. Uso:
+#
+#   1. Definir MYSQL_PASSWORD en .env (sin '#' delante y sin espacios alrededor del '=')
+#   2. docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build
+#
+# Este archivo solo se procesa cuando se pasa con -f, de modo que el despliegue
+# por defecto (SQLite) nunca exige MYSQL_PASSWORD.
+
+services:
+  app:
+    environment:
+      PASSWD_DATABASE_URL: mysql+pymysql://passwd:${MYSQL_PASSWORD:?Definir MYSQL_PASSWORD en .env (línea sin comentar)}@db:3306/passwd
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: passwd
+      MYSQL_USER: passwd
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Definir MYSQL_PASSWORD en .env (línea sin comentar)}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "passwd", "--password=$$MYSQL_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - datos-mysql:/var/lib/mysql
+    networks:
+      - red-passwd
+
+volumes:
+  datos-mysql:
