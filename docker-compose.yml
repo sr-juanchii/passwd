@@ -1,4 +1,4 @@
-# Despliegue de referencia.
+# Despliegue de referencia (la app con SQLite en un volumen; cero configuración).
 #
 # IMPORTANTE: la aplicación debe publicarse SIEMPRE detrás de un proxy TLS
 # (nginx, Caddy, Traefik…). Las cookies de sesión se emiten con el atributo
@@ -8,6 +8,9 @@
 # El primer administrador se crea con las variables PASSWD_ADMIN_* definidas
 # en el archivo .env (ver .env.example); nace con cambio de contraseña
 # forzado y enrolamiento MFA obligatorio en su primer acceso.
+#
+# ¿MySQL en lugar de SQLite? Use el archivo adicional docker-compose.mysql.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build
 
 services:
   app:
@@ -21,28 +24,8 @@ services:
     networks:
       - red-passwd
 
-  # Base de datos MySQL opcional. Por defecto la aplicación usa SQLite en el
-  # volumen de datos; para usar MySQL active el perfil y defina en .env:
-  #   PASSWD_DATABASE_URL=mysql+pymysql://passwd:${MYSQL_PASSWORD}@db:3306/passwd
-  # (e instale pymysql añadiéndolo a requirements.txt)
-  db:
-    image: mysql:8.4
-    profiles: ["mysql"]
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: passwd
-      MYSQL_USER: passwd
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Definir MYSQL_PASSWORD en .env}
-      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
-    command: ["mysqld", "--require-secure-transport=OFF", "--mysql-native-password=OFF"]
-    volumes:
-      - datos-mysql:/var/lib/mysql
-    networks:
-      - red-passwd
-
 volumes:
   datos-passwd:
-  datos-mysql:
 
 networks:
   red-passwd:

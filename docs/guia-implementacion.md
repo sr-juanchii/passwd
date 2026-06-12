@@ -220,7 +220,7 @@ MFA + guardar códigos de recuperación. Crear el resto de usuarios con el menor
 |---|---|---|
 | Equipos de hasta ~25 usuarios | ✅ idóneo | innecesario |
 | Alta concurrencia / BD corporativa existente | limitado | ✅ |
-| Operación | cero administración; respaldo = CLI | requiere DBA y `--profile mysql` |
+| Operación | cero administración; respaldo = CLI | requiere DBA; arranque: `docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d` con `MYSQL_PASSWORD` en `.env` |
 
 ### 4.7 Respaldos programados
 
