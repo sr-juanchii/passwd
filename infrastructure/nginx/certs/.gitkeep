@@ -1,0 +1,6 @@
+# Coloque aquí los certificados TLS que usará nginx:
+#   - fullchain.pem  (certificado del servidor + cadena de intermedios)
+#   - privkey.pem    (clave privada; permisos 0600)
+#
+# NUNCA se versionan los .pem (ver .gitignore). Para pruebas, genere uno
+# autofirmado con: ../generar-cert-autofirmado.sh

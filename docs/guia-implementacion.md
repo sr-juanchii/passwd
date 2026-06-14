@@ -140,43 +140,32 @@ Registrar por cada caso: ejecutor, fecha, resultado (✔/✘) y observaciones.
 
 ### 4.2 Endurecimiento del anfitrión (resumen)
 
-- Firewall: permitir solo 443/tcp (y el puerto de administración del propio anfitrión); **nunca exponer el 8000**.
-- Docker: mantener el mapeo `127.0.0.1:8000:8000` que trae `docker-compose.yml`.
+- Firewall: permitir solo 443/tcp (y 80/tcp para la redirección y el desafío ACME, más el puerto de administración del propio anfitrión); **nunca exponer el 8000**.
+- Docker: con el override de nginx la app **deja de publicar** el 8000 (`ports: !reset []`) y solo se llega por nginx.
 - Restringir el acceso al directorio de datos al usuario del servicio; los archivos de claves ya nacen 0600.
 - Mantener el anfitrión bajo el régimen de parches de la institución (CIS 7 — organizativo).
 
-### 4.3 Proxy TLS (obligatorio)
+### 4.3 Proxy TLS con nginx (obligatorio)
 
-**nginx** (ejemplo):
+El proyecto incluye una solución de nginx lista para usar (TLS endurecido, IP real del
+cliente sin posibilidad de spoofing, HSTS y rotación de certificados sencilla):
 
-```nginx
-server {
-    listen 443 ssl;
-    server_name passwd.su-organizacion.tld;
-    ssl_certificate     /etc/ssl/passwd/fullchain.pem;
-    ssl_certificate_key /etc/ssl/passwd/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-    }
-}
-server { listen 80; server_name passwd.su-organizacion.tld; return 301 https://$host$request_uri; }
+```bash
+# 1. Definir el dominio en .env
+echo 'PASSWD_DOMAIN=passwd.su-organizacion.tld' >> .env
+# 2. Colocar el certificado de la CA en infrastructure/nginx/certs/{fullchain,privkey}.pem
+#    (o, para pruebas: sh infrastructure/nginx/generar-cert-autofirmado.sh localhost)
+# 3. Levantar app + nginx (la app deja de publicarse en el host; solo entra por 443)
+docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
 ```
 
-**Caddy** (equivalente, con certificado automático): `passwd.su-organizacion.tld { reverse_proxy 127.0.0.1:8000 }`
+El procedimiento completo —certificado de CA interna/comercial, Let's Encrypt con
+renovación automática, **rotación de certificados sin caída** y verificación TLS— está en
+**[`docs/guia-nginx-tls.md`](guia-nginx-tls.md)**.
 
-**IP real del cliente en la auditoría:** detrás de un proxy, arranque uvicorn con cabeceras de
-reenvío confiando solo en el proxy. En `docker-compose.yml` agregue al servicio `app`:
-
-```yaml
-    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0",
-              "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "172.16.0.0/12"]
-```
-
-(ajuste el rango a la IP interna real del proxy; sin esto la bitácora registrará la IP del proxy).
+> La IP real del cliente en la auditoría queda resuelta por esta solución: nginx sobrescribe
+> `X-Forwarded-For` con la dirección observada y la app arranca con `--proxy-headers`. No es
+> necesario ajustar rangos manualmente.
 
 ### 4.4 Claves criptográficas
 

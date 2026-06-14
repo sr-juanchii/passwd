@@ -1,0 +1,44 @@
+# Terminación HTTPS con nginx delante de la aplicación.
+#
+# Uso (la app deja de publicarse en el host; solo se llega por nginx vía 443):
+#   1. Definir PASSWD_DOMAIN en .env (p. ej. passwd.su-organizacion.tld)
+#   2. Colocar los certificados en infrastructure/nginx/certs/ como
+#      fullchain.pem y privkey.pem (para PRUEBAS: ./infrastructure/nginx/generar-cert-autofirmado.sh)
+#   3. docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
+#
+# Guía completa y rotación de certificados: docs/guia-nginx-tls.md
+
+services:
+  app:
+    # Detrás de nginx confiamos en las cabeceras de reenvío para registrar la
+    # IP real del cliente en la auditoría. Es seguro porque (a) nginx
+    # SOBRESCRIBE X-Forwarded-For con la IP que observa y (b) el puerto de la
+    # app deja de publicarse en el host (ports: !reset []), de modo que solo
+    # nginx puede alcanzarla dentro de la red interna.
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0",
+              "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    ports: !reset []
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Solo se sustituyen variables PASSWD_* en la plantilla; las de nginx no.
+      PASSWD_DOMAIN: ${PASSWD_DOMAIN:-localhost}
+      NGINX_ENVSUBST_FILTER: "^PASSWD_"
+    volumes:
+      - ./infrastructure/nginx/templates:/etc/nginx/templates:ro
+      - ./infrastructure/nginx/certs:/etc/nginx/certs:ro
+      - certbot-webroot:/var/www/certbot:ro
+    networks:
+      - red-passwd
+
+volumes:
+  certbot-webroot:

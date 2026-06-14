@@ -44,6 +44,7 @@ Cumplimiento documentado con evidencia por control:
 
 Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a producción):
 - [`docs/guia-implementacion.md`](docs/guia-implementacion.md) — **guía de implementación completa**
+- [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md) — **HTTPS con nginx y rotación de certificados**
 
 ## Roles
 
@@ -57,12 +58,24 @@ Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a 
 
 ## Puesta en marcha
 
-### Opción A: Docker (recomendada)
+### Opción A: Docker con HTTPS/nginx (recomendada para producción)
 
 ```bash
-cp .env.example .env        # editar: PASSWD_ADMIN_USERNAME / EMAIL / PASSWORD
+cp .env.example .env        # editar: PASSWD_ADMIN_USERNAME / EMAIL / PASSWORD y PASSWD_DOMAIN
+# Certificado: colocar infrastructure/nginx/certs/{fullchain,privkey}.pem
+# (pruebas: sh infrastructure/nginx/generar-cert-autofirmado.sh localhost)
+docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
+# Disponible en https://<PASSWD_DOMAIN> (nginx termina TLS; la app no se expone)
+```
+
+Detalles, Let's Encrypt y **rotación de certificados**: [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md).
+
+### Opción A′: Docker sin proxy (solo para pruebas internas)
+
+```bash
+cp .env.example .env
 docker compose up -d --build
-# La aplicación queda en http://127.0.0.1:8000 — publicar SIEMPRE detrás de un proxy TLS
+# La app queda en http://127.0.0.1:8000 — publicar SIEMPRE detrás de un proxy TLS
 ```
 
 ### Opción B: local (Python 3.11+)
