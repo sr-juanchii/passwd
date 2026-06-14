@@ -5,11 +5,13 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
 
 **Leyenda:** ✅ implementado · 🔜 planificado · 🟡 viable con matiz · ⚠️ reconsiderar (ROI bajo).
 
-## Cimiento (habilitador)
+## Fase 0 — Cimiento (habilitador) ✅ (entregada)
 
-- 🔜 **Migraciones con Alembic.** Hoy el esquema se crea con `create_all` (solo crea tablas
-  nuevas, no altera las existentes). Cualquier cambio de columnas exige hoy recrear la BD; antes
-  de la Fase 2 conviene introducir migraciones versionadas para entornos con datos.
+- ✅ **Reconciliación de esquema sin dependencias** (`app/schema_sync.py`): al arrancar, tras
+  `create_all`, añade las **columnas nuevas** que falten (`ALTER TABLE ADD COLUMN`, SQLite/MySQL)
+  para que las bases existentes adopten versiones nuevas sin recrearse. Cubre todos los cambios
+  **aditivos** de la Fase 2 (tablas y columnas). Para cambios **no aditivos** (eliminar/renombrar
+  columnas, cambiar tipos o CHECK) se recomienda adoptar **Alembic** en su momento.
 
 ## Fase 1 — Cumplimiento y visibilidad ✅ (entregada)
 

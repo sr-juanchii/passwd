@@ -41,10 +41,13 @@ def get_engine() -> Engine:
 
 
 def init_db() -> None:
-    """Crea todas las tablas si no existen."""
+    """Crea las tablas que falten y reconcilia columnas nuevas (cambios aditivos)."""
     from app import models  # noqa: F401  (registra los modelos)
+    from app.schema_sync import reconciliar_esquema
 
-    Base.metadata.create_all(get_engine())
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    reconciliar_esquema(engine)
 
 
 def get_db() -> Iterator[Session]:
