@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from tests.conftest import autenticar_admin, csrf_de, sesion_bd
 
@@ -112,6 +112,102 @@ def test_notas_no_aparecen_en_el_detalle(client):
                 data={"contenido": "SECRETO-EN-NOTA", "csrf_token": csrf})
     # El HTML del detalle nunca contiene el texto de la nota (solo se revela por API)
     assert "SECRETO-EN-NOTA" not in client.get(f"/servidores/{sid}").text
+
+
+def test_historial_de_contrasenas(client):
+    autenticar_admin(client)
+    from tests.test_credenciales import _crear_credencial
+
+    sid = _crear_servidor_completo(client, "srv-hist")
+    _crear_credencial(client, "fisico", sid)  # password inicial = CLAVE_SECRETA
+
+    db = sesion_bd()
+    try:
+        from app.models import Credencial
+
+        cred_id = db.scalar(select(Credencial.id))
+    finally:
+        db.close()
+
+    # Rotar dos veces → dos entradas de historial (la inicial y la 2ª).
+    for nueva in ("PrimeraRotacion#1", "SegundaRotacion#2"):
+        csrf = csrf_de(client, f"/credenciales/{cred_id}/editar")
+        r = client.post(f"/credenciales/{cred_id}/editar", data={
+            "usuario_acceso": "root", "password": nueva, "servicio": "SSH",
+            "puerto": "22", "descripcion": "", "csrf_token": csrf,
+        })
+        assert r.status_code == 303
+
+    db = sesion_bd()
+    try:
+        from app.models import Credencial, HistorialCredencial
+        from app.security.crypto import descifrar
+
+        entradas = db.scalars(select(HistorialCredencial).where(
+            HistorialCredencial.credencial_id == cred_id)).all()
+        assert len(entradas) == 2
+        claves = {descifrar(e.password_cifrada) for e in entradas}
+        from tests.test_credenciales import CLAVE_SECRETA
+
+        assert CLAVE_SECRETA in claves and "PrimeraRotacion#1" in claves
+        # La credencial vigente tiene la última
+        assert descifrar(db.get(Credencial, cred_id).password_cifrada) == "SegundaRotacion#2"
+
+        hist_id = entradas[0].id
+    finally:
+        db.close()
+
+    # Revelar una entrada del historial queda auditado
+    csrf = csrf_de(client, f"/credenciales/{cred_id}/editar")
+    rev = client.post(f"/credenciales/{cred_id}/historial/{hist_id}/revelar", data={"csrf_token": csrf})
+    assert rev.status_code == 200
+    assert rev.json()["password"] in ("SegundaRotacion#2", "PrimeraRotacion#1", "SuperClaveDelServidor#2026")
+    db = sesion_bd()
+    try:
+        from app.models import RegistroAuditoria
+
+        assert db.scalar(select(RegistroAuditoria).where(
+            RegistroAuditoria.accion == "historial_revelado")) is not None
+    finally:
+        db.close()
+
+
+def test_historial_respeta_tope_configurable(client):
+    autenticar_admin(client)
+    from app.config import get_settings
+    from tests.test_credenciales import _crear_credencial
+
+    sid = _crear_servidor_completo(client, "srv-tope")
+    _crear_credencial(client, "fisico", sid)
+    db = sesion_bd()
+    try:
+        from app.models import Credencial
+
+        cred_id = db.scalar(select(Credencial.id))
+    finally:
+        db.close()
+
+    settings = get_settings()
+    original = settings.password_history_max
+    settings.password_history_max = 2
+    try:
+        for i in range(4):
+            csrf = csrf_de(client, f"/credenciales/{cred_id}/editar")
+            client.post(f"/credenciales/{cred_id}/editar", data={
+                "usuario_acceso": "root", "password": f"Rotacion-{i}-xyz", "servicio": "SSH",
+                "puerto": "22", "descripcion": "", "csrf_token": csrf,
+            })
+        db = sesion_bd()
+        try:
+            from app.models import HistorialCredencial
+
+            n = db.scalar(select(func.count(HistorialCredencial.id)).where(
+                HistorialCredencial.credencial_id == cred_id))
+            assert n == 2  # podado al tope
+        finally:
+            db.close()
+    finally:
+        settings.password_history_max = original
 
 
 def test_reconciliador_aplica_columnas_nuevas_en_bd_existente():

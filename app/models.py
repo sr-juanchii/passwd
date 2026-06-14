@@ -336,6 +336,34 @@ class Credencial(Base):
     def dias_sin_rotar(self) -> int:
         return max((ahora_utc() - self.password_rotada_en).days, 0)
 
+    historial: Mapped[list[HistorialCredencial]] = relationship(
+        back_populates="credencial", cascade="all, delete-orphan",
+        order_by="HistorialCredencial.rotada_en.desc()",
+    )
+
+
+class HistorialCredencial(Base):
+    """Contraseña anterior de una credencial, conservada cifrada al rotar.
+
+    Permite recuperar una clave ante un error de rotación y auditar el número
+    de rotaciones. Se conservan las últimas N (configurable). Nunca en claro.
+    """
+
+    __tablename__ = "historial_credenciales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    credencial_id: Mapped[int] = mapped_column(
+        ForeignKey("credenciales.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    password_cifrada: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    rotada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    rotada_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+
+    credencial: Mapped[Credencial] = relationship(back_populates="historial")
+    rotada_por: Mapped[Usuario | None] = relationship()
+
 
 # Niveles de una concesión de acceso por activo (control de acceso por objeto)
 NIVEL_VER = "ver"                      # ve el activo y la lista de credenciales (sin contraseñas)

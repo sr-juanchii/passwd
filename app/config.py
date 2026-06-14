@@ -77,6 +77,8 @@ class Settings:
 
     # Rotación de credenciales: días sin rotar antes de alertar
     rotation_max_days: int = field(default_factory=lambda: _env_int("ROTATION_MAX_DAYS", 90))
+    # Historial de contraseñas anteriores conservadas por credencial
+    password_history_max: int = field(default_factory=lambda: _env_int("PASSWORD_HISTORY_MAX", 5))
 
     # MFA
     totp_issuer: str = field(default_factory=lambda: _env("TOTP_ISSUER", "Gestor-Passwd"))
