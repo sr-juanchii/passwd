@@ -40,6 +40,11 @@ body {
 .navegacion { display: flex; gap: 1rem; }
 .navegacion a { color: #d7e3f7; text-decoration: none; font-weight: 600; }
 .navegacion a:hover { color: #fff; }
+.form-buscar { margin: 0; }
+.form-buscar input[type="search"] {
+  padding: 0.4rem 0.65rem; border: 1px solid var(--primario); border-radius: 7px;
+  background: #fff; color: var(--tinta); font-size: 0.85rem; width: 16rem; max-width: 40vw;
+}
 .cabecera-usuario { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .usuario-nombre { font-weight: 600; }
 .cabecera-usuario .enlace-suave { color: #d7e3f7; }

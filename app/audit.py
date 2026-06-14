@@ -51,6 +51,8 @@ ACCESO_DENEGADO = "acceso_denegado"
 ACCESO_CONCEDIDO = "acceso_concedido"
 ACCESO_REVOCADO = "acceso_revocado"
 
+AUDITORIA_EXPORTADA = "auditoria_exportada"
+
 RESPALDO_CREADO = "respaldo_creado"
 RESPALDO_RESTAURADO = "respaldo_restaurado"
 

@@ -12,9 +12,14 @@
   {% if usuario_actual %}
   <nav class="navegacion">
     <a href="/">Inventario</a>
+    {% if puede('metricas.ver') %}<a href="/metricas">Métricas</a>{% endif %}
     {% if puede('usuarios.gestionar') %}<a href="/usuarios">Usuarios</a>{% endif %}
     {% if puede('auditoria.ver') %}<a href="/auditoria">Auditoría</a>{% endif %}
   </nav>
+  <form method="get" action="/buscar" class="form-buscar" role="search">
+    <input type="search" name="q" value="{{ q if q is defined else '' }}"
+           placeholder="Buscar activos o credenciales…" aria-label="Buscar" maxlength="120">
+  </form>
   <div class="cabecera-usuario">
     <span class="usuario-nombre">{{ usuario_actual.username }}</span>
     <span class="insignia insignia-rol">{{ etiquetas_rol.get(usuario_actual.rol, usuario_actual.rol) }}</span>

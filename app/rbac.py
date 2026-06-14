@@ -33,6 +33,7 @@ PERMISOS: dict[str, frozenset[str]] = {
     "credenciales.gestionar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
     "usuarios.gestionar": frozenset({ROL_ADMIN}),
     "auditoria.ver": frozenset({ROL_ADMIN, ROL_AUDITOR}),
+    "metricas.ver": frozenset({ROL_ADMIN, ROL_AUDITOR}),
     "accesos.gestionar": frozenset({ROL_ADMIN}),
 }
 

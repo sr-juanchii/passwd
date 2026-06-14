@@ -14,6 +14,9 @@
       {% endfor %}
     </select>
     <button type="submit" class="boton">Filtrar</button>
+    <a class="boton boton-suave"
+       href="/auditoria/export.csv?filtro_usuario={{ filtro_usuario|urlencode }}&amp;filtro_accion={{ filtro_accion|urlencode }}">
+       ⬇ Exportar CSV</a>
     <span class="texto-suave">{{ total }} evento(s)</span>
   </form>
 </div>

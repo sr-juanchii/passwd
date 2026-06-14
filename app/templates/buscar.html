@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}Búsqueda — {{ app_name }}{% endblock %}
+{% block contenido %}
+<h1>Resultados de búsqueda</h1>
+
+<form method="get" action="/buscar" class="formulario-filtros">
+  <input type="search" name="q" value="{{ q }}" placeholder="Nombre, IP, usuario, servicio…"
+         maxlength="120" autofocus>
+  <button type="submit" class="boton">Buscar</button>
+</form>
+
+{% if aviso %}
+<div class="aviso aviso-info">{{ aviso }}</div>
+{% elif total == 0 %}
+<div class="tarjeta"><p class="texto-suave">Sin coincidencias para «{{ q }}» entre los activos a los que tienes acceso.</p></div>
+{% else %}
+<p class="texto-suave">{{ total }} coincidencia(s) para «{{ q }}».</p>
+
+{% macro tabla_activos(titulo, items, prefijo, icono) %}
+  {% if items %}
+  <div class="tarjeta">
+    <h2>{{ icono }} {{ titulo }} ({{ items|length }})</h2>
+    <table class="tabla tabla-compacta">
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td><a href="{{ prefijo }}/{{ it.id }}">{{ it.nombre }}</a></td>
+          <td class="texto-suave">{{ it.descripcion or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+{% endmacro %}
+
+{{ tabla_activos('Servidores físicos', fisicos, '/servidores', '🖥️') }}
+{{ tabla_activos('Hipervisores', hipervisores, '/hipervisores', '⚙️') }}
+{{ tabla_activos('Máquinas virtuales', vms, '/vms', '🗔') }}
+
+{% if credenciales %}
+<div class="tarjeta">
+  <h2>🔑 Credenciales ({{ credenciales|length }})</h2>
+  <table class="tabla tabla-compacta">
+    <thead><tr><th>Usuario</th><th>Servicio</th><th>Activo</th></tr></thead>
+    <tbody>
+      {% for c in credenciales %}
+      {% set url = ('/servidores/' ~ c.servidor_fisico_id) if c.tipo_activo == 'fisico'
+                   else ('/hipervisores/' ~ c.hipervisor_id) if c.tipo_activo == 'hipervisor'
+                   else ('/vms/' ~ c.maquina_virtual_id) %}
+      <tr>
+        <td class="texto-mono">{{ c.usuario_acceso }}</td>
+        <td>{{ c.servicio }}</td>
+        <td><a href="{{ url }}">{{ c.nombre_activo }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
