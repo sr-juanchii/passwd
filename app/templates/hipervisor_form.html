@@ -33,6 +33,17 @@
     <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
       placeholder="Ej.: Nodo principal del clúster de virtualización">{{ hipervisor.descripcion if hipervisor else '' }}</textarea>
 
+    <label for="estado">Estado</label>
+    <select id="estado" name="estado">
+      {% for e in estados %}
+      <option value="{{ e }}" {{ 'selected' if hipervisor and hipervisor.estado == e }}>{{ etiquetas_estado[e] }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="etiquetas">Etiquetas (separadas por coma)</label>
+    <input id="etiquetas" name="etiquetas" type="text" maxlength="255"
+           value="{{ hipervisor.etiquetas if hipervisor else '' }}" placeholder="Ej.: clúster-a, producción">
+
     <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if hipervisor else 'Registrar hipervisor' }}</button>
   </form>
 </div>

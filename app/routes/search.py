@@ -60,6 +60,7 @@ def buscar(
             _like(ServidorFisico.ip_gestion, patron),
             _like(ServidorFisico.ubicacion, patron),
             _like(ServidorFisico.sistema_operativo, patron),
+            _like(ServidorFisico.etiquetas, patron),
         )).order_by(ServidorFisico.nombre).limit(LIMITE_POR_TIPO)
     ).all()
     hipervisores = db.scalars(
@@ -67,6 +68,7 @@ def buscar(
             _like(Hipervisor.nombre, patron),
             _like(Hipervisor.plataforma, patron),
             _like(Hipervisor.ip_gestion, patron),
+            _like(Hipervisor.etiquetas, patron),
         )).order_by(Hipervisor.nombre).limit(LIMITE_POR_TIPO)
     ).all()
     vms = db.scalars(
@@ -74,6 +76,7 @@ def buscar(
             _like(MaquinaVirtual.nombre, patron),
             _like(MaquinaVirtual.ip, patron),
             _like(MaquinaVirtual.sistema_operativo, patron),
+            _like(MaquinaVirtual.etiquetas, patron),
         )).order_by(MaquinaVirtual.nombre).limit(LIMITE_POR_TIPO)
     ).all()
     credenciales = db.scalars(

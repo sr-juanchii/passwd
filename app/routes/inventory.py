@@ -27,6 +27,8 @@ from app.models import (
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
+    ESTADO_ACTIVO,
+    ESTADOS_ACTIVO,
     ROL_ANALISTA,
     TIPO_FUNCION_UNICA,
     TIPO_HOST_VIRTUALIZACION,
@@ -37,6 +39,7 @@ from app.models import (
     ServidorFisico,
     Usuario,
     ahora_utc,
+    normalizar_etiquetas,
 )
 from app.rbac import tiene_permiso
 
@@ -44,6 +47,10 @@ router = APIRouter()
 
 VER = Depends(requiere_permiso("inventario.ver"))
 GESTIONAR = Depends(requiere_permiso("inventario.gestionar"))
+
+
+def _estado_valido(estado: str) -> str:
+    return estado if estado in ESTADOS_ACTIVO else ESTADO_ACTIVO
 
 
 def _redir(url: str, msg: str) -> RedirectResponse:
@@ -156,6 +163,14 @@ def servidor_crear(
     marca_modelo: Annotated[str, Form()] = "",
     ubicacion: Annotated[str, Form()] = "",
     ip_gestion: Annotated[str, Form()] = "",
+    ram: Annotated[str, Form()] = "",
+    cpu: Annotated[str, Form()] = "",
+    almacenamiento: Annotated[str, Form()] = "",
+    numero_serie: Annotated[str, Form()] = "",
+    garantia_hasta: Annotated[str, Form()] = "",
+    proveedor: Annotated[str, Form()] = "",
+    estado: Annotated[str, Form()] = ESTADO_ACTIVO,
+    etiquetas: Annotated[str, Form()] = "",
 ):
     nombre = nombre.strip()
     error = ""
@@ -167,13 +182,17 @@ def servidor_crear(
         error = "Ya existe un servidor con ese nombre."
     if error:
         return render(request, "servidor_form.html",
-                      {"usuario_actual": usuario, "servidor": None, "tipos": TIPOS_SERVIDOR, "error": error},
-                      status_code=400)
+                      {"usuario_actual": usuario, "servidor": None, "tipos": TIPOS_SERVIDOR,
+                       "estados": ESTADOS_ACTIVO, "error": error}, status_code=400)
 
     servidor = ServidorFisico(
         nombre=nombre, tipo=tipo, descripcion=descripcion.strip(),
         sistema_operativo=sistema_operativo.strip(), marca_modelo=marca_modelo.strip(),
         ubicacion=ubicacion.strip(), ip_gestion=ip_gestion.strip(),
+        ram=ram.strip(), cpu=cpu.strip(), almacenamiento=almacenamiento.strip(),
+        numero_serie=numero_serie.strip(), garantia_hasta=garantia_hasta.strip(),
+        proveedor=proveedor.strip(), estado=_estado_valido(estado),
+        etiquetas=normalizar_etiquetas(etiquetas),
     )
     db.add(servidor)
     db.flush()
@@ -209,7 +228,8 @@ def servidor_editar_form(
 ):
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
     return render(request, "servidor_form.html",
-                  {"usuario_actual": usuario, "servidor": servidor, "tipos": TIPOS_SERVIDOR})
+                  {"usuario_actual": usuario, "servidor": servidor, "tipos": TIPOS_SERVIDOR,
+                   "estados": ESTADOS_ACTIVO})
 
 
 @router.post("/servidores/{servidor_id}/editar", dependencies=[Depends(verificar_csrf)])
@@ -225,6 +245,14 @@ def servidor_editar(
     marca_modelo: Annotated[str, Form()] = "",
     ubicacion: Annotated[str, Form()] = "",
     ip_gestion: Annotated[str, Form()] = "",
+    ram: Annotated[str, Form()] = "",
+    cpu: Annotated[str, Form()] = "",
+    almacenamiento: Annotated[str, Form()] = "",
+    numero_serie: Annotated[str, Form()] = "",
+    garantia_hasta: Annotated[str, Form()] = "",
+    proveedor: Annotated[str, Form()] = "",
+    estado: Annotated[str, Form()] = ESTADO_ACTIVO,
+    etiquetas: Annotated[str, Form()] = "",
 ):
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
     nombre = nombre.strip()
@@ -240,8 +268,8 @@ def servidor_editar(
         error = "Ya existe otro servidor con ese nombre."
     if error:
         return render(request, "servidor_form.html",
-                      {"usuario_actual": usuario, "servidor": servidor, "tipos": TIPOS_SERVIDOR, "error": error},
-                      status_code=400)
+                      {"usuario_actual": usuario, "servidor": servidor, "tipos": TIPOS_SERVIDOR,
+                       "estados": ESTADOS_ACTIVO, "error": error}, status_code=400)
 
     servidor.nombre = nombre
     servidor.tipo = tipo
@@ -250,6 +278,14 @@ def servidor_editar(
     servidor.marca_modelo = marca_modelo.strip()
     servidor.ubicacion = ubicacion.strip()
     servidor.ip_gestion = ip_gestion.strip()
+    servidor.ram = ram.strip()
+    servidor.cpu = cpu.strip()
+    servidor.almacenamiento = almacenamiento.strip()
+    servidor.numero_serie = numero_serie.strip()
+    servidor.garantia_hasta = garantia_hasta.strip()
+    servidor.proveedor = proveedor.strip()
+    servidor.estado = _estado_valido(estado)
+    servidor.etiquetas = normalizar_etiquetas(etiquetas)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
                     objeto_tipo="servidor_fisico", objeto_id=servidor.id, detalle=nombre)
     return _redir(f"/servidores/{servidor.id}", "Servidor actualizado.")
@@ -292,7 +328,8 @@ def hipervisor_nuevo_form(
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
     _validar_host(servidor)
     return render(request, "hipervisor_form.html",
-                  {"usuario_actual": usuario, "servidor": servidor, "hipervisor": None})
+                  {"usuario_actual": usuario, "servidor": servidor, "hipervisor": None,
+                   "estados": ESTADOS_ACTIVO})
 
 
 @router.post("/servidores/{servidor_id}/hipervisores/nuevo", dependencies=[Depends(verificar_csrf)])
@@ -306,6 +343,8 @@ def hipervisor_crear(
     version: Annotated[str, Form()] = "",
     ip_gestion: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    estado: Annotated[str, Form()] = ESTADO_ACTIVO,
+    etiquetas: Annotated[str, Form()] = "",
 ):
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
     _validar_host(servidor)
@@ -313,11 +352,13 @@ def hipervisor_crear(
     if not nombre or not plataforma.strip():
         return render(request, "hipervisor_form.html",
                       {"usuario_actual": usuario, "servidor": servidor, "hipervisor": None,
+                       "estados": ESTADOS_ACTIVO,
                        "error": "Nombre y plataforma son obligatorios."}, status_code=400)
 
     hipervisor = Hipervisor(
         servidor_fisico_id=servidor.id, nombre=nombre, plataforma=plataforma.strip(),
         version=version.strip(), ip_gestion=ip_gestion.strip(), descripcion=descripcion.strip(),
+        estado=_estado_valido(estado), etiquetas=normalizar_etiquetas(etiquetas),
     )
     db.add(hipervisor)
     db.flush()
@@ -354,7 +395,8 @@ def hipervisor_editar_form(
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
     return render(request, "hipervisor_form.html",
-                  {"usuario_actual": usuario, "servidor": hipervisor.servidor_fisico, "hipervisor": hipervisor})
+                  {"usuario_actual": usuario, "servidor": hipervisor.servidor_fisico,
+                   "hipervisor": hipervisor, "estados": ESTADOS_ACTIVO})
 
 
 @router.post("/hipervisores/{hipervisor_id}/editar", dependencies=[Depends(verificar_csrf)])
@@ -368,19 +410,23 @@ def hipervisor_editar(
     version: Annotated[str, Form()] = "",
     ip_gestion: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    estado: Annotated[str, Form()] = ESTADO_ACTIVO,
+    etiquetas: Annotated[str, Form()] = "",
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
     nombre = nombre.strip()
     if not nombre or not plataforma.strip():
         return render(request, "hipervisor_form.html",
                       {"usuario_actual": usuario, "servidor": hipervisor.servidor_fisico,
-                       "hipervisor": hipervisor, "error": "Nombre y plataforma son obligatorios."},
-                      status_code=400)
+                       "hipervisor": hipervisor, "estados": ESTADOS_ACTIVO,
+                       "error": "Nombre y plataforma son obligatorios."}, status_code=400)
     hipervisor.nombre = nombre
     hipervisor.plataforma = plataforma.strip()
     hipervisor.version = version.strip()
     hipervisor.ip_gestion = ip_gestion.strip()
     hipervisor.descripcion = descripcion.strip()
+    hipervisor.estado = _estado_valido(estado)
+    hipervisor.etiquetas = normalizar_etiquetas(etiquetas)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
                     objeto_tipo="hipervisor", objeto_id=hipervisor.id, detalle=nombre)
     return _redir(f"/hipervisores/{hipervisor.id}", "Hipervisor actualizado.")
@@ -416,7 +462,8 @@ def vm_nueva_form(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
-    return render(request, "vm_form.html", {"usuario_actual": usuario, "hipervisor": hipervisor, "vm": None})
+    return render(request, "vm_form.html",
+                  {"usuario_actual": usuario, "hipervisor": hipervisor, "vm": None, "estados": ESTADOS_ACTIVO})
 
 
 @router.post("/hipervisores/{hipervisor_id}/vms/nueva", dependencies=[Depends(verificar_csrf)])
@@ -429,16 +476,19 @@ def vm_crear(
     sistema_operativo: Annotated[str, Form()] = "",
     ip: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    estado: Annotated[str, Form()] = ESTADO_ACTIVO,
+    etiquetas: Annotated[str, Form()] = "",
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
     nombre = nombre.strip()
     if not nombre:
         return render(request, "vm_form.html",
                       {"usuario_actual": usuario, "hipervisor": hipervisor, "vm": None,
-                       "error": "El nombre es obligatorio."}, status_code=400)
+                       "estados": ESTADOS_ACTIVO, "error": "El nombre es obligatorio."}, status_code=400)
     vm = MaquinaVirtual(
         hipervisor_id=hipervisor.id, nombre=nombre,
         sistema_operativo=sistema_operativo.strip(), ip=ip.strip(), descripcion=descripcion.strip(),
+        estado=_estado_valido(estado), etiquetas=normalizar_etiquetas(etiquetas),
     )
     db.add(vm)
     db.flush()
@@ -474,7 +524,8 @@ def vm_editar_form(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     vm = _obtener_o_404(db, MaquinaVirtual, vm_id)
-    return render(request, "vm_form.html", {"usuario_actual": usuario, "hipervisor": vm.hipervisor, "vm": vm})
+    return render(request, "vm_form.html",
+                  {"usuario_actual": usuario, "hipervisor": vm.hipervisor, "vm": vm, "estados": ESTADOS_ACTIVO})
 
 
 @router.post("/vms/{vm_id}/editar", dependencies=[Depends(verificar_csrf)])
@@ -487,17 +538,21 @@ def vm_editar(
     sistema_operativo: Annotated[str, Form()] = "",
     ip: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    estado: Annotated[str, Form()] = ESTADO_ACTIVO,
+    etiquetas: Annotated[str, Form()] = "",
 ):
     vm = _obtener_o_404(db, MaquinaVirtual, vm_id)
     nombre = nombre.strip()
     if not nombre:
         return render(request, "vm_form.html",
                       {"usuario_actual": usuario, "hipervisor": vm.hipervisor, "vm": vm,
-                       "error": "El nombre es obligatorio."}, status_code=400)
+                       "estados": ESTADOS_ACTIVO, "error": "El nombre es obligatorio."}, status_code=400)
     vm.nombre = nombre
     vm.sistema_operativo = sistema_operativo.strip()
     vm.ip = ip.strip()
     vm.descripcion = descripcion.strip()
+    vm.estado = _estado_valido(estado)
+    vm.etiquetas = normalizar_etiquetas(etiquetas)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
                     objeto_tipo="maquina_virtual", objeto_id=vm.id, detalle=nombre)
     return _redir(f"/vms/{vm.id}", "Máquina virtual actualizada.")

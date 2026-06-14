@@ -22,11 +22,21 @@
 
 <div class="tarjeta">
   <dl class="lista-datos">
+    <dt>Estado</dt><dd><span class="insignia insignia-estado-{{ servidor.estado }}">{{ etiquetas_estado.get(servidor.estado, servidor.estado) }}</span></dd>
     <dt>Descripción / sistema</dt><dd>{{ servidor.descripcion or '—' }}</dd>
     <dt>Sistema operativo</dt><dd>{{ servidor.sistema_operativo or '—' }}</dd>
     <dt>Marca y modelo</dt><dd>{{ servidor.marca_modelo or '—' }}</dd>
     <dt>Ubicación</dt><dd>{{ servidor.ubicacion or '—' }}</dd>
     <dt>IP de gestión</dt><dd class="texto-mono">{{ servidor.ip_gestion or '—' }}</dd>
+    <dt>RAM</dt><dd>{{ servidor.ram or '—' }}</dd>
+    <dt>CPU</dt><dd>{{ servidor.cpu or '—' }}</dd>
+    <dt>Almacenamiento</dt><dd>{{ servidor.almacenamiento or '—' }}</dd>
+    <dt>Número de serie</dt><dd class="texto-mono">{{ servidor.numero_serie or '—' }}</dd>
+    <dt>Garantía hasta</dt><dd>{{ servidor.garantia_hasta or '—' }}</dd>
+    <dt>Proveedor</dt><dd>{{ servidor.proveedor or '—' }}</dd>
+    <dt>Etiquetas</dt><dd>
+      {% for t in servidor.lista_etiquetas %}<span class="insignia insignia-etiqueta">{{ t }}</span> {% else %}—{% endfor %}
+    </dd>
     <dt>Registrado</dt><dd>{{ servidor.creado_en.strftime('%d/%m/%Y %H:%M') }} UTC</dd>
   </dl>
 </div>

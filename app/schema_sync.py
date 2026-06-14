@@ -29,6 +29,7 @@ def reconciliar_esquema(engine: Engine) -> list[str]:
     """Añade columnas que falten en las tablas existentes. Devuelve lo aplicado."""
     inspector = inspect(engine)
     tablas_existentes = set(inspector.get_table_names())
+    compilador = engine.dialect.ddl_compiler(engine.dialect, None)
     aplicados: list[str] = []
 
     with engine.begin() as conexion:
@@ -39,18 +40,11 @@ def reconciliar_esquema(engine: Engine) -> list[str]:
             for columna in tabla.columns:
                 if columna.name in columnas_db:
                     continue
-                tipo_ddl = columna.type.compile(dialect=engine.dialect)
-                clausula = f'ALTER TABLE {tabla.name} ADD COLUMN "{columna.name}" {tipo_ddl}'
-                # Solo se marca NOT NULL si hay un valor por defecto a nivel de
-                # servidor; de lo contrario se añade nullable para no romper las
-                # filas ya existentes.
-                if columna.server_default is not None:
-                    defecto = columna.server_default.arg  # type: ignore[attr-defined]
-                    defecto_txt = defecto.text if hasattr(defecto, "text") else str(defecto)
-                    clausula += f" DEFAULT {defecto_txt}"
-                    if not columna.nullable:
-                        clausula += " NOT NULL"
-                conexion.execute(text(clausula))
+                # SQLAlchemy renderiza tipo, NOT NULL y DEFAULT (entrecomillado
+                # correctamente). Las columnas nuevas deben traer server_default
+                # para poder añadirse NOT NULL sobre filas existentes.
+                especificacion = compilador.get_column_specification(columna)
+                conexion.execute(text(f"ALTER TABLE {tabla.name} ADD COLUMN {especificacion}"))
                 aplicados.append(f"{tabla.name}.{columna.name}")
                 logger.info("Esquema: columna añadida %s.%s", tabla.name, columna.name)
 

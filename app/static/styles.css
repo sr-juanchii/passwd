@@ -131,6 +131,10 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
 .insignia-unico { background: #e6f4ea; color: #1e7e34; border: 1px solid #b7dec2; }
 .insignia-host { background: #fdf3e0; color: #8a5a00; border: 1px solid #ecd9ae; }
 .insignia-plataforma { background: #e8f0fe; color: #173a69; border: 1px solid #c4d6f5; }
+.insignia-etiqueta { background: #eef1f8; color: #3a4a6b; border: 1px solid #d2dbf0; }
+.insignia-estado-activo { background: #e6f4ea; color: #1e7e34; border: 1px solid #b7dec2; }
+.insignia-estado-mantenimiento { background: #fdf3e0; color: #8a5a00; border: 1px solid #ecd9ae; }
+.insignia-estado-retirado { background: #f0f0f3; color: #5b6478; border: 1px solid #d9deea; }
 
 .arbol-fisico { border-left: 4px solid var(--primario); }
 .arbol-encabezado { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; flex-wrap: wrap; }

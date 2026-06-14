@@ -133,6 +133,27 @@ ETIQUETAS_TIPO_SERVIDOR = {
     TIPO_HOST_VIRTUALIZACION: "Servidor físico host de virtualización",
 }
 
+# Estado del ciclo de vida de un activo (validado en la aplicación).
+ESTADO_ACTIVO = "activo"
+ESTADO_MANTENIMIENTO = "mantenimiento"
+ESTADO_RETIRADO = "retirado"
+ESTADOS_ACTIVO = (ESTADO_ACTIVO, ESTADO_MANTENIMIENTO, ESTADO_RETIRADO)
+ETIQUETAS_ESTADO = {
+    ESTADO_ACTIVO: "Activo",
+    ESTADO_MANTENIMIENTO: "En mantenimiento",
+    ESTADO_RETIRADO: "Retirado",
+}
+
+
+def normalizar_etiquetas(texto: str) -> str:
+    """Normaliza una lista de etiquetas separadas por coma (minúsculas, sin duplicados)."""
+    vistas: list[str] = []
+    for parte in texto.split(","):
+        etiqueta = parte.strip().lower()
+        if etiqueta and etiqueta not in vistas:
+            vistas.append(etiqueta)
+    return ", ".join(vistas)
+
 
 class ServidorFisico(Base):
     """Servidor físico: dedicado a una sola función o host de hipervisores."""
@@ -153,6 +174,15 @@ class ServidorFisico(Base):
     marca_modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     ubicacion: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     ip_gestion: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+    # Inventario ampliado (Fase 2): hardware, ciclo de vida y etiquetas.
+    ram: Mapped[str] = mapped_column(String(60), nullable=False, default="", server_default="")
+    cpu: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    almacenamiento: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    numero_serie: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    garantia_hasta: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
+    proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
+    etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
@@ -166,6 +196,10 @@ class ServidorFisico(Base):
     @property
     def etiqueta_tipo(self) -> str:
         return ETIQUETAS_TIPO_SERVIDOR.get(self.tipo, self.tipo)
+
+    @property
+    def lista_etiquetas(self) -> list[str]:
+        return [e for e in (self.etiquetas or "").split(", ") if e]
 
 
 class Hipervisor(Base):
@@ -182,6 +216,8 @@ class Hipervisor(Base):
     version: Mapped[str] = mapped_column(String(60), nullable=False, default="")
     ip_gestion: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
+    etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
@@ -190,6 +226,10 @@ class Hipervisor(Base):
         back_populates="hipervisor", cascade="all, delete-orphan", order_by="MaquinaVirtual.nombre"
     )
     credenciales: Mapped[list[Credencial]] = relationship(back_populates="hipervisor", cascade="all, delete-orphan")
+
+    @property
+    def lista_etiquetas(self) -> list[str]:
+        return [e for e in (self.etiquetas or "").split(", ") if e]
 
 
 class MaquinaVirtual(Base):
@@ -205,6 +245,8 @@ class MaquinaVirtual(Base):
     sistema_operativo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
+    etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
@@ -212,6 +254,10 @@ class MaquinaVirtual(Base):
     credenciales: Mapped[list[Credencial]] = relationship(
         back_populates="maquina_virtual", cascade="all, delete-orphan"
     )
+
+    @property
+    def lista_etiquetas(self) -> list[str]:
+        return [e for e in (self.etiquetas or "").split(", ") if e]
 
 
 ACTIVO_FISICO = "fisico"

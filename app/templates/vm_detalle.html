@@ -30,9 +30,13 @@
         ({{ vm.hipervisor.plataforma }}) en
         <a href="/servidores/{{ vm.hipervisor.servidor_fisico_id }}">{{ vm.hipervisor.servidor_fisico.nombre }}</a></dd>
     {% endif %}
+    <dt>Estado</dt><dd><span class="insignia insignia-estado-{{ vm.estado }}">{{ etiquetas_estado.get(vm.estado, vm.estado) }}</span></dd>
     <dt>Sistema / función</dt><dd>{{ vm.descripcion or '—' }}</dd>
     <dt>Sistema operativo</dt><dd>{{ vm.sistema_operativo or '—' }}</dd>
     <dt>Dirección IP</dt><dd class="texto-mono">{{ vm.ip or '—' }}</dd>
+    <dt>Etiquetas</dt><dd>
+      {% for t in vm.lista_etiquetas %}<span class="insignia insignia-etiqueta">{{ t }}</span> {% else %}—{% endfor %}
+    </dd>
     <dt>Registrada</dt><dd>{{ vm.creado_en.strftime('%d/%m/%Y %H:%M') }} UTC</dd>
   </dl>
 </div>
