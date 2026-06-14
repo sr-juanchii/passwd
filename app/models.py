@@ -183,6 +183,8 @@ class ServidorFisico(Base):
     proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Notas sensibles cifradas en reposo (instrucciones de acceso, tokens, etc.)
+    notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
@@ -218,6 +220,7 @@ class Hipervisor(Base):
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
@@ -247,6 +250,7 @@ class MaquinaVirtual(Base):
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 

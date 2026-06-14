@@ -176,6 +176,11 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
 .campo-con-boton { display: flex; gap: 0.4rem; align-items: stretch; }
 .campo-con-boton input { flex: 1; }
 .campo-password { letter-spacing: 0.08em; }
+.bloque-notas {
+  background: #f6f8fc; border: 1px solid var(--borde); border-radius: 8px;
+  padding: 0.8rem; margin-top: 0.7rem; white-space: pre-wrap; word-break: break-word;
+  font-family: "Cascadia Code", "Fira Mono", monospace; font-size: 0.85rem;
+}
 .paginacion { display: flex; gap: 0.8rem; align-items: center; justify-content: center; margin-top: 0.9rem; }
 
 @media (max-width: 720px) {

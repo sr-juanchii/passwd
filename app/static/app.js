@@ -114,6 +114,54 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 
+  // Revelado de notas seguras (auditado). Se ocultan a los 30 segundos.
+  document.querySelectorAll("button[data-revelar-notas]").forEach(function (boton) {
+    boton.addEventListener("click", function () {
+      var destino = document.getElementById(boton.dataset.destino);
+      if (!destino) return;
+      if (boton.dataset.visible === "1") {
+        destino.hidden = true;
+        destino.textContent = "";
+        boton.dataset.visible = "0";
+        boton.textContent = "Ver notas";
+        return;
+      }
+      boton.disabled = true;
+      fetch("/activos/" + boton.dataset.revelarNotas + "/notas/revelar", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "csrf_token=" + encodeURIComponent(tokenCsrf()),
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          if (r.status === 429) throw new Error("límite alcanzado; espere unos minutos");
+          if (!r.ok) throw new Error("no autorizado");
+          return r.json();
+        })
+        .then(function (datos) {
+          destino.textContent = datos.notas || "(sin contenido)";
+          destino.hidden = false;
+          boton.dataset.visible = "1";
+          boton.textContent = "Ocultar notas";
+          window.setTimeout(function () {
+            if (boton.dataset.visible === "1") {
+              destino.hidden = true;
+              destino.textContent = "";
+              boton.dataset.visible = "0";
+              boton.textContent = "Ver notas";
+            }
+          }, 30000);
+        })
+        .catch(function (e) {
+          destino.hidden = false;
+          destino.textContent = "(" + e.message + ")";
+        })
+        .finally(function () {
+          boton.disabled = false;
+        });
+    });
+  });
+
   // Revelado en pantalla: consulta autenticada + auditada; se vuelve a
   // ocultar automáticamente después de 30 segundos.
   document.querySelectorAll("button[data-revelar]").forEach(function (boton) {

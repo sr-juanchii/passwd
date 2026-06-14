@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from tests.conftest import autenticar_admin, csrf_de, sesion_bd
 
 
@@ -61,6 +63,55 @@ def test_busqueda_por_etiqueta(client):
     pagina = client.get("/buscar?q=finanzas")
     assert pagina.status_code == 200
     assert "srv-tagged" in pagina.text
+
+
+def test_notas_seguras_cifradas_y_reveladas(client):
+    autenticar_admin(client)
+    sid = _crear_servidor_completo(client, "srv-notas")
+
+    # Guardar notas
+    csrf = csrf_de(client, f"/activos/fisico/{sid}/notas")
+    r = client.post(f"/activos/fisico/{sid}/notas",
+                    data={"contenido": "VPN: usuario vpn / token ABC123", "csrf_token": csrf})
+    assert r.status_code == 303
+
+    db = sesion_bd()
+    try:
+        from app.models import ServidorFisico
+        from app.security.crypto import descifrar
+
+        s = db.get(ServidorFisico, sid)
+        assert s.notas_cifradas is not None
+        assert b"token ABC123" not in s.notas_cifradas      # cifradas en reposo
+        assert descifrar(s.notas_cifradas) == "VPN: usuario vpn / token ABC123"
+    finally:
+        db.close()
+
+    # Revelar (auditado)
+    csrf = csrf_de(client, f"/servidores/{sid}")
+    rev = client.post(f"/activos/fisico/{sid}/notas/revelar", data={"csrf_token": csrf})
+    assert rev.status_code == 200
+    assert rev.json()["notas"] == "VPN: usuario vpn / token ABC123"
+    assert rev.headers["cache-control"] == "no-store"
+
+    db = sesion_bd()
+    try:
+        from app.models import RegistroAuditoria
+
+        assert db.scalar(select(RegistroAuditoria).where(
+            RegistroAuditoria.accion == "nota_revelada")) is not None
+    finally:
+        db.close()
+
+
+def test_notas_no_aparecen_en_el_detalle(client):
+    autenticar_admin(client)
+    sid = _crear_servidor_completo(client, "srv-notas2")
+    csrf = csrf_de(client, f"/activos/fisico/{sid}/notas")
+    client.post(f"/activos/fisico/{sid}/notas",
+                data={"contenido": "SECRETO-EN-NOTA", "csrf_token": csrf})
+    # El HTML del detalle nunca contiene el texto de la nota (solo se revela por API)
+    assert "SECRETO-EN-NOTA" not in client.get(f"/servidores/{sid}").text
 
 
 def test_reconciliador_aplica_columnas_nuevas_en_bd_existente():

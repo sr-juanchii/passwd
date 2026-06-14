@@ -215,6 +215,7 @@ def servidor_detalle(
         "usuario_actual": usuario, "servidor": servidor, "msg": msg,
         "modo_analista": usuario.rol == ROL_ANALISTA,
         "puede_revelar": access.puede_revelar_en_activo(db, usuario, ACTIVO_FISICO, servidor_id),
+        "tipo_activo": ACTIVO_FISICO, "activo_id": servidor_id, "activo": servidor,
         **_ctx_accesos(db, usuario, ACTIVO_FISICO, servidor_id),
     })
 
@@ -382,6 +383,7 @@ def hipervisor_detalle(
         "usuario_actual": usuario, "hipervisor": hipervisor, "msg": msg,
         "modo_analista": usuario.rol == ROL_ANALISTA,
         "puede_revelar": access.puede_revelar_en_activo(db, usuario, ACTIVO_HIPERVISOR, hipervisor_id),
+        "tipo_activo": ACTIVO_HIPERVISOR, "activo_id": hipervisor_id, "activo": hipervisor,
         **_ctx_accesos(db, usuario, ACTIVO_HIPERVISOR, hipervisor_id),
     })
 
@@ -512,6 +514,7 @@ def vm_detalle(
         "usuario_actual": usuario, "vm": vm, "msg": msg,
         "modo_analista": usuario.rol == ROL_ANALISTA,
         "puede_revelar": access.puede_revelar_en_activo(db, usuario, ACTIVO_VM, vm_id),
+        "tipo_activo": ACTIVO_VM, "activo_id": vm_id, "activo": vm,
         **_ctx_accesos(db, usuario, ACTIVO_VM, vm_id),
     })
 

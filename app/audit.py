@@ -46,6 +46,9 @@ CREDENCIAL_REVELADA = "credencial_revelada"
 CREDENCIAL_COPIADA = "credencial_copiada"
 REVELADO_TASA_EXCEDIDA = "revelado_tasa_excedido"
 
+NOTA_ACTUALIZADA = "nota_actualizada"
+NOTA_REVELADA = "nota_revelada"
+
 ACCESO_DENEGADO = "acceso_denegado"
 
 ACCESO_CONCEDIDO = "acceso_concedido"
