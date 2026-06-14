@@ -43,6 +43,8 @@ CREDENCIAL_CREADA = "credencial_creada"
 CREDENCIAL_ACTUALIZADA = "credencial_actualizada"
 CREDENCIAL_ELIMINADA = "credencial_eliminada"
 CREDENCIAL_REVELADA = "credencial_revelada"
+CREDENCIAL_COPIADA = "credencial_copiada"
+REVELADO_TASA_EXCEDIDA = "revelado_tasa_excedido"
 
 ACCESO_DENEGADO = "acceso_denegado"
 

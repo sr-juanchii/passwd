@@ -16,6 +16,9 @@ __pycache__/
 .venv/
 venv/
 
+# Certificados TLS de nginx (nunca versionar claves privadas)
+infrastructure/nginx/certs/*.pem
+
 # Sistemas y editores
 .DS_Store
 .idea/

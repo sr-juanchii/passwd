@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app import audit
+from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
@@ -29,6 +30,7 @@ from app.models import (
     Usuario,
     ahora_utc,
 )
+from app.security import ratelimit
 from app.security.crypto import cifrar, descifrar
 
 router = APIRouter()
@@ -213,6 +215,46 @@ def credencial_eliminar(
     return RedirectResponse(f"{url_volver}?msg={quote('Credencial eliminada.')}", status_code=303)
 
 
+def _entregar_password(
+    request: Request,
+    db: Session,
+    usuario: Usuario,
+    credencial_id: int,
+    accion: str,
+) -> JSONResponse:
+    """Entrega la contraseña en claro aplicando límite anti-exfiltración y auditoría.
+
+    El límite por usuario (revelados + copiados compartidos) frena la
+    extracción masiva del inventario aun con una sesión legítima
+    comprometida (OWASP API4/API6).
+    """
+    settings = get_settings()
+    if not ratelimit.permitir_intento(
+        f"revelar:{usuario.id}",
+        limite=settings.reveal_rate_limit,
+        ventana_minutos=settings.reveal_rate_window_minutes,
+    ):
+        audit.registrar(db, audit.REVELADO_TASA_EXCEDIDA, request=request, usuario=usuario,
+                        objeto_tipo="credencial", objeto_id=credencial_id,
+                        detalle=f"Límite de {settings.reveal_rate_limit} accesos "
+                                f"en {settings.reveal_rate_window_minutes} min superado.",
+                        exito=False)
+        db.commit()  # conservar la evidencia pese al error que sigue
+        raise HTTPException(status_code=429,
+                            detail="Límite de accesos a contraseñas alcanzado; espere unos minutos.")
+
+    credencial = db.get(Credencial, credencial_id)
+    if credencial is None:
+        raise HTTPException(status_code=404, detail="La credencial no existe.")
+    audit.registrar(db, accion, request=request, usuario=usuario,
+                    objeto_tipo="credencial", objeto_id=credencial.id,
+                    detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio})")
+    return JSONResponse(
+        {"usuario": credencial.usuario_acceso, "password": descifrar(credencial.password_cifrada)},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.post("/credenciales/{credencial_id}/revelar", dependencies=[Depends(verificar_csrf)])
 def credencial_revelar(
     request: Request,
@@ -220,14 +262,20 @@ def credencial_revelar(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, REVELAR],
 ):
-    """Devuelve la contraseña en claro; el acceso queda registrado en auditoría."""
-    credencial = db.get(Credencial, credencial_id)
-    if credencial is None:
-        raise HTTPException(status_code=404, detail="La credencial no existe.")
-    audit.registrar(db, audit.CREDENCIAL_REVELADA, request=request, usuario=usuario,
-                    objeto_tipo="credencial", objeto_id=credencial.id,
-                    detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio})")
-    return JSONResponse(
-        {"usuario": credencial.usuario_acceso, "password": descifrar(credencial.password_cifrada)},
-        headers={"Cache-Control": "no-store"},
-    )
+    """Muestra la contraseña en pantalla; queda registrado en auditoría."""
+    return _entregar_password(request, db, usuario, credencial_id, audit.CREDENCIAL_REVELADA)
+
+
+@router.post("/credenciales/{credencial_id}/copiar", dependencies=[Depends(verificar_csrf)])
+def credencial_copiar(
+    request: Request,
+    credencial_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, REVELAR],
+):
+    """Entrega la contraseña para copiarla al portapapeles sin mostrarla.
+
+    Reduce la exposición visual (shoulder surfing); se audita con una acción
+    propia para distinguirla del revelado en pantalla.
+    """
+    return _entregar_password(request, db, usuario, credencial_id, audit.CREDENCIAL_COPIADA)

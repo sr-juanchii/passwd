@@ -30,18 +30,21 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Cuentas | Bloqueo tras 5 intentos fallidos, límite de tasa por IP, contraseñas temporales de un solo uso con cambio forzado, política de contraseñas (mín. 12, lista de comunes prohibidas), desactivación con revocación inmediata |
 | Autorización | RBAC con tres roles: **admin**, **operador** y **auditor** (solo lectura, sin acceso a contraseñas) — matriz en [`app/rbac.py`](app/rbac.py) |
 | Datos | Contraseñas de activos y semillas TOTP **cifradas con Fernet (AES)** antes de tocar la base de datos; claves criptográficas fuera del repositorio; **generador de contraseñas robustas** (CSPRNG, 20 caracteres) en el formulario |
+| Exposición mínima | Botón **«Copiar» sin visualización**: la contraseña va directo al portapapeles sin mostrarse en pantalla y se limpia a los 30 s; «Revelar» se re-oculta solo; **límite anti-exfiltración** por usuario (20 accesos/5 min configurables) compartido entre ambas vías |
 | Rotación | **Alerta visual** en el panel y en cada activo cuando una credencial supera los 90 días (configurable) sin rotarse; el contador se reinicia al cambiar la contraseña |
 | Respaldo | **Respaldo cifrado portátil** por CLI (`respaldo`/`restaurar`): todo el sistema en un archivo cifrado con frase (scrypt + Fernet), restaurable incluso en otra instancia con claves distintas |
-| Auditoría | Bitácora completa: logins (éxito/fallo), MFA, bloqueos, gestión de usuarios, CRUD del inventario, accesos denegados y **cada revelado de contraseña**, con usuario, IP y agente; retención configurable (mínimo 90 días) |
-| Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff), mensajes genéricos anti enumeración de usuarios, API docs deshabilitadas |
+| Auditoría | Bitácora completa: logins (éxito/fallo), MFA, bloqueos, gestión de usuarios, CRUD del inventario, accesos denegados y **cada acceso a una contraseña** (revelado y copiado por separado, incluso los intentos bloqueados por exceso), con usuario, IP y agente; retención configurable (mínimo 90 días) |
+| Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff, COOP/CORP), límite de tamaño de petición (OWASP API4), mensajes genéricos anti enumeración, API docs deshabilitadas, **pip-audit** en CI contra dependencias vulnerables |
 
 Cumplimiento documentado con evidencia por control:
 - [`docs/cumplimiento-cis-v8.1.md`](docs/cumplimiento-cis-v8.1.md) — matriz CIS Controls v8.1
 - [`docs/cumplimiento-iso-27003.md`](docs/cumplimiento-iso-27003.md) — alineación ISO/IEC 27003 y Anexo A
+- [`docs/cumplimiento-owasp.md`](docs/cumplimiento-owasp.md) — **OWASP Top 10 (2021) y API Security Top 10 (2023)**
 - [`docs/verificacion-cumplimiento.md`](docs/verificacion-cumplimiento.md) — **informe de verificación** (pruebas, SAST y evidencia dinámica)
 
 Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a producción):
 - [`docs/guia-implementacion.md`](docs/guia-implementacion.md) — **guía de implementación completa**
+- [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md) — **HTTPS con nginx y rotación de certificados**
 
 ## Roles
 
@@ -55,12 +58,24 @@ Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a 
 
 ## Puesta en marcha
 
-### Opción A: Docker (recomendada)
+### Opción A: Docker con HTTPS/nginx (recomendada para producción)
 
 ```bash
-cp .env.example .env        # editar: PASSWD_ADMIN_USERNAME / EMAIL / PASSWORD
+cp .env.example .env        # editar: PASSWD_ADMIN_USERNAME / EMAIL / PASSWORD y PASSWD_DOMAIN
+# Certificado: colocar infrastructure/nginx/certs/{fullchain,privkey}.pem
+# (pruebas: sh infrastructure/nginx/generar-cert-autofirmado.sh localhost)
+docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
+# Disponible en https://<PASSWD_DOMAIN> (nginx termina TLS; la app no se expone)
+```
+
+Detalles, Let's Encrypt y **rotación de certificados**: [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md).
+
+### Opción A′: Docker sin proxy (solo para pruebas internas)
+
+```bash
+cp .env.example .env
 docker compose up -d --build
-# La aplicación queda en http://127.0.0.1:8000 — publicar SIEMPRE detrás de un proxy TLS
+# La app queda en http://127.0.0.1:8000 — publicar SIEMPRE detrás de un proxy TLS
 ```
 
 ### Opción B: local (Python 3.11+)
@@ -112,9 +127,10 @@ lista completa con sus valores por defecto (sesiones, bloqueo, retención de aud
 
 ```bash
 pip install -r requirements-dev.txt
-pytest          # 45 pruebas: flujo MFA, códigos de recuperación, RBAC, CSRF, cifrado, respaldo, expiración de sesión, cascadas, auditoría
+pytest          # 51 pruebas: flujo MFA, códigos de recuperación, RBAC, CSRF, cifrado, respaldo, expiración de sesión, anti-exfiltración, cascadas, auditoría
 ruff check app tests
 bandit -r app --severity-level medium
+pip-audit -r requirements.txt
 ```
 
 El pipeline de CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) ejecuta lo mismo

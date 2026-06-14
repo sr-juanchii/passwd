@@ -6,7 +6,8 @@ RUN groupadd --gid 1001 passwd && useradd --uid 1001 --gid 1001 --create-home pa
 WORKDIR /srv/passwd
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Tolerante a redes lentas: más tiempo de lectura y reintentos por paquete
+RUN pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt
 
 COPY app ./app
 

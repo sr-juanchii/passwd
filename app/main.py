@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import __version__, audit
 from app.config import get_settings
@@ -39,11 +40,81 @@ class CabecerasSeguridadMiddleware(BaseHTTPMiddleware):
         respuesta.headers["X-Frame-Options"] = "DENY"
         respuesta.headers["Referrer-Policy"] = "no-referrer"
         respuesta.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        respuesta.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        respuesta.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        respuesta.headers["X-Permitted-Cross-Domain-Policies"] = "none"
         if get_settings().cookie_secure:
             respuesta.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         if not request.url.path.startswith("/static"):
             respuesta.headers["Cache-Control"] = "no-store"
         return respuesta
+
+
+class LimiteTamanoPeticionMiddleware:
+    """Rechaza cuerpos desproporcionados (OWASP API4 — consumo de recursos).
+
+    Middleware ASGI puro. Comprueba el `Content-Length` declarado y, además,
+    pre-lee el cuerpo de forma acotada antes de pasarlo a la aplicación: así
+    también corta peticiones `Transfer-Encoding: chunked` (sin `Content-Length`),
+    que de otro modo eludirían el control. El cuerpo ya validado se reinyecta a
+    la app sin volver a leer la red. En producción nginx aplica un límite
+    equivalente como primera barrera.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        max_bytes = get_settings().max_request_bytes
+
+        # Vía rápida: Content-Length declarado mayor al límite.
+        for nombre, valor in scope.get("headers", []):
+            if nombre == b"content-length" and valor.isdigit() and int(valor) > max_bytes:
+                await self._responder_413(send)
+                return
+
+        # Pre-lectura acotada del cuerpo (cubre también chunked).
+        cuerpo = bytearray()
+        while True:
+            mensaje = await receive()
+            if mensaje["type"] != "http.request":
+                break  # p. ej. http.disconnect: que lo gestione la aplicación
+            cuerpo += mensaje.get("body", b"")
+            if len(cuerpo) > max_bytes:
+                await self._responder_413(send)
+                return
+            if not mensaje.get("more_body", False):
+                break
+
+        datos = bytes(cuerpo)
+        entregado = False
+
+        async def receive_reinyectado() -> Message:
+            nonlocal entregado
+            if not entregado:
+                entregado = True
+                return {"type": "http.request", "body": datos, "more_body": False}
+            return await receive()
+
+        await self.app(scope, receive_reinyectado, send)
+
+    @staticmethod
+    async def _responder_413(send: Send) -> None:
+        cuerpo = '{"detail":"La petición excede el tamaño permitido."}'.encode()
+        await send({
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(cuerpo)).encode()),
+                (b"cache-control", b"no-store"),
+            ],
+        })
+        await send({"type": "http.response.body", "body": cuerpo})
 
 
 def _bootstrap_admin() -> None:
@@ -99,6 +170,10 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+    # El orden importa: el último en añadirse queda como capa MÁS EXTERNA. Se
+    # pone CabecerasSeguridad de último para que decore TODAS las respuestas,
+    # incluidas las cortocircuitadas por el límite de tamaño (p. ej. un 413).
+    app.add_middleware(LimiteTamanoPeticionMiddleware)
     app.add_middleware(CabecerasSeguridadMiddleware)
 
     init_db()

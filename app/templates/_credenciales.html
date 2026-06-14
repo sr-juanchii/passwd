@@ -30,6 +30,9 @@
       <td>
         {% if puede('credenciales.revelar') %}
         <span class="texto-mono campo-password" id="password-{{ credencial.id }}">••••••••</span>
+        <button type="button" class="boton" data-copiar="{{ credencial.id }}"
+                data-destino="password-{{ credencial.id }}"
+                title="Copia la contraseña al portapapeles sin mostrarla">📋 Copiar</button>
         <button type="button" class="boton boton-suave" data-revelar="{{ credencial.id }}"
                 data-destino="password-{{ credencial.id }}">Revelar</button>
         {% else %}
@@ -50,7 +53,9 @@
     {% endfor %}
   </tbody>
 </table>
-<p class="texto-suave">Cada revelado de contraseña queda registrado en la bitácora de auditoría.</p>
+<p class="texto-suave">«Copiar» entrega la contraseña al portapapeles <strong>sin mostrarla en pantalla</strong>
+   y se limpia a los 30 segundos. Tanto copiar como revelar quedan registrados en la bitácora de auditoría
+   y están limitados por usuario para frenar extracciones masivas.</p>
 {% else %}
 <p class="texto-suave">Este activo no tiene credenciales registradas.</p>
 {% endif %}

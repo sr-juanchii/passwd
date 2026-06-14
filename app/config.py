@@ -65,6 +65,13 @@ class Settings:
     login_rate_limit: int = field(default_factory=lambda: _env_int("LOGIN_RATE_LIMIT", 15))
     login_rate_window_minutes: int = field(default_factory=lambda: _env_int("LOGIN_RATE_WINDOW_MINUTES", 5))
 
+    # Anti-exfiltración: máximo de revelados/copiados de contraseñas por usuario
+    reveal_rate_limit: int = field(default_factory=lambda: _env_int("REVEAL_RATE_LIMIT", 20))
+    reveal_rate_window_minutes: int = field(default_factory=lambda: _env_int("REVEAL_RATE_WINDOW_MINUTES", 5))
+
+    # Tamaño máximo del cuerpo de una petición (OWASP API4)
+    max_request_bytes: int = field(default_factory=lambda: _env_int("MAX_REQUEST_BYTES", 65536))
+
     # Auditoría (CIS 8.10 — retención mínima de 90 días; por defecto 365)
     audit_retention_days: int = field(default_factory=lambda: _env_int("AUDIT_RETENTION_DAYS", 365))
 
