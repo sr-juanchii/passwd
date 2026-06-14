@@ -28,7 +28,7 @@
         {% endif %}
       </td>
       <td>
-        {% if puede('credenciales.revelar') %}
+        {% if puede_revelar %}
         <span class="texto-mono campo-password" id="password-{{ credencial.id }}">••••••••</span>
         <button type="button" class="boton" data-copiar="{{ credencial.id }}"
                 data-destino="password-{{ credencial.id }}"
@@ -36,7 +36,7 @@
         <button type="button" class="boton boton-suave" data-revelar="{{ credencial.id }}"
                 data-destino="password-{{ credencial.id }}">Revelar</button>
         {% else %}
-        <span class="texto-suave">Oculta (rol sin permiso)</span>
+        <span class="texto-suave">Oculta (sin permiso para esta credencial)</span>
         {% endif %}
       </td>
       {% if puede('credenciales.gestionar') %}

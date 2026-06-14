@@ -19,11 +19,15 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import audit
+from app import access, audit
 from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
+    ACTIVO_FISICO,
+    ACTIVO_HIPERVISOR,
+    ACTIVO_VM,
+    ROL_ANALISTA,
     TIPO_FUNCION_UNICA,
     TIPO_HOST_VIRTUALIZACION,
     TIPOS_SERVIDOR,
@@ -34,6 +38,7 @@ from app.models import (
     Usuario,
     ahora_utc,
 )
+from app.rbac import tiene_permiso
 
 router = APIRouter()
 
@@ -52,6 +57,35 @@ def _obtener_o_404(db: Session, modelo, objeto_id: int):
     return objeto
 
 
+def _exigir_ver_activo(request: Request, db: Session, usuario: Usuario, tipo: str, activo_id: int) -> None:
+    """Control de acceso por objeto: 404 (sin filtrar existencia) si no procede.
+
+    Para el analista, ver un activo exige una concesión vigente. El intento
+    denegado queda auditado y se persiste pese al posterior rollback.
+    """
+    if access.puede_ver_activo(db, usuario, tipo, activo_id):
+        return
+    audit.registrar(
+        db, audit.ACCESO_DENEGADO, request=request, usuario=usuario,
+        objeto_tipo=tipo, objeto_id=activo_id,
+        detalle="Acceso a activo sin concesión vigente.", exito=False,
+    )
+    db.commit()
+    raise HTTPException(status_code=404, detail="El recurso solicitado no existe.")
+
+
+def _ctx_accesos(db: Session, usuario: Usuario, tipo: str, activo_id: int) -> dict:
+    """Contexto del panel de concesiones (solo para quien gestiona accesos)."""
+    if not tiene_permiso(usuario.rol, "accesos.gestionar"):
+        return {}
+    return {
+        "concesiones_activo": access.concesiones_de_activo(db, tipo, activo_id),
+        "analistas": access.analistas_activos(db),
+        "tipo_activo": tipo,
+        "activo_id": activo_id,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Panel principal: árbol completo del inventario
 # ---------------------------------------------------------------------------
@@ -64,6 +98,15 @@ def dashboard(
     usuario: Annotated[Usuario, VER],
     msg: str = "",
 ):
+    # El analista no ve el árbol completo: solo la lista de activos concedidos.
+    if usuario.rol == ROL_ANALISTA:
+        concesiones = access.concesiones_vigentes_de_usuario(db, usuario.id)
+        concesiones.sort(key=lambda c: (c.tipo_activo, c.nombre_activo.lower()))
+        return render(request, "dashboard.html", {
+            "usuario_actual": usuario, "modo_analista": True,
+            "concesiones": concesiones, "msg": msg,
+        })
+
     servidores = db.scalars(
         select(ServidorFisico)
         .options(
@@ -148,8 +191,13 @@ def servidor_detalle(
     msg: str = "",
 ):
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
-    return render(request, "servidor_detalle.html",
-                  {"usuario_actual": usuario, "servidor": servidor, "msg": msg})
+    _exigir_ver_activo(request, db, usuario, ACTIVO_FISICO, servidor_id)
+    return render(request, "servidor_detalle.html", {
+        "usuario_actual": usuario, "servidor": servidor, "msg": msg,
+        "modo_analista": usuario.rol == ROL_ANALISTA,
+        "puede_revelar": access.puede_revelar_en_activo(db, usuario, ACTIVO_FISICO, servidor_id),
+        **_ctx_accesos(db, usuario, ACTIVO_FISICO, servidor_id),
+    })
 
 
 @router.get("/servidores/{servidor_id}/editar")
@@ -288,8 +336,13 @@ def hipervisor_detalle(
     msg: str = "",
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
-    return render(request, "hipervisor_detalle.html",
-                  {"usuario_actual": usuario, "hipervisor": hipervisor, "msg": msg})
+    _exigir_ver_activo(request, db, usuario, ACTIVO_HIPERVISOR, hipervisor_id)
+    return render(request, "hipervisor_detalle.html", {
+        "usuario_actual": usuario, "hipervisor": hipervisor, "msg": msg,
+        "modo_analista": usuario.rol == ROL_ANALISTA,
+        "puede_revelar": access.puede_revelar_en_activo(db, usuario, ACTIVO_HIPERVISOR, hipervisor_id),
+        **_ctx_accesos(db, usuario, ACTIVO_HIPERVISOR, hipervisor_id),
+    })
 
 
 @router.get("/hipervisores/{hipervisor_id}/editar")
@@ -404,7 +457,13 @@ def vm_detalle(
     msg: str = "",
 ):
     vm = _obtener_o_404(db, MaquinaVirtual, vm_id)
-    return render(request, "vm_detalle.html", {"usuario_actual": usuario, "vm": vm, "msg": msg})
+    _exigir_ver_activo(request, db, usuario, ACTIVO_VM, vm_id)
+    return render(request, "vm_detalle.html", {
+        "usuario_actual": usuario, "vm": vm, "msg": msg,
+        "modo_analista": usuario.rol == ROL_ANALISTA,
+        "puede_revelar": access.puede_revelar_en_activo(db, usuario, ACTIVO_VM, vm_id),
+        **_ctx_accesos(db, usuario, ACTIVO_VM, vm_id),
+    })
 
 
 @router.get("/vms/{vm_id}/editar")

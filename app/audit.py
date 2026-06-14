@@ -48,6 +48,9 @@ REVELADO_TASA_EXCEDIDA = "revelado_tasa_excedido"
 
 ACCESO_DENEGADO = "acceso_denegado"
 
+ACCESO_CONCEDIDO = "acceso_concedido"
+ACCESO_REVOCADO = "acceso_revocado"
+
 RESPALDO_CREADO = "respaldo_creado"
 RESPALDO_RESTAURADO = "respaldo_restaurado"
 

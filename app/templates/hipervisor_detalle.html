@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block titulo %}{{ hipervisor.nombre }} — {{ app_name }}{% endblock %}
 {% block contenido %}
+{% if modo_analista %}
+<p><a class="enlace-suave" href="/">← Volver a mis accesos</a></p>
+{% else %}
 <p><a class="enlace-suave" href="/servidores/{{ hipervisor.servidor_fisico_id }}">← Volver a {{ hipervisor.servidor_fisico.nombre }}</a></p>
+{% endif %}
 <div class="encabezado-seccion">
   <h1>⚙️ {{ hipervisor.nombre }}
     <span class="insignia insignia-plataforma">{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</span>
@@ -21,13 +25,18 @@
 <div class="tarjeta">
   <dl class="lista-datos">
     <dt>Servidor físico anfitrión</dt>
+    {% if modo_analista %}
+    <dd>{{ hipervisor.servidor_fisico.nombre }}</dd>
+    {% else %}
     <dd><a href="/servidores/{{ hipervisor.servidor_fisico_id }}">{{ hipervisor.servidor_fisico.nombre }}</a></dd>
+    {% endif %}
     <dt>Descripción</dt><dd>{{ hipervisor.descripcion or '—' }}</dd>
     <dt>IP de gestión</dt><dd class="texto-mono">{{ hipervisor.ip_gestion or '—' }}</dd>
     <dt>Registrado</dt><dd>{{ hipervisor.creado_en.strftime('%d/%m/%Y %H:%M') }} UTC</dd>
   </dl>
 </div>
 
+{% if not modo_analista %}
 <div class="tarjeta">
   <div class="encabezado-seccion">
     <h2>Máquinas virtuales</h2>
@@ -54,10 +63,13 @@
   <p class="texto-suave">Sin máquinas virtuales registradas.</p>
   {% endif %}
 </div>
+{% endif %}
 
 <div class="tarjeta">
   {% with credenciales = hipervisor.credenciales, tipo_activo = 'hipervisor', activo_id = hipervisor.id %}
     {% include "_credenciales.html" %}
   {% endwith %}
 </div>
+
+{% if puede('accesos.gestionar') %}{% include "_accesos.html" %}{% endif %}
 {% endblock %}

@@ -15,6 +15,10 @@ erDiagram
     USUARIO ||--o{ CREDENCIAL : "registró"
     USUARIO ||--o{ REGISTRO_AUDITORIA : "genera"
     USUARIO ||--o{ CODIGO_RECUPERACION_MFA : "posee"
+    USUARIO ||--o{ CONCESION_ACCESO : "recibe (analista)"
+    SERVIDOR_FISICO ||--o{ CONCESION_ACCESO : "concedido"
+    HIPERVISOR ||--o{ CONCESION_ACCESO : "concedido"
+    MAQUINA_VIRTUAL ||--o{ CONCESION_ACCESO : "concedido"
 
     SERVIDOR_FISICO {
         int id PK
@@ -67,10 +71,20 @@ erDiagram
         string username UK
         string email UK
         string password_hash "Argon2id"
-        string rol "admin | operador | auditor"
+        string rol "admin | operador | auditor | analista"
         bytes totp_secret_cifrado
         bool mfa_habilitado
         bool activo
+    }
+    CONCESION_ACCESO {
+        int id PK
+        int usuario_id FK "analista"
+        int servidor_fisico_id FK "exactamente uno de los tres"
+        int hipervisor_id FK
+        int maquina_virtual_id FK
+        string nivel "ver | ver_credenciales"
+        int concedido_por_id FK "admin"
+        datetime expira_en "caducidad opcional"
     }
     SESION_WEB {
         int id PK
@@ -111,3 +125,8 @@ erDiagram
    `token_hash` impide reutilizar un volcado de BD para secuestrar sesiones.
 6. **Auditoría**: `usuario_id` usa `ON DELETE SET NULL` y se conserva el `username`
    textual, de modo que la trazabilidad sobrevive a cualquier baja.
+7. **Concesiones de acceso**: misma restricción CHECK de «exactamente un activo» que las
+   credenciales, más `UNIQUE(usuario, activo)` (sin duplicados) y `nivel ∈ {ver,
+   ver_credenciales}`. `ON DELETE CASCADE` desde el usuario y desde el activo: al eliminar
+   cualquiera, sus concesiones desaparecen. No hay herencia entre niveles del inventario.
+   Detalle del modelo de acceso en [`control-acceso.md`](control-acceso.md).

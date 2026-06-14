@@ -147,3 +147,14 @@ resultado satisfactorio (45/45 pruebas, SAST limpio, evidencia dinámica conform
 
 **Re-verificación**: repetir §2 de este informe (tres comandos + smoke test dinámico) tras cada
 actualización y al menos trimestralmente; el pipeline de CI lo automatiza en cada cambio.
+
+## Apéndice — Adición posterior: control de acceso por objeto (14/06/2026)
+
+Se incorporó el rol **analista** y las **concesiones de acceso por activo** (ver
+`docs/control-acceso.md`), reforzando CIS 3.3/6.8 y OWASP A01/API1 (BOLA) con autorización a
+nivel de objeto (default-deny, 404 sin filtrar existencia, sin herencia, caducidad opcional,
+revocación inmediata). Verificado con **10 pruebas nuevas** de aislamiento (`tests/test_accesos.py`):
+analista sin concesión, niveles ver / ver+credenciales, activo ajeno → 404, revocación,
+caducidad, ausencia de herencia, upsert y exclusividad de gestión por el admin; más regresión de
+acceso total de operador. **Suite total: 63/63 en verde**, ruff y bandit (≥media) sin hallazgos,
+`pip-audit` sin vulnerabilidades.

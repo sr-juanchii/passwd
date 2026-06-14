@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import access, audit
 from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
@@ -23,6 +23,7 @@ from app.models import (
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
+    ROL_ANALISTA,
     Credencial,
     Hipervisor,
     MaquinaVirtual,
@@ -228,6 +229,26 @@ def _entregar_password(
     extracción masiva del inventario aun con una sesión legítima
     comprometida (OWASP API4/API6).
     """
+    credencial = db.get(Credencial, credencial_id)
+    if credencial is None:
+        raise HTTPException(status_code=404, detail="La credencial no existe.")
+
+    # Control de acceso por objeto: si el usuario no puede ver el activo,
+    # respondemos 404 (sin filtrar su existencia); si puede verlo pero no tiene
+    # nivel para usar credenciales, 403. Ambos rechazos quedan auditados.
+    if not access.puede_ver_credencial(db, usuario, credencial):
+        audit.registrar(db, audit.ACCESO_DENEGADO, request=request, usuario=usuario,
+                        objeto_tipo="credencial", objeto_id=credencial_id,
+                        detalle="Acceso a credencial sin concesión vigente.", exito=False)
+        db.commit()
+        raise HTTPException(status_code=404, detail="La credencial no existe.")
+    if not access.puede_revelar_credencial(db, usuario, credencial):
+        audit.registrar(db, audit.ACCESO_DENEGADO, request=request, usuario=usuario,
+                        objeto_tipo="credencial", objeto_id=credencial_id,
+                        detalle="Concesión sin nivel para revelar/copiar credenciales.", exito=False)
+        db.commit()
+        raise HTTPException(status_code=403, detail="No tiene permiso para usar esta credencial.")
+
     settings = get_settings()
     if not ratelimit.permitir_intento(
         f"revelar:{usuario.id}",
@@ -243,12 +264,10 @@ def _entregar_password(
         raise HTTPException(status_code=429,
                             detail="Límite de accesos a contraseñas alcanzado; espere unos minutos.")
 
-    credencial = db.get(Credencial, credencial_id)
-    if credencial is None:
-        raise HTTPException(status_code=404, detail="La credencial no existe.")
+    via = " (vía concesión)" if usuario.rol == ROL_ANALISTA else ""
     audit.registrar(db, accion, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,
-                    detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio})")
+                    detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio}){via}")
     return JSONResponse(
         {"usuario": credencial.usuario_acceso, "password": descifrar(credencial.password_cifrada)},
         headers={"Cache-Control": "no-store"},

@@ -28,7 +28,7 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Autenticación | Contraseña (hash **Argon2id**) + **MFA TOTP obligatorio** (RFC 6238) con QR de enrolamiento generado localmente; anti-replay del último código usado; **códigos de recuperación de un solo uso** (8 por usuario, solo hashes en BD) por si se pierde el dispositivo |
 | Sesiones | Gestionadas en servidor (revocables), token rotado al elevar privilegios, cookie `HttpOnly` + `Secure` + `SameSite=Strict`, expiración por inactividad (15 min) y absoluta (8 h) |
 | Cuentas | Bloqueo tras 5 intentos fallidos, límite de tasa por IP, contraseñas temporales de un solo uso con cambio forzado, política de contraseñas (mín. 12, lista de comunes prohibidas), desactivación con revocación inmediata |
-| Autorización | RBAC con tres roles: **admin**, **operador** y **auditor** (solo lectura, sin acceso a contraseñas) — matriz en [`app/rbac.py`](app/rbac.py) |
+| Autorización | RBAC con cuatro roles (**admin**, **operador**, **auditor**, **analista**) más **control de acceso por objeto**: el analista solo ve y usa los activos que un administrador le concede (con nivel y caducidad) — matriz en [`app/rbac.py`](app/rbac.py), concesiones en [`app/access.py`](app/access.py) |
 | Datos | Contraseñas de activos y semillas TOTP **cifradas con Fernet (AES)** antes de tocar la base de datos; claves criptográficas fuera del repositorio; **generador de contraseñas robustas** (CSPRNG, 20 caracteres) en el formulario |
 | Exposición mínima | Botón **«Copiar» sin visualización**: la contraseña va directo al portapapeles sin mostrarse en pantalla y se limpia a los 30 s; «Revelar» se re-oculta solo; **límite anti-exfiltración** por usuario (20 accesos/5 min configurables) compartido entre ambas vías |
 | Rotación | **Alerta visual** en el panel y en cada activo cuando una credencial supera los 90 días (configurable) sin rotarse; el contador se reinicia al cambiar la contraseña |
@@ -48,13 +48,17 @@ Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a 
 
 ## Roles
 
-| Permiso | admin | operador | auditor |
-|---|:-:|:-:|:-:|
-| Ver inventario y credenciales (sin contraseña) | ✔ | ✔ | ✔ |
-| Gestionar inventario y credenciales | ✔ | ✔ | ✘ |
-| Revelar contraseñas (auditado) | ✔ | ✔ | ✘ |
-| Gestionar usuarios | ✔ | ✘ | ✘ |
-| Ver bitácora de auditoría | ✔ | ✘ | ✔ |
+| Permiso | admin | operador | auditor | analista |
+|---|:-:|:-:|:-:|:-:|
+| Ver inventario y credenciales (sin contraseña) | ✔ | ✔ | ✔ | solo concedidos |
+| Gestionar inventario y credenciales | ✔ | ✔ | ✘ | ✘ |
+| Revelar/copiar contraseñas (auditado) | ✔ | ✔ | ✘ | solo concedidas |
+| Gestionar usuarios | ✔ | ✘ | ✘ | ✘ |
+| Conceder/revocar accesos por activo | ✔ | ✘ | ✘ | ✘ |
+| Ver bitácora de auditoría | ✔ | ✘ | ✔ | ✘ |
+
+El rol **analista** es *default-deny*: no ve nada hasta que un administrador le concede acceso a
+activos concretos. Ver [`docs/control-acceso.md`](docs/control-acceso.md).
 
 ## Puesta en marcha
 
@@ -127,7 +131,7 @@ lista completa con sus valores por defecto (sesiones, bloqueo, retención de aud
 
 ```bash
 pip install -r requirements-dev.txt
-pytest          # 51 pruebas: flujo MFA, códigos de recuperación, RBAC, CSRF, cifrado, respaldo, expiración de sesión, anti-exfiltración, cascadas, auditoría
+pytest          # 63 pruebas: flujo MFA, códigos de recuperación, RBAC, control de acceso por objeto, CSRF, cifrado, respaldo, expiración de sesión, anti-exfiltración, cascadas, auditoría
 ruff check app tests
 bandit -r app --severity-level medium
 pip-audit -r requirements.txt
@@ -144,11 +148,12 @@ app/
 ├── config.py          # configuración por entorno (prefijo PASSWD_)
 ├── models.py          # modelo relacional (usuarios, inventario, credenciales, auditoría)
 ├── database.py        # motor SQLAlchemy (SQLite/MySQL)
-├── rbac.py            # matriz de roles y permisos
+├── rbac.py            # matriz de roles y permisos (por tipo de operación)
+├── access.py          # control de acceso por objeto (concesiones a analistas)
 ├── audit.py           # bitácora de auditoría y retención
 ├── deps.py            # dependencias: sesión activa, permisos, CSRF, render
 ├── security/          # Argon2id, Fernet, TOTP+QR, sesiones, límite de tasa
-├── routes/            # auth (login/MFA), inventario, credenciales, usuarios, auditoría
+├── routes/            # auth (login/MFA), inventario, credenciales, accesos, usuarios, auditoría
 ├── templates/         # interfaz en español (Jinja2)
 └── static/            # CSS y JS compatibles con la CSP estricta
 tests/                 # suite completa de pruebas de seguridad y funcionalidad

@@ -1,6 +1,33 @@
 {% extends "base.html" %}
 {% block titulo %}Inventario — {{ app_name }}{% endblock %}
 {% block contenido %}
+{% if modo_analista %}
+<div class="encabezado-seccion"><h1>Mis accesos</h1></div>
+<p class="texto-suave">Servidores y activos a los que un administrador te ha concedido acceso.</p>
+{% if concesiones %}
+<div class="tarjeta">
+<table class="tabla">
+  <thead><tr><th>Activo</th><th>Tipo</th><th>Acceso</th><th>Caduca</th></tr></thead>
+  <tbody>
+    {% for c in concesiones %}
+    {% set url = ('/servidores/' ~ c.servidor_fisico_id) if c.tipo_activo == 'fisico'
+                 else ('/hipervisores/' ~ c.hipervisor_id) if c.tipo_activo == 'hipervisor'
+                 else ('/vms/' ~ c.maquina_virtual_id) %}
+    <tr>
+      <td><a href="{{ url }}">{{ c.nombre_activo }}</a></td>
+      <td>{{ {'fisico': 'Servidor físico', 'hipervisor': 'Hipervisor', 'vm': 'Máquina virtual'}[c.tipo_activo] }}</td>
+      <td>{{ 'Ver + usar credenciales' if c.nivel == 'ver_credenciales' else 'Solo ver' }}</td>
+      <td>{{ c.expira_en.strftime('%d/%m/%Y') if c.expira_en else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="tarjeta"><p>No tienes accesos concedidos todavía. Solicita a un administrador
+   acceso a los servidores que necesites consultar.</p></div>
+{% endif %}
+{% else %}
 <div class="encabezado-seccion">
   <h1>Inventario de servidores</h1>
   {% if puede('inventario.gestionar') %}
@@ -69,4 +96,5 @@
   {% endif %}
 </div>
 {% endfor %}
+{% endif %}
 {% endblock %}
