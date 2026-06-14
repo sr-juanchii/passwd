@@ -27,6 +27,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,7 +45,8 @@ def ahora_utc() -> datetime:
 ROL_ADMIN = "admin"
 ROL_OPERADOR = "operador"
 ROL_AUDITOR = "auditor"
-ROLES_VALIDOS = (ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR)
+ROL_ANALISTA = "analista"
+ROLES_VALIDOS = (ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA)
 
 
 class Usuario(Base):
@@ -52,7 +54,9 @@ class Usuario(Base):
 
     __tablename__ = "usuarios"
     __table_args__ = (
-        CheckConstraint("rol IN ('admin', 'operador', 'auditor')", name="ck_usuarios_rol"),
+        CheckConstraint(
+            "rol IN ('admin', 'operador', 'auditor', 'analista')", name="ck_usuarios_rol"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -281,6 +285,97 @@ class Credencial(Base):
     @property
     def dias_sin_rotar(self) -> int:
         return max((ahora_utc() - self.password_rotada_en).days, 0)
+
+
+# Niveles de una concesión de acceso por activo (control de acceso por objeto)
+NIVEL_VER = "ver"                      # ve el activo y la lista de credenciales (sin contraseñas)
+NIVEL_VER_CREDENCIALES = "ver_credenciales"  # además puede revelar/copiar las contraseñas
+NIVELES_CONCESION = (NIVEL_VER, NIVEL_VER_CREDENCIALES)
+
+
+class ConcesionAcceso(Base):
+    """Acceso concedido a un usuario (analista) sobre un activo concreto.
+
+    Implementa el control de acceso *por objeto* (least privilege): un analista
+    solo ve y usa los activos que un administrador le concede explícitamente.
+    Apunta exactamente a un activo (mismo patrón e integridad que ``Credencial``)
+    y nunca contiene secretos: solo decide quién puede pedir su descifrado.
+    """
+
+    __tablename__ = "concesiones_acceso"
+    __table_args__ = (
+        CheckConstraint(
+            "(CASE WHEN servidor_fisico_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN hipervisor_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN maquina_virtual_id IS NULL THEN 0 ELSE 1 END) = 1",
+            name="ck_concesiones_un_activo",
+        ),
+        CheckConstraint(
+            "nivel IN ('ver', 'ver_credenciales')", name="ck_concesiones_nivel"
+        ),
+        UniqueConstraint(
+            "usuario_id",
+            "servidor_fisico_id",
+            "hipervisor_id",
+            "maquina_virtual_id",
+            name="uq_concesion_usuario_activo",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    servidor_fisico_id: Mapped[int | None] = mapped_column(
+        ForeignKey("servidores_fisicos.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    hipervisor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("hipervisores.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    maquina_virtual_id: Mapped[int | None] = mapped_column(
+        ForeignKey("maquinas_virtuales.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+    nivel: Mapped[str] = mapped_column(String(20), nullable=False, default=NIVEL_VER)
+    concedido_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    # Caducidad opcional. La revocación es un borrado de la fila: la traza
+    # histórica (quién concedió/revocó y cuándo) vive en la bitácora de
+    # auditoría, y así la restricción UNIQUE solo limita las concesiones vivas.
+    expira_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    usuario: Mapped[Usuario] = relationship(foreign_keys=[usuario_id])
+    concedido_por: Mapped[Usuario | None] = relationship(foreign_keys=[concedido_por_id])
+    servidor_fisico: Mapped[ServidorFisico | None] = relationship()
+    hipervisor: Mapped[Hipervisor | None] = relationship()
+    maquina_virtual: Mapped[MaquinaVirtual | None] = relationship()
+
+    def esta_vigente(self) -> bool:
+        return self.expira_en is None or self.expira_en > ahora_utc()
+
+    @property
+    def expirada(self) -> bool:
+        return self.expira_en is not None and self.expira_en <= ahora_utc()
+
+    @property
+    def tipo_activo(self) -> str:
+        if self.servidor_fisico_id is not None:
+            return ACTIVO_FISICO
+        if self.hipervisor_id is not None:
+            return ACTIVO_HIPERVISOR
+        return ACTIVO_VM
+
+    @property
+    def nombre_activo(self) -> str:
+        if self.servidor_fisico is not None:
+            return self.servidor_fisico.nombre
+        if self.hipervisor is not None:
+            return self.hipervisor.nombre
+        if self.maquina_virtual is not None:
+            return self.maquina_virtual.nombre
+        return "—"
 
 
 class CodigoRecuperacionMFA(Base):

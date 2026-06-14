@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block titulo %}{{ vm.nombre }} — {{ app_name }}{% endblock %}
 {% block contenido %}
+{% if modo_analista %}
+<p><a class="enlace-suave" href="/">← Volver a mis accesos</a></p>
+{% else %}
 <p><a class="enlace-suave" href="/hipervisores/{{ vm.hipervisor_id }}">← Volver a {{ vm.hipervisor.nombre }}</a></p>
+{% endif %}
 <div class="encabezado-seccion">
   <h1>🗔 {{ vm.nombre }}</h1>
   {% if puede('inventario.gestionar') %}
@@ -19,9 +23,13 @@
 <div class="tarjeta">
   <dl class="lista-datos">
     <dt>Hipervisor</dt>
+    {% if modo_analista %}
+    <dd>{{ vm.hipervisor.nombre }} ({{ vm.hipervisor.plataforma }})</dd>
+    {% else %}
     <dd><a href="/hipervisores/{{ vm.hipervisor_id }}">{{ vm.hipervisor.nombre }}</a>
         ({{ vm.hipervisor.plataforma }}) en
         <a href="/servidores/{{ vm.hipervisor.servidor_fisico_id }}">{{ vm.hipervisor.servidor_fisico.nombre }}</a></dd>
+    {% endif %}
     <dt>Sistema / función</dt><dd>{{ vm.descripcion or '—' }}</dd>
     <dt>Sistema operativo</dt><dd>{{ vm.sistema_operativo or '—' }}</dd>
     <dt>Dirección IP</dt><dd class="texto-mono">{{ vm.ip or '—' }}</dd>
@@ -34,4 +42,6 @@
     {% include "_credenciales.html" %}
   {% endwith %}
 </div>
+
+{% if puede('accesos.gestionar') %}{% include "_accesos.html" %}{% endif %}
 {% endblock %}

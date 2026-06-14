@@ -31,7 +31,7 @@
   </dl>
 </div>
 
-{% if servidor.tipo == 'host_virtualizacion' %}
+{% if servidor.tipo == 'host_virtualizacion' and not modo_analista %}
 <div class="tarjeta">
   <div class="encabezado-seccion">
     <h2>Hipervisores alojados</h2>
@@ -65,4 +65,6 @@
     {% include "_credenciales.html" %}
   {% endwith %}
 </div>
+
+{% if puede('accesos.gestionar') %}{% include "_accesos.html" %}{% endif %}
 {% endblock %}

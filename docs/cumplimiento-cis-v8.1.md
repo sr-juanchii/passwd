@@ -19,7 +19,7 @@ interna de gestión de credenciales y su estado.
 
 | Salvaguarda | Descripción | Estado | Implementación / evidencia |
 |---|---|---|---|
-| 3.3 | Configurar listas de control de acceso a los datos | ✅ | RBAC con matriz de permisos explícita (admin / operador / auditor); el rol auditor no puede revelar contraseñas. `app/rbac.py`, `app/deps.py` |
+| 3.3 | Configurar listas de control de acceso a los datos | ✅ | RBAC con matriz de permisos explícita (admin / operador / auditor / analista) **más control de acceso por objeto**: el analista solo accede a los activos y credenciales que se le conceden (least privilege, default-deny). `app/rbac.py`, `app/access.py`, `app/deps.py` |
 | 3.10 | Cifrar datos sensibles en tránsito | 🔶 | Despliegue obligatorio detrás de proxy TLS; cookies `Secure` y HSTS activados por defecto. `docker-compose.yml`, `app/main.py` |
 | 3.11 | Cifrar datos sensibles en reposo | ✅ | Contraseñas de activos y semillas TOTP cifradas con Fernet (AES + HMAC) antes de persistirse; contraseñas de usuarios con hash Argon2id; claves fuera del repositorio (entorno o archivo 0600). `app/security/crypto.py`, `app/security/passwords.py`, `app/config.py` |
 | 3.14 | Registrar el acceso a datos sensibles | ✅ | Cada revelado de una contraseña genera un evento de auditoría con usuario, IP, agente y activo afectado. `app/routes/credentials.py` (`credencial_revelada`) |
@@ -50,7 +50,7 @@ interna de gestión de credenciales y su estado.
 | 6.4 | MFA para acceso remoto | ✅ | Ídem 6.3: el acceso es vía web y siempre exige MFA. |
 | 6.5 | MFA para cuentas administrativas | ✅ | Ídem 6.3, incluye el rol admin sin excepción. |
 | 6.7 | Centralizar el control de acceso | ✅ | Sesiones gestionadas en servidor (revocables), no tokens autocontenidos. `app/security/sessions.py` |
-| 6.8 | Definir y mantener control de acceso basado en roles | ✅ | Matriz de permisos documentada y aplicada en código en un único punto. `app/rbac.py` |
+| 6.8 | Definir y mantener control de acceso basado en roles | ✅ | Matriz de permisos por rol documentada y aplicada en un único punto, complementada con concesiones por activo para el rol analista (acceso mínimo necesario, con nivel y caducidad). `app/rbac.py`, `app/access.py`, `docs/control-acceso.md` |
 
 ## Control 8 — Gestión de registros de auditoría
 

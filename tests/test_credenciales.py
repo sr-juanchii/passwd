@@ -135,7 +135,7 @@ def test_auditor_no_puede_revelar_ni_gestionar(client, crear_cliente):
 
     detalle = cliente_auditor.get(f"/servidores/{fisico}")
     assert detalle.status_code == 200
-    assert "Oculta (rol sin permiso)" in detalle.text
+    assert "Oculta (sin permiso para esta credencial)" in detalle.text
 
     db = sesion_bd()
     try:

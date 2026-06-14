@@ -1,0 +1,61 @@
+{# Panel de concesiones de acceso (solo admin). Requiere: concesiones_activo,
+   analistas, tipo_activo, activo_id, csrf_token. #}
+<div class="tarjeta">
+  <h2>Accesos de analistas</h2>
+  <p class="texto-suave">Concede a un analista acceso a <strong>este activo</strong>. Sin concesión,
+     un analista no lo ve. El nivel «Ver + usar credenciales» permite revelar/copiar sus contraseñas.</p>
+
+  {% if analistas %}
+  <form method="post" action="/accesos/conceder" class="formulario-filtros">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="tipo" value="{{ tipo_activo }}">
+    <input type="hidden" name="activo_id" value="{{ activo_id }}">
+    <label for="usuario_id">Analista</label>
+    <select id="usuario_id" name="usuario_id" required>
+      {% for a in analistas %}<option value="{{ a.id }}">{{ a.username }}</option>{% endfor %}
+    </select>
+    <label for="nivel">Nivel</label>
+    <select id="nivel" name="nivel">
+      <option value="ver">Solo ver</option>
+      <option value="ver_credenciales">Ver + usar credenciales</option>
+    </select>
+    <label for="expira_dias">Caduca (días)</label>
+    <input id="expira_dias" name="expira_dias" type="text" inputmode="numeric" maxlength="4"
+           placeholder="sin caducidad" style="width:7rem">
+    <button type="submit" class="boton boton-primario">Conceder</button>
+  </form>
+  {% else %}
+  <p class="texto-suave">No hay usuarios con rol «analista» activos.
+    {% if puede('usuarios.gestionar') %}<a href="/usuarios/nuevo">Cree uno</a> para poder conceder accesos.{% endif %}
+  </p>
+  {% endif %}
+
+  {% if concesiones_activo %}
+  <table class="tabla tabla-compacta">
+    <thead><tr><th>Analista</th><th>Nivel</th><th>Caducidad</th><th>Concedido por</th><th></th></tr></thead>
+    <tbody>
+      {% for c in concesiones_activo %}
+      <tr class="{{ 'fila-fallo' if c.expirada }}">
+        <td class="texto-mono">{{ c.usuario.username }}</td>
+        <td>{{ 'Ver + usar credenciales' if c.nivel == 'ver_credenciales' else 'Solo ver' }}</td>
+        <td>
+          {% if c.expira_en %}
+            {{ c.expira_en.strftime('%d/%m/%Y') }}{{ ' (expirada)' if c.expirada else '' }}
+          {% else %}Sin caducidad{% endif %}
+        </td>
+        <td class="texto-suave">{{ c.concedido_por.username if c.concedido_por else '—' }}</td>
+        <td>
+          <form method="post" action="/accesos/{{ c.id }}/revocar" class="form-inline"
+                data-confirmar="¿Revocar el acceso de {{ c.usuario.username }} a este activo?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="boton boton-peligro">Revocar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="texto-suave">Nadie tiene acceso concedido a este activo todavía.</p>
+  {% endif %}
+</div>
