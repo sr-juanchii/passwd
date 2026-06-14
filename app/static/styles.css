@@ -15,6 +15,30 @@
   --borde: #d9deea;
 }
 
+html[data-tema="oscuro"] {
+  --fondo: #12151c;
+  --tarjeta: #1b2030;
+  --tinta: #e6e9f0;
+  --tinta-suave: #9aa3b5;
+  --primario: #5b8ad0;
+  --primario-oscuro: #3a5f95;
+  --exito-fondo: #173026;
+  --error-fondo: #2e1a1c;
+  --info-fondo: #16233b;
+  --borde: #2b3242;
+}
+html[data-tema="oscuro"] body { background: var(--fondo); color: var(--tinta); }
+html[data-tema="oscuro"] .formulario input,
+html[data-tema="oscuro"] .formulario select,
+html[data-tema="oscuro"] .formulario textarea,
+html[data-tema="oscuro"] .form-buscar input[type="search"] {
+  background: #11151f; color: var(--tinta); border-color: var(--borde);
+}
+html[data-tema="oscuro"] .boton { background: #2a3344; color: var(--tinta); border-color: var(--borde); }
+html[data-tema="oscuro"] .bloque-notas,
+html[data-tema="oscuro"] .codigo-secreto,
+html[data-tema="oscuro"] .codigo-recuperacion { background: #11151f; color: var(--tinta); }
+
 * { box-sizing: border-box; }
 
 body {

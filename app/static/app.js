@@ -64,6 +64,25 @@ function pedirPassword(credencialId, accion) {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  // Tema claro/oscuro persistido en el navegador (localStorage).
+  try {
+    if (localStorage.getItem("tema") === "oscuro") {
+      document.documentElement.dataset.tema = "oscuro";
+    }
+  } catch (e) { /* almacenamiento no disponible */ }
+  var toggleTema = document.getElementById("toggle-tema");
+  if (toggleTema) {
+    toggleTema.addEventListener("click", function () {
+      var oscuro = document.documentElement.dataset.tema === "oscuro";
+      if (oscuro) {
+        delete document.documentElement.dataset.tema;
+      } else {
+        document.documentElement.dataset.tema = "oscuro";
+      }
+      try { localStorage.setItem("tema", oscuro ? "claro" : "oscuro"); } catch (e) { /* ignore */ }
+    });
+  }
+
   // Confirmación previa en formularios destructivos.
   document.querySelectorAll("form[data-confirmar]").forEach(function (formulario) {
     formulario.addEventListener("submit", function (evento) {

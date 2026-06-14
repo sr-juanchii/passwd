@@ -46,15 +46,22 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
   (tabla `eventos_tasa`) para despliegues con varias instancias, sin necesidad de Redis. Por
   defecto sigue en memoria (un proceso).
 
-## Fase 4 — Integración empresarial (con su propio modelo de amenazas) 🟡
+## Fase 4 — Integración empresarial (con su propio modelo de amenazas)
 
-- 🟡 **API REST con tokens**: empezar por exportación de auditoría de **solo lectura** para SIEM.
-  Tensión con la postura actual (API/docs deshabilitadas): superficie nueva a diseñar con cuidado.
-- 🟡 **LDAP / Active Directory / OIDC**: cambio arquitectónico; redefine dónde se aplica el MFA.
+- ✅ **API REST de solo lectura con tokens** (`app/routes/api.py`, `/api/v1/...`): autenticación
+  Bearer (sin cookies ni CSRF), solo lectura, **nunca expone secretos**; endpoints de auditoría
+  (ingestión incremental para SIEM) e inventario. Tokens gestionados por admin (`/tokens`), solo
+  hash en BD, revocables y limitados por tasa.
+- 🟡 **LDAP / Active Directory / OIDC**: **diseñado** en [`integracion-oidc.md`](integracion-oidc.md).
+  No se habilita a ciegas: toca el flujo de autenticación, requiere el IdP de la organización y
+  decisiones de política (aprovisionamiento, roles, break-glass, MFA del IdP). Se implementará
+  con esos datos y una revisión de seguridad dedicada; `authlib` además no es instalable en este
+  entorno sin alterar `cryptography`.
 
 ## Extras de bajo coste
 
-- 🔜 **Modo oscuro** (clase en `<html>` + `localStorage`, compatible con la CSP).
+- ✅ **Modo oscuro** (atributo `data-tema` en `<html>` + `localStorage`, sin código embebido,
+  compatible con la CSP estricta).
 
 ## Reconsiderar (ROI bajo para este sistema)
 

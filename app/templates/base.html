@@ -23,6 +23,7 @@
            placeholder="Buscar activos o credenciales…" aria-label="Buscar" maxlength="120">
   </form>
   <div class="cabecera-usuario">
+    <button type="button" id="toggle-tema" class="boton boton-suave" title="Cambiar tema claro/oscuro">🌓</button>
     <span class="usuario-nombre">{{ usuario_actual.username }}</span>
     <span class="insignia insignia-rol">{{ etiquetas_rol.get(usuario_actual.rol, usuario_actual.rol) }}</span>
     <a class="enlace-suave" href="/password/cambiar">Cambiar contraseña</a>

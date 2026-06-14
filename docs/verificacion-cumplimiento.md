@@ -159,6 +159,25 @@ caducidad, ausencia de herencia, upsert y exclusividad de gestión por el admin;
 acceso total de operador. **Suite total: 63/63 en verde**, ruff y bandit (≥media) sin hallazgos,
 `pip-audit` sin vulnerabilidades.
 
+## Apéndice — Mejoras Fases 0–4 (14/06/2026)
+
+Desarrollada la hoja de ruta (`docs/hoja-de-ruta.md`) salvo OIDC (diseñado, pendiente de IdP) y
+los ítems ⚠️ descartados (WebSocket, GeoIP). Resumen de impacto en cumplimiento:
+
+- **Fase 0** — reconciliación de esquema (migraciones aditivas sin recrear BD).
+- **Fase 1** — export CSV de auditoría (CIS 8.11 / ISO A.8.15), dashboard de métricas, búsqueda
+  global filtrada por acceso por objeto (mantiene OWASP A01/API1).
+- **Fase 2** — inventario ampliado (hardware/estado/etiquetas), **notas seguras cifradas** e
+  **historial de contraseñas** (CIS 3.11 / A.8.24; revelado auditado y limitado), importación CSV.
+- **Fase 3** — alertas por correo (CIS 8.x / detección), respaldos con retención (CIS 11), rate
+  limit opcional en BD para multi-instancia.
+- **Fase 4** — **API REST de solo lectura** con tokens para SIEM (refuerza CIS 8.2/8.9 de
+  recolección centralizada; nunca expone secretos), y diseño de SSO OIDC.
+
+**Suite total: 103/103 en verde**, ruff y bandit (≥media) sin hallazgos, `pip-audit` sin
+vulnerabilidades. Los controles de seguridad existentes (cifrado en reposo, auditoría,
+anti-exfiltración, acceso por objeto) se preservan y extienden a las funciones nuevas.
+
 ## Apéndice — Fase 1 de mejoras: cumplimiento y visibilidad (14/06/2026)
 
 Entregadas las tres mejoras de la Fase 1 (ver `docs/hoja-de-ruta.md`): **exportación de auditoría
