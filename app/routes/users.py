@@ -20,6 +20,7 @@ from app import audit
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import ROLES_VALIDOS, Usuario
+from app.notifications import enviar_alerta
 from app.rbac import ETIQUETAS_ROL
 from app.security.passwords import hashear_password
 from app.security.recovery import eliminar_codigos
@@ -97,6 +98,8 @@ def usuario_crear(
     db.flush()
     audit.registrar(db, audit.USUARIO_CREADO, request=request, usuario=usuario,
                     objeto_tipo="usuario", objeto_id=nuevo.id, detalle=f"{username} (rol {rol})")
+    enviar_alerta("Nuevo usuario creado",
+                  f"«{usuario.username}» creó la cuenta «{username}» con rol {rol}.")
     return render(request, "usuario_password_temporal.html", {
         "usuario_actual": usuario, "objetivo": nuevo, "password_temporal": password_temporal,
         "titulo": "Usuario creado",

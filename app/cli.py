@@ -76,8 +76,21 @@ def _frase_respaldo(args: argparse.Namespace, confirmar: bool) -> str:
     return _pedir_frase(confirmar)
 
 
+def _podar_respaldos(ruta: Path, retener: int) -> int:
+    """Conserva los `retener` respaldos *.passwd más recientes del directorio."""
+    if retener <= 0:
+        return 0
+    archivos = sorted(ruta.parent.glob("*.passwd"), key=lambda p: p.stat().st_mtime, reverse=True)
+    eliminados = 0
+    for sobrante in archivos[retener:]:
+        sobrante.unlink()
+        eliminados += 1
+    return eliminados
+
+
 def _cmd_respaldo(args: argparse.Namespace) -> int:
     from app import backup
+    from app.notifications import enviar_alerta
 
     init_db()
     db = next(get_db())
@@ -89,10 +102,18 @@ def _cmd_respaldo(args: argparse.Namespace) -> int:
         ruta.touch(mode=0o600, exist_ok=True)
         ruta.write_bytes(datos)
         print(f"Respaldo cifrado escrito en {ruta} ({len(datos)} bytes).")
+        if args.retener:
+            eliminados = _podar_respaldos(ruta, args.retener)
+            if eliminados:
+                print(f"Retención: {eliminados} respaldo(s) antiguo(s) eliminado(s).")
         print("Guarde la frase en un lugar seguro: sin ella el respaldo es irrecuperable.")
         return 0
     except backup.ErrorRespaldo as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001 — avisar de un fallo de respaldo
+        enviar_alerta("Fallo de respaldo", f"El respaldo automático falló: {exc}")
+        print(f"Error inesperado: {exc}", file=sys.stderr)
         return 1
     finally:
         db.close()
@@ -138,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
     p_respaldo.add_argument("--salida", required=True, help="Ruta del archivo de respaldo a crear.")
     p_respaldo.add_argument("--passphrase", default="",
                             help="Si se omite, se usa PASSWD_BACKUP_PASSPHRASE o se solicita interactivamente.")
+    p_respaldo.add_argument("--retener", type=int, default=0,
+                            help="Conserva solo los N respaldos *.passwd más recientes del directorio.")
 
     p_restaurar = sub.add_parser("restaurar", help="Restaura un respaldo cifrado.")
     p_restaurar.add_argument("--entrada", required=True, help="Ruta del archivo de respaldo.")

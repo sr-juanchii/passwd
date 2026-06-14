@@ -34,13 +34,17 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
 - ✅ **Importación masiva CSV** (en memoria, sin persistir el archivo, cifrando al guardar; errores
   por fila sin abortar; auditada).
 
-## Fase 3 — Seguridad proactiva y operación desatendida 🔜
+## Fase 3 — Seguridad proactiva y operación desatendida ✅ (entregada)
 
-- 🔜 **Notificaciones por email** (opt-in; nunca incluyen secretos; sujeto a política de red).
-- 🟡 **Respaldos automáticos**: el cron + `PASSWD_BACKUP_PASSPHRASE` ya está documentado
-  (guía §4.7); falta retención, aviso de fallo y envío offsite (S3/FTP).
-- 🟡 **Rate limit compartido** (Redis o backend en BD): solo necesario al escalar a varias
-  instancias. Hoy corre un proceso y el bloqueo de cuenta ya es persistente en BD.
+- ✅ **Notificaciones por email** (opt-in, `app/notifications.py`): alertas de cuenta bloqueada,
+  posible exfiltración (límite de revelados superado), alta de usuario y fallo de respaldo. De
+  mejor esfuerzo (un fallo de SMTP no rompe el flujo) y **nunca incluyen secretos**.
+- ✅ **Respaldos automáticos**: cron + `PASSWD_BACKUP_PASSPHRASE` (guía §4.7) más `--retener N`
+  (poda los respaldos antiguos) y aviso por correo ante un fallo. El envío offsite (S3/FTP) se
+  documenta como paso posterior (rsync/cliente del entorno) para no añadir dependencias pesadas.
+- ✅ **Rate limit compartido** (`PASSWD_RATE_LIMIT_BACKEND=bd`): backend opcional en base de datos
+  (tabla `eventos_tasa`) para despliegues con varias instancias, sin necesidad de Redis. Por
+  defecto sigue en memoria (un proceso).
 
 ## Fase 4 — Integración empresarial (con su propio modelo de amenazas) 🟡
 

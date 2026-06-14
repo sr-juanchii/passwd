@@ -33,6 +33,7 @@ from app.models import (
     Usuario,
     ahora_utc,
 )
+from app.notifications import enviar_alerta
 from app.security import ratelimit
 from app.security.crypto import cifrar, descifrar
 
@@ -276,6 +277,7 @@ def _entregar_password(
         f"revelar:{usuario.id}",
         limite=settings.reveal_rate_limit,
         ventana_minutos=settings.reveal_rate_window_minutes,
+        db=db,
     ):
         audit.registrar(db, audit.REVELADO_TASA_EXCEDIDA, request=request, usuario=usuario,
                         objeto_tipo="credencial", objeto_id=credencial_id,
@@ -283,6 +285,11 @@ def _entregar_password(
                                 f"en {settings.reveal_rate_window_minutes} min superado.",
                         exito=False)
         db.commit()  # conservar la evidencia pese al error que sigue
+        enviar_alerta(
+            "Posible exfiltración de credenciales",
+            f"El usuario «{usuario.username}» superó el límite de accesos a contraseñas "
+            f"({settings.reveal_rate_limit} en {settings.reveal_rate_window_minutes} min).",
+        )
         raise HTTPException(status_code=429,
                             detail="Límite de accesos a contraseñas alcanzado; espere unos minutos.")
 

@@ -476,6 +476,21 @@ class CodigoRecuperacionMFA(Base):
     usuario: Mapped[Usuario] = relationship()
 
 
+class EventoTasa(Base):
+    """Marca temporal de un intento, para el limitador de tasa con backend en BD.
+
+    Solo se usa cuando ``PASSWD_RATE_LIMIT_BACKEND=bd`` (despliegues con varias
+    instancias). No contiene datos sensibles: una clave (p. ej. ``login:<ip>``)
+    y el momento del intento.
+    """
+
+    __tablename__ = "eventos_tasa"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    clave: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    momento: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, index=True)
+
+
 # ---------------------------------------------------------------------------
 # Auditoría (CIS 8.x — gestión de registros de auditoría)
 # ---------------------------------------------------------------------------

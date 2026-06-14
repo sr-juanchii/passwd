@@ -42,6 +42,7 @@ from app.models import (
     Usuario,
     ahora_utc,
 )
+from app.notifications import enviar_alerta
 from app.security import mfa, ratelimit, recovery
 from app.security.crypto import cifrar, descifrar
 from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
@@ -83,6 +84,12 @@ def _registrar_fallo(db: Session, request: Request, usuario: Usuario) -> None:
             db, audit.CUENTA_BLOQUEADA, request=request, usuario=usuario,
             detalle=f"Bloqueo automático por {settings.lockout_minutes} minutos.", exito=False,
         )
+        ip = request.client.host if request.client else "desconocida"
+        enviar_alerta(
+            "Cuenta bloqueada",
+            f"La cuenta «{usuario.username}» se bloqueó automáticamente por intentos "
+            f"de acceso fallidos (IP de origen: {ip}).",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +124,7 @@ def login(
         return render(request, "login.html", {"error": "Sesión de formulario inválida; intente de nuevo.",
                                               "csrf_login": cookie_csrf}, status_code=403)
 
-    if not ratelimit.permitir_intento(f"login:{ip}"):
+    if not ratelimit.permitir_intento(f"login:{ip}", db=db):
         audit.registrar(db, audit.LOGIN_TASA_EXCEDIDA, request=request, username=username, exito=False)
         return render(request, "login.html", {"error": "Demasiados intentos; espere unos minutos.",
                                               "csrf_login": cookie_csrf}, status_code=429)

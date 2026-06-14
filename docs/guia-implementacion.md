@@ -216,11 +216,13 @@ MFA + guardar códigos de recuperación. Crear el resto de usuarios con el menor
 ```bash
 # /etc/cron.d/passwd-respaldo  (la frase viene del .env: PASSWD_BACKUP_PASSPHRASE)
 30 2 * * * root cd /srv/passwd && docker compose exec -T app \
-  python -m app.cli respaldo --salida /srv/passwd/data/respaldo-$(date +\%F).passwd \
-  && find /srv/passwd/data -name 'respaldo-*.passwd' -mtime +30 -delete
+  python -m app.cli respaldo --salida /srv/passwd/data/respaldo-$(date +\%F).passwd --retener 30
 ```
 
-- Copiar el archivo a un destino **externo** (NAS/remoto) tras generarse.
+- `--retener 30` conserva los 30 respaldos `*.passwd` más recientes del directorio (poda el resto).
+- Si las notificaciones están configuradas (`PASSWD_NOTIFY_ENABLED`), un fallo del respaldo envía una alerta por correo.
+- Copiar el archivo a un destino **externo** (NAS/remoto) tras generarse, p. ej. añadiendo al cron
+  `&& rsync -a /srv/passwd/data/respaldo-*.passwd usuario@nas:/respaldos/` (o el cliente S3 de su entorno).
 - **Prueba de restauración trimestral** en una máquina aparte (criterio CIS 11.x): restaurar el último
   respaldo y verificar el acceso a una credencial conocida.
 
