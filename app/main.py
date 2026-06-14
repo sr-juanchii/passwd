@@ -23,6 +23,7 @@ from app.deps import RedirigirLogin, render
 from app.models import ROL_ADMIN, Usuario
 from app.routes import (
     accesos,
+    api,
     audit_view,
     auth,
     credentials,
@@ -31,6 +32,7 @@ from app.routes import (
     metrics,
     notes,
     search,
+    tokens,
     users,
 )
 from app.security.passwords import hashear_password
@@ -202,6 +204,8 @@ def create_app() -> FastAPI:
     app.include_router(importer.router)
     app.include_router(users.router)
     app.include_router(metrics.router)
+    app.include_router(tokens.router)
+    app.include_router(api.router)
     app.include_router(audit_view.router)
 
     @app.get("/healthz")

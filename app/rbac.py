@@ -35,6 +35,7 @@ PERMISOS: dict[str, frozenset[str]] = {
     "auditoria.ver": frozenset({ROL_ADMIN, ROL_AUDITOR}),
     "metricas.ver": frozenset({ROL_ADMIN, ROL_AUDITOR}),
     "accesos.gestionar": frozenset({ROL_ADMIN}),
+    "tokens.gestionar": frozenset({ROL_ADMIN}),
 }
 
 ETIQUETAS_ROL = {

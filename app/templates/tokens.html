@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}Tokens de API — {{ app_name }}{% endblock %}
+{% block contenido %}
+<h1>Tokens de API (solo lectura)</h1>
+<p class="texto-suave">Para integraciones de solo lectura (SIEM, automatización). Se autentican con
+   <code>Authorization: Bearer &lt;token&gt;</code> sobre HTTPS y nunca exponen contraseñas ni notas.</p>
+
+{% if nuevo_token %}
+<div class="aviso aviso-exito">
+  <strong>Token creado.</strong> Cópielo ahora: <strong>no volverá a mostrarse</strong>.
+  <div class="password-temporal"><code class="codigo-secreto">{{ nuevo_token }}</code></div>
+</div>
+{% endif %}
+
+<div class="tarjeta tarjeta-formulario">
+  <form method="post" action="/tokens" class="formulario-filtros">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="nombre">Nombre del token</label>
+    <input id="nombre" name="nombre" type="text" maxlength="120" required placeholder="Ej.: SIEM-corporativo">
+    <button type="submit" class="boton boton-primario">Crear token</button>
+  </form>
+</div>
+
+<div class="tarjeta">
+{% if tokens %}
+<table class="tabla tabla-compacta">
+  <thead><tr><th>Nombre</th><th>Estado</th><th>Creado</th><th>Último uso</th><th>Por</th><th></th></tr></thead>
+  <tbody>
+    {% for t in tokens %}
+    <tr class="{{ '' if t.activo else 'fila-fallo' }}">
+      <td>{{ t.nombre }}</td>
+      <td>{{ '🟢 activo' if t.activo else '🔴 revocado' }}</td>
+      <td>{{ t.creado_en.strftime('%d/%m/%Y %H:%M') }}</td>
+      <td>{{ t.ultimo_uso.strftime('%d/%m/%Y %H:%M') ~ ' UTC' if t.ultimo_uso else 'Nunca' }}</td>
+      <td class="texto-suave">{{ t.creado_por.username if t.creado_por else '—' }}</td>
+      <td>
+        {% if t.activo %}
+        <form method="post" action="/tokens/{{ t.id }}/revocar" class="form-inline"
+              data-confirmar="¿Revocar el token «{{ t.nombre }}»? Las integraciones que lo usen dejarán de funcionar.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="boton boton-peligro">Revocar</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="texto-suave">No hay tokens de API.</p>
+{% endif %}
+</div>
+
+<div class="tarjeta">
+  <h2>Endpoints disponibles</h2>
+  <ul class="texto-suave">
+    <li><code>GET /api/v1/auditoria?desde_id=&lt;id&gt;&amp;accion=&amp;limit=</code> — eventos de auditoría (ingestión incremental).</li>
+    <li><code>GET /api/v1/inventario</code> — inventario sin secretos.</li>
+  </ul>
+  <pre class="bloque-notas">curl -H "Authorization: Bearer &lt;token&gt;" https://{{ app_name }}/api/v1/auditoria?desde_id=0</pre>
+</div>
+{% endblock %}

@@ -6,7 +6,6 @@ from sqlalchemy import func, select
 
 from tests.conftest import login_password, sesion_bd
 
-
 # ---------------------------------------------------------------------------
 # Notificaciones por correo (opt-in, mejor esfuerzo, sin secretos)
 # ---------------------------------------------------------------------------
@@ -101,11 +100,11 @@ def test_login_rate_limit_funciona_con_backend_bd(aplicacion, crear_cliente, mon
 
 
 def test_retencion_de_respaldos(tmp_path):
-    from app.cli import _podar_respaldos
-
     # 5 respaldos; conservar 2 → se eliminan 3.
     import os
     import time
+
+    from app.cli import _podar_respaldos
 
     for i in range(5):
         f = tmp_path / f"respaldo-{i}.passwd"

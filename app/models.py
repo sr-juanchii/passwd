@@ -476,6 +476,28 @@ class CodigoRecuperacionMFA(Base):
     usuario: Mapped[Usuario] = relationship()
 
 
+class TokenApi(Base):
+    """Token de API de solo lectura (para SIEM/automatización).
+
+    Solo se persiste el hash SHA-256; el valor se muestra una única vez al
+    crearlo. El alcance es de lectura: aun filtrado, no permite modificar nada.
+    """
+
+    __tablename__ = "tokens_api"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    creado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    ultimo_uso: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    creado_por: Mapped[Usuario | None] = relationship()
+
+
 class EventoTasa(Base):
     """Marca temporal de un intento, para el limitador de tasa con backend en BD.
 

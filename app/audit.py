@@ -58,6 +58,9 @@ ACCESO_REVOCADO = "acceso_revocado"
 
 AUDITORIA_EXPORTADA = "auditoria_exportada"
 
+TOKEN_CREADO = "token_api_creado"  # noqa: S105 — nombre de acción, no es un secreto
+TOKEN_REVOCADO = "token_api_revocado"  # noqa: S105 — nombre de acción, no es un secreto
+
 RESPALDO_CREADO = "respaldo_creado"
 RESPALDO_RESTAURADO = "respaldo_restaurado"
 
