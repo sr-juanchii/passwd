@@ -35,6 +35,7 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Respaldo | **Respaldo cifrado portátil** por CLI (`respaldo`/`restaurar`): todo el sistema en un archivo cifrado con frase (scrypt + Fernet), restaurable incluso en otra instancia con claves distintas |
 | Auditoría | Bitácora completa: logins (éxito/fallo), MFA, bloqueos, gestión de usuarios, CRUD del inventario, accesos denegados y **cada acceso a una contraseña** (revelado y copiado por separado, incluso los intentos bloqueados por exceso), con usuario, IP y agente; retención configurable (mínimo 90 días); **exportación a CSV** (filtrada, auditada, con mitigación de inyección de fórmulas) |
 | Visibilidad | **Dashboard de métricas** de seguridad (rotación pendiente, logins fallidos 24 h/7 d, cuentas sin MFA, top de accesos a credenciales, concesiones por caducar) y **búsqueda global** del inventario filtrada por el control de acceso por objeto |
+| Inventario ampliado | Campos de **hardware** (RAM/CPU/almacenamiento/serie/garantía/proveedor) y **estado** (activo/mantenimiento/retirado); **etiquetas** con búsqueda; **notas seguras cifradas** por activo (revelado auditado); **historial de contraseñas** anteriores; **importación masiva CSV** (en memoria, cifrando al guardar) |
 | Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff, COOP/CORP), límite de tamaño de petición (OWASP API4), mensajes genéricos anti enumeración, API docs deshabilitadas, **pip-audit** en CI contra dependencias vulnerables |
 
 Cumplimiento documentado con evidencia por control:
@@ -133,7 +134,7 @@ lista completa con sus valores por defecto (sesiones, bloqueo, retención de aud
 
 ```bash
 pip install -r requirements-dev.txt
-pytest          # 75 pruebas: flujo MFA, códigos de recuperación, RBAC, control de acceso por objeto, CSRF, cifrado, respaldo, export CSV, métricas, búsqueda, expiración de sesión, anti-exfiltración, cascadas, auditoría
+pytest          # 88 pruebas: MFA, recuperación, RBAC, acceso por objeto, CSRF, cifrado, respaldo, export CSV, métricas, búsqueda, hardware/estado/tags, notas seguras, historial, importación CSV, migraciones, expiración de sesión, anti-exfiltración, cascadas, auditoría
 ruff check app tests
 bandit -r app --severity-level medium
 pip-audit -r requirements.txt

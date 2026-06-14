@@ -26,6 +26,7 @@ from app.routes import (
     audit_view,
     auth,
     credentials,
+    importer,
     inventory,
     metrics,
     notes,
@@ -198,6 +199,7 @@ def create_app() -> FastAPI:
     app.include_router(credentials.router)
     app.include_router(accesos.router)
     app.include_router(notes.router)
+    app.include_router(importer.router)
     app.include_router(users.router)
     app.include_router(metrics.router)
     app.include_router(audit_view.router)

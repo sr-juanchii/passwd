@@ -25,15 +25,14 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
   (por usuario/servicio, nunca por contraseña), **filtrada por el control de acceso por objeto**
   para no exponer el inventario a un analista.
 
-## Fase 2 — Inventario más rico (tras Alembic) 🔜
+## Fase 2 — Inventario más rico ✅ (entregada)
 
-- 🔜 **Campos de hardware/estado** (RAM, CPU, almacenamiento, serie, garantía, estado, proveedor).
-- 🔜 **Etiquetas/tags** en activos para filtrado avanzado.
-- 🔜 **Notas seguras** cifradas por activo (patrón Fernet, revelado auditado).
-- 🟡 **Historial de contraseñas** anteriores (tope `N` configurable; ojo: amplía la superficie de
-  secretos en reposo, acceso admin auditado).
-- 🟡 **Importación masiva CSV** (el archivo trae secretos: procesar en memoria, no persistirlo,
-  avisar de destruirlo; reutilizar todas las validaciones).
+- ✅ **Campos de hardware/estado** (RAM, CPU, almacenamiento, serie, garantía, proveedor, estado).
+- ✅ **Etiquetas/tags** en activos, incluidas en la búsqueda global.
+- ✅ **Notas seguras** cifradas por activo (Fernet, revelado auditado y por acceso por objeto).
+- ✅ **Historial de contraseñas** anteriores (tope `N` configurable, revelado auditado solo a gestores).
+- ✅ **Importación masiva CSV** (en memoria, sin persistir el archivo, cifrando al guardar; errores
+  por fila sin abortar; auditada).
 
 ## Fase 3 — Seguridad proactiva y operación desatendida 🔜
 
