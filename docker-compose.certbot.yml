@@ -11,14 +11,19 @@
 
 services:
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v2.11.0          # versión fijada (despliegue determinista)
     restart: unless-stopped
+    environment:
+      # Obligatoria: si falta, Compose falla con un mensaje claro en lugar de
+      # construir una ruta vacía y que la renovación falle en silencio.
+      PASSWD_DOMAIN: ${PASSWD_DOMAIN:?Definir PASSWD_DOMAIN en .env}
     volumes:
       - ./infrastructure/nginx/certs:/certs            # destino que lee nginx
       - certbot-data:/etc/letsencrypt                  # estado interno de certbot
       - certbot-webroot:/var/www/certbot
     entrypoint: /bin/sh
-    command: -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --deploy-hook "sh -c \"cp /etc/letsencrypt/live/${PASSWD_DOMAIN}/fullchain.pem /certs/fullchain.pem && cp /etc/letsencrypt/live/${PASSWD_DOMAIN}/privkey.pem /certs/privkey.pem\""; sleep 12h & wait $${!}; done'
+    # $$PASSWD_DOMAIN se expande DENTRO del contenedor (desde environment), no en Compose.
+    command: -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --deploy-hook "sh -c \"cp /etc/letsencrypt/live/$$PASSWD_DOMAIN/fullchain.pem /certs/fullchain.pem && cp /etc/letsencrypt/live/$$PASSWD_DOMAIN/privkey.pem /certs/privkey.pem\""; sleep 12h & wait $${!}; done'
 
 volumes:
   certbot-data:

@@ -108,12 +108,39 @@ def test_limite_anti_exfiltracion_de_contrasenas(client):
 
 
 def test_peticion_demasiado_grande_rechazada(client):
-    # OWASP API4: un cuerpo desproporcionado se corta antes de procesarse
+    # OWASP API4: un cuerpo desproporcionado (con Content-Length) se corta antes
     respuesta = client.post(
         "/login",
         data={"username": "x" * 70000, "password": "y", "csrf_token": "z"},
     )
     assert respuesta.status_code == 413
+
+
+def test_peticion_chunked_demasiado_grande_rechazada(client):
+    # OWASP API4: un cuerpo en streaming (Transfer-Encoding: chunked, sin
+    # Content-Length) tampoco debe eludir el límite.
+    def cuerpo_grande():
+        for _ in range(80):
+            yield b"x" * 1024  # ~80 KB en trozos, sin declarar tamaño
+
+    respuesta = client.post(
+        "/login",
+        content=cuerpo_grande(),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    assert respuesta.status_code == 413
+
+
+def test_respuesta_413_conserva_cabeceras_de_seguridad(client):
+    # El 413 se cortocircuita, pero CabecerasSeguridad es la capa más externa:
+    # la respuesta debe llevar igualmente las cabeceras de seguridad.
+    respuesta = client.post(
+        "/login",
+        data={"username": "x" * 70000, "password": "y", "csrf_token": "z"},
+    )
+    assert respuesta.status_code == 413
+    assert respuesta.headers["x-frame-options"] == "DENY"
+    assert "content-security-policy" in respuesta.headers
 
 
 def test_cabeceras_de_aislamiento_de_origen(client):

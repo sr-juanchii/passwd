@@ -65,12 +65,25 @@ server {
     # La aplicación aplica su propio límite (64 KB); nginx corta abusos brutos.
     client_max_body_size 1m;
 
+    # ── nginx detrás de OTRO proxy/balanceador (opcional) ────────────────────
+    # Por defecto, nginx es el borde y $remote_addr es la IP del cliente final.
+    # Si nginx queda detrás de un balanceador, descomente y ajuste la(s) red(es)
+    # de confianza: el módulo realip reemplaza $remote_addr por la IP real del
+    # cliente tomada de X-Forwarded-For (solo desde redes de confianza), de modo
+    # que el `proxy_set_header X-Forwarded-For $remote_addr` de abajo siga
+    # reenviando la IP correcta. No use $realip_remote_addr aquí: esa variable
+    # conserva la IP del balanceador, no la del cliente.
+    #set_real_ip_from 10.0.0.0/8;        # red del balanceador aguas arriba
+    #real_ip_header X-Forwarded-For;
+    #real_ip_recursive on;
+
     location / {
         proxy_pass http://app:8000;
         proxy_http_version 1.1;
 
         # IP real del cliente para la auditoría: se SOBRESCRIBE X-Forwarded-For
-        # con la dirección que observa nginx, descartando cualquier valor que
+        # con la dirección que observa nginx ($remote_addr, ya resuelta por
+        # realip si está configurado arriba), descartando cualquier valor que
         # el cliente intente inyectar (anti-spoofing del registro).
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Real-IP $remote_addr;
