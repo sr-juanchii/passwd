@@ -1,0 +1,44 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
+import type { ServidorDetalle } from "@/lib/types";
+import { PageHeader } from "@/components/page-header";
+import { ServidorForm } from "@/components/forms/servidor-form";
+import { toast } from "sonner";
+
+export default function EditarServidorPage() {
+  const { id } = useParams<{ id: string }>();
+  const sid = Number(id);
+  const [data, setData] = useState<ServidorDetalle | null>(null);
+
+  useEffect(() => {
+    api.servidor(sid).then(setData).catch((e) => {
+      toast.error(e instanceof ApiError ? e.message : "No se pudo cargar el servidor.");
+    });
+  }, [sid]);
+
+  if (!data) {
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        titulo={`Editar ${data.nombre}`}
+        migas={[
+          { label: "Inventario", href: "/" },
+          { label: data.nombre, href: `/servidores/${sid}` },
+          { label: "Editar" },
+        ]}
+      />
+      <ServidorForm inicial={data} onGuardar={(v) => api.editarServidor(sid, v)} />
+    </>
+  );
+}

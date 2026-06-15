@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend Next.js + shadcn/ui
 
-## Getting Started
+Interfaz del **Gestor de Contraseñas de Servidores** reconstruida con
+[Next.js](https://nextjs.org) (App Router, React 19), [Tailwind CSS v4](https://tailwindcss.com)
+y [shadcn/ui](https://ui.shadcn.com). Consume la API JSON del backend FastAPI
+(`/api/web`) preservando el modelo de seguridad: sesión por cookie HttpOnly,
+CSRF por cabecera `X-CSRF-Token`, RBAC y control de acceso por objeto.
 
-First, run the development server:
+## Funcionalidad (paridad con la web Jinja)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Autenticación por etapas**: login → cambio de contraseña forzado → enrolamiento
+  MFA (QR + códigos de recuperación) → verificación TOTP → sesión activa.
+- **Inventario relacional**: árbol servidor físico → hipervisor → máquina virtual,
+  con CRUD completo, estados, hardware, etiquetas y notas seguras cifradas.
+- **Credenciales**: alta/edición/borrado, **generador** (CSPRNG, 20 caracteres),
+  **copiar sin mostrar** (se limpia el portapapeles a los 30 s), **revelar** con
+  auto-ocultado, **historial** de contraseñas anteriores. Cada acceso es auditado.
+- **Control de acceso por objeto**: concesiones a analistas (nivel y caducidad).
+- **Administración**: usuarios, tokens de API, **auditoría** con filtros y
+  exportación CSV, **métricas** de seguridad, **importación CSV** y búsqueda global.
+- **Tema claro/oscuro** persistente y diseño responsive.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Desarrollo
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Requisitos: Node >= 20 y el backend FastAPI corriendo.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+    # 1) Backend (raíz del repo)
+    export PASSWD_ADMIN_USERNAME=admin
+    export PASSWD_ADMIN_EMAIL=admin@su-organizacion.tld
+    export PASSWD_ADMIN_PASSWORD='UnaClaveInicialRobusta!'
+    export PASSWD_COOKIE_SECURE=false   # solo en desarrollo sin HTTPS
+    uvicorn app.main:app --port 8000
 
-## Learn More
+    # 2) Frontend (frontend/)
+    pnpm install
+    pnpm dev                            # http://localhost:3000
 
-To learn more about Next.js, take a look at the following resources:
+Next.js proxya `/api/web/*`, `/api/v1/*` y `/healthz` al backend (configurable
+con `PASSWD_API_BASE`, por defecto `http://127.0.0.1:8000`). Gracias al proxy, el
+navegador ve un único origen y la cookie de sesión `SameSite=Strict` viaja como
+cookie de primera parte.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Producción
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`pnpm build && pnpm start`, siempre detrás de un proxy TLS (nginx) que enrute
+`/api/*` al backend y el resto al servidor Next.js. La cookie de sesión exige
+HTTPS (`PASSWD_COOKIE_SECURE=true`, por defecto).
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+El contrato de la API está documentado en [`API_CONTRACT.md`](./API_CONTRACT.md).
