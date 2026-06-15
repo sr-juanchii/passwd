@@ -60,7 +60,7 @@ interna de gestión de credenciales y su estado.
 | 8.2 | Recolectar registros de auditoría | ✅ | Autenticación (éxitos y fallos), MFA, bloqueos, gestión de cuentas, CRUD de inventario, accesos denegados y revelados de contraseñas. `app/audit.py` |
 | 8.5 | Recolectar registros detallados | ✅ | Cada evento incluye fecha UTC, usuario, acción, objeto, detalle, IP, agente de usuario y resultado. `app/models.py` (`RegistroAuditoria`) |
 | 8.10 | Retener registros ≥ 90 días | ✅ | Retención por defecto 365 días; el purgado nunca baja del mínimo de 90 días aunque se configure menos. `app/audit.py` (`purgar_antiguos`) |
-| 8.11 | Revisar los registros de auditoría | ✅/📋 | Vista dedicada con filtros por usuario y acción para roles admin/auditor; la cadencia de revisión es proceso organizativo. `app/routes/audit_view.py` |
+| 8.11 | Revisar los registros de auditoría | ✅/📋 | Vista dedicada con filtros por usuario y acción y **exportación a CSV** (auditada, con mitigación de inyección de fórmulas) para roles admin/auditor; **dashboard de métricas** de seguridad como apoyo a la revisión; la cadencia es proceso organizativo. `app/routes/audit_view.py`, `app/routes/metrics.py` |
 
 ## Control 11 — Recuperación de datos
 

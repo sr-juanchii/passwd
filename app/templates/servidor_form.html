@@ -40,6 +40,41 @@
     <input id="ip_gestion" name="ip_gestion" type="text" maxlength="45"
            value="{{ servidor.ip_gestion if servidor else '' }}" placeholder="Ej.: 192.168.10.5">
 
+    <label for="estado">Estado</label>
+    <select id="estado" name="estado">
+      {% for e in estados %}
+      <option value="{{ e }}" {{ 'selected' if servidor and servidor.estado == e }}>{{ etiquetas_estado[e] }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="ram">RAM</label>
+    <input id="ram" name="ram" type="text" maxlength="60"
+           value="{{ servidor.ram if servidor else '' }}" placeholder="Ej.: 64 GB">
+
+    <label for="cpu">CPU</label>
+    <input id="cpu" name="cpu" type="text" maxlength="120"
+           value="{{ servidor.cpu if servidor else '' }}" placeholder="Ej.: 2× Xeon Silver 4210 (20 núcleos)">
+
+    <label for="almacenamiento">Almacenamiento</label>
+    <input id="almacenamiento" name="almacenamiento" type="text" maxlength="120"
+           value="{{ servidor.almacenamiento if servidor else '' }}" placeholder="Ej.: 2× 960 GB SSD RAID 1">
+
+    <label for="numero_serie">Número de serie</label>
+    <input id="numero_serie" name="numero_serie" type="text" maxlength="120"
+           value="{{ servidor.numero_serie if servidor else '' }}">
+
+    <label for="garantia_hasta">Garantía hasta</label>
+    <input id="garantia_hasta" name="garantia_hasta" type="text" maxlength="40"
+           value="{{ servidor.garantia_hasta if servidor else '' }}" placeholder="Ej.: 2027-03">
+
+    <label for="proveedor">Contacto del proveedor</label>
+    <input id="proveedor" name="proveedor" type="text" maxlength="120"
+           value="{{ servidor.proveedor if servidor else '' }}">
+
+    <label for="etiquetas">Etiquetas (separadas por coma)</label>
+    <input id="etiquetas" name="etiquetas" type="text" maxlength="255"
+           value="{{ servidor.etiquetas if servidor else '' }}" placeholder="Ej.: producción, crítico, dmz">
+
     <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if servidor else 'Registrar servidor' }}</button>
   </form>
 </div>

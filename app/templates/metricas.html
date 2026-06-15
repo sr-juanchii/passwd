@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block titulo %}Métricas de seguridad — {{ app_name }}{% endblock %}
+{% block contenido %}
+<h1>Métricas de seguridad</h1>
+
+<div class="tarjetas-resumen">
+  <div class="tarjeta-resumen {{ 'tarjeta-resumen-alerta' if rotacion_vencida > 0 }}">
+    <span class="cifra">{{ rotacion_vencida }}</span> Credenciales sin rotar (&gt;{{ rotacion_max_dias }} días)
+  </div>
+  <div class="tarjeta-resumen {{ 'tarjeta-resumen-alerta' if usuarios_bloqueados > 0 }}">
+    <span class="cifra">{{ usuarios_bloqueados }}</span> Usuarios bloqueados ahora
+  </div>
+  <div class="tarjeta-resumen"><span class="cifra">{{ logins_fallidos_24h }}</span> Logins fallidos (24 h)</div>
+  <div class="tarjeta-resumen"><span class="cifra">{{ logins_fallidos_7d }}</span> Logins fallidos (7 d)</div>
+  <div class="tarjeta-resumen {{ 'tarjeta-resumen-alerta' if cuentas_sin_mfa }}">
+    <span class="cifra">{{ cuentas_sin_mfa|length }}</span> Cuentas sin MFA activo
+  </div>
+</div>
+
+<div class="tarjeta">
+  <h2>Top accesos a credenciales (30 días)</h2>
+  <p class="texto-suave">Revelados + copiados por usuario. Picos inusuales pueden indicar exfiltración.</p>
+  {% if top_revelados %}
+  <table class="tabla tabla-compacta">
+    <thead><tr><th>Usuario</th><th>Accesos</th></tr></thead>
+    <tbody>
+      {% for fila in top_revelados %}
+      <tr><td class="texto-mono">{{ fila[0] or '—' }}</td><td>{{ fila[1] }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="texto-suave">Sin accesos a credenciales en los últimos 30 días.</p>
+  {% endif %}
+</div>
+
+<div class="tarjeta">
+  <h2>Cuentas sin MFA activo</h2>
+  {% if cuentas_sin_mfa %}
+  <p class="texto-suave">Estas cuentas aún no completaron el enrolamiento del segundo factor.</p>
+  <ul>
+    {% for u in cuentas_sin_mfa %}
+    <li class="texto-mono">{{ u.username }} <span class="texto-suave">({{ etiquetas_rol.get(u.rol, u.rol) }})</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="texto-suave">Todas las cuentas activas tienen MFA. ✅</p>
+  {% endif %}
+</div>
+
+<div class="tarjeta">
+  <h2>Concesiones por caducar (7 días)</h2>
+  {% if concesiones_por_caducar %}
+  <table class="tabla tabla-compacta">
+    <thead><tr><th>Analista</th><th>Activo</th><th>Nivel</th><th>Caduca</th></tr></thead>
+    <tbody>
+      {% for c in concesiones_por_caducar %}
+      <tr>
+        <td class="texto-mono">{{ c.usuario.username }}</td>
+        <td>{{ c.nombre_activo }}</td>
+        <td>{{ 'Ver + credenciales' if c.nivel == 'ver_credenciales' else 'Solo ver' }}</td>
+        <td>{{ c.expira_en.strftime('%d/%m/%Y') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="texto-suave">Ninguna concesión caduca en los próximos 7 días.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -15,6 +15,30 @@
   --borde: #d9deea;
 }
 
+html[data-tema="oscuro"] {
+  --fondo: #12151c;
+  --tarjeta: #1b2030;
+  --tinta: #e6e9f0;
+  --tinta-suave: #9aa3b5;
+  --primario: #5b8ad0;
+  --primario-oscuro: #3a5f95;
+  --exito-fondo: #173026;
+  --error-fondo: #2e1a1c;
+  --info-fondo: #16233b;
+  --borde: #2b3242;
+}
+html[data-tema="oscuro"] body { background: var(--fondo); color: var(--tinta); }
+html[data-tema="oscuro"] .formulario input,
+html[data-tema="oscuro"] .formulario select,
+html[data-tema="oscuro"] .formulario textarea,
+html[data-tema="oscuro"] .form-buscar input[type="search"] {
+  background: #11151f; color: var(--tinta); border-color: var(--borde);
+}
+html[data-tema="oscuro"] .boton { background: #2a3344; color: var(--tinta); border-color: var(--borde); }
+html[data-tema="oscuro"] .bloque-notas,
+html[data-tema="oscuro"] .codigo-secreto,
+html[data-tema="oscuro"] .codigo-recuperacion { background: #11151f; color: var(--tinta); }
+
 * { box-sizing: border-box; }
 
 body {
@@ -40,6 +64,11 @@ body {
 .navegacion { display: flex; gap: 1rem; }
 .navegacion a { color: #d7e3f7; text-decoration: none; font-weight: 600; }
 .navegacion a:hover { color: #fff; }
+.form-buscar { margin: 0; }
+.form-buscar input[type="search"] {
+  padding: 0.4rem 0.65rem; border: 1px solid var(--primario); border-radius: 7px;
+  background: #fff; color: var(--tinta); font-size: 0.85rem; width: 16rem; max-width: 40vw;
+}
 .cabecera-usuario { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .usuario-nombre { font-weight: 600; }
 .cabecera-usuario .enlace-suave { color: #d7e3f7; }
@@ -126,6 +155,10 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
 .insignia-unico { background: #e6f4ea; color: #1e7e34; border: 1px solid #b7dec2; }
 .insignia-host { background: #fdf3e0; color: #8a5a00; border: 1px solid #ecd9ae; }
 .insignia-plataforma { background: #e8f0fe; color: #173a69; border: 1px solid #c4d6f5; }
+.insignia-etiqueta { background: #eef1f8; color: #3a4a6b; border: 1px solid #d2dbf0; }
+.insignia-estado-activo { background: #e6f4ea; color: #1e7e34; border: 1px solid #b7dec2; }
+.insignia-estado-mantenimiento { background: #fdf3e0; color: #8a5a00; border: 1px solid #ecd9ae; }
+.insignia-estado-retirado { background: #f0f0f3; color: #5b6478; border: 1px solid #d9deea; }
 
 .arbol-fisico { border-left: 4px solid var(--primario); }
 .arbol-encabezado { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
@@ -167,6 +200,11 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
 .campo-con-boton { display: flex; gap: 0.4rem; align-items: stretch; }
 .campo-con-boton input { flex: 1; }
 .campo-password { letter-spacing: 0.08em; }
+.bloque-notas {
+  background: #f6f8fc; border: 1px solid var(--borde); border-radius: 8px;
+  padding: 0.8rem; margin-top: 0.7rem; white-space: pre-wrap; word-break: break-word;
+  font-family: "Cascadia Code", "Fira Mono", monospace; font-size: 0.85rem;
+}
 .paginacion { display: flex; gap: 0.8rem; align-items: center; justify-content: center; margin-top: 0.9rem; }
 
 @media (max-width: 720px) {

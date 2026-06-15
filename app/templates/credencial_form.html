@@ -49,4 +49,29 @@
   <p class="texto-suave">La contraseña se cifra antes de guardarse; nadie puede verla sin la acción
      «Revelar», que queda registrada en auditoría.</p>
 </div>
+
+{% if credencial and historial %}
+<div class="tarjeta">
+  <h2>Historial de rotaciones</h2>
+  <p class="texto-suave">Contraseñas anteriores (cifradas). Útil para recuperar ante un error de
+     rotación; cada consulta queda registrada en auditoría.</p>
+  <table class="tabla tabla-compacta">
+    <thead><tr><th>Rotada el</th><th>Por</th><th>Contraseña anterior</th></tr></thead>
+    <tbody>
+      {% for h in historial %}
+      <tr>
+        <td>{{ h.rotada_en.strftime('%d/%m/%Y %H:%M') }} UTC</td>
+        <td class="texto-suave">{{ h.rotada_por.username if h.rotada_por else '—' }}</td>
+        <td>
+          <span class="texto-mono campo-password" id="hist-{{ h.id }}">••••••••</span>
+          <button type="button" class="boton boton-suave"
+                  data-revelar-historial="{{ credencial.id }}/{{ h.id }}"
+                  data-destino="hist-{{ h.id }}">Revelar</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}

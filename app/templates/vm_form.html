@@ -25,6 +25,17 @@
     <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
       placeholder="Ej.: Servidor de correo institucional (Postfix + Dovecot)">{{ vm.descripcion if vm else '' }}</textarea>
 
+    <label for="estado">Estado</label>
+    <select id="estado" name="estado">
+      {% for e in estados %}
+      <option value="{{ e }}" {{ 'selected' if vm and vm.estado == e }}>{{ etiquetas_estado[e] }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="etiquetas">Etiquetas (separadas por coma)</label>
+    <input id="etiquetas" name="etiquetas" type="text" maxlength="255"
+           value="{{ vm.etiquetas if vm else '' }}" placeholder="Ej.: producción, correo">
+
     <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if vm else 'Registrar máquina virtual' }}</button>
   </form>
 </div>

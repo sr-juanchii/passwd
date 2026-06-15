@@ -133,6 +133,27 @@ ETIQUETAS_TIPO_SERVIDOR = {
     TIPO_HOST_VIRTUALIZACION: "Servidor físico host de virtualización",
 }
 
+# Estado del ciclo de vida de un activo (validado en la aplicación).
+ESTADO_ACTIVO = "activo"
+ESTADO_MANTENIMIENTO = "mantenimiento"
+ESTADO_RETIRADO = "retirado"
+ESTADOS_ACTIVO = (ESTADO_ACTIVO, ESTADO_MANTENIMIENTO, ESTADO_RETIRADO)
+ETIQUETAS_ESTADO = {
+    ESTADO_ACTIVO: "Activo",
+    ESTADO_MANTENIMIENTO: "En mantenimiento",
+    ESTADO_RETIRADO: "Retirado",
+}
+
+
+def normalizar_etiquetas(texto: str) -> str:
+    """Normaliza una lista de etiquetas separadas por coma (minúsculas, sin duplicados)."""
+    vistas: list[str] = []
+    for parte in texto.split(","):
+        etiqueta = parte.strip().lower()
+        if etiqueta and etiqueta not in vistas:
+            vistas.append(etiqueta)
+    return ", ".join(vistas)
+
 
 class ServidorFisico(Base):
     """Servidor físico: dedicado a una sola función o host de hipervisores."""
@@ -153,6 +174,17 @@ class ServidorFisico(Base):
     marca_modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     ubicacion: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     ip_gestion: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+    # Inventario ampliado (Fase 2): hardware, ciclo de vida y etiquetas.
+    ram: Mapped[str] = mapped_column(String(60), nullable=False, default="", server_default="")
+    cpu: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    almacenamiento: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    numero_serie: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    garantia_hasta: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
+    proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
+    etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Notas sensibles cifradas en reposo (instrucciones de acceso, tokens, etc.)
+    notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
@@ -166,6 +198,10 @@ class ServidorFisico(Base):
     @property
     def etiqueta_tipo(self) -> str:
         return ETIQUETAS_TIPO_SERVIDOR.get(self.tipo, self.tipo)
+
+    @property
+    def lista_etiquetas(self) -> list[str]:
+        return [e for e in (self.etiquetas or "").split(", ") if e]
 
 
 class Hipervisor(Base):
@@ -182,6 +218,9 @@ class Hipervisor(Base):
     version: Mapped[str] = mapped_column(String(60), nullable=False, default="")
     ip_gestion: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
+    etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
@@ -190,6 +229,10 @@ class Hipervisor(Base):
         back_populates="hipervisor", cascade="all, delete-orphan", order_by="MaquinaVirtual.nombre"
     )
     credenciales: Mapped[list[Credencial]] = relationship(back_populates="hipervisor", cascade="all, delete-orphan")
+
+    @property
+    def lista_etiquetas(self) -> list[str]:
+        return [e for e in (self.etiquetas or "").split(", ") if e]
 
 
 class MaquinaVirtual(Base):
@@ -205,6 +248,9 @@ class MaquinaVirtual(Base):
     sistema_operativo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
+    etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
@@ -212,6 +258,10 @@ class MaquinaVirtual(Base):
     credenciales: Mapped[list[Credencial]] = relationship(
         back_populates="maquina_virtual", cascade="all, delete-orphan"
     )
+
+    @property
+    def lista_etiquetas(self) -> list[str]:
+        return [e for e in (self.etiquetas or "").split(", ") if e]
 
 
 ACTIVO_FISICO = "fisico"
@@ -285,6 +335,34 @@ class Credencial(Base):
     @property
     def dias_sin_rotar(self) -> int:
         return max((ahora_utc() - self.password_rotada_en).days, 0)
+
+    historial: Mapped[list[HistorialCredencial]] = relationship(
+        back_populates="credencial", cascade="all, delete-orphan",
+        order_by="HistorialCredencial.rotada_en.desc()",
+    )
+
+
+class HistorialCredencial(Base):
+    """Contraseña anterior de una credencial, conservada cifrada al rotar.
+
+    Permite recuperar una clave ante un error de rotación y auditar el número
+    de rotaciones. Se conservan las últimas N (configurable). Nunca en claro.
+    """
+
+    __tablename__ = "historial_credenciales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    credencial_id: Mapped[int] = mapped_column(
+        ForeignKey("credenciales.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    password_cifrada: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    rotada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    rotada_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+
+    credencial: Mapped[Credencial] = relationship(back_populates="historial")
+    rotada_por: Mapped[Usuario | None] = relationship()
 
 
 # Niveles de una concesión de acceso por activo (control de acceso por objeto)
@@ -396,6 +474,43 @@ class CodigoRecuperacionMFA(Base):
     usado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     usuario: Mapped[Usuario] = relationship()
+
+
+class TokenApi(Base):
+    """Token de API de solo lectura (para SIEM/automatización).
+
+    Solo se persiste el hash SHA-256; el valor se muestra una única vez al
+    crearlo. El alcance es de lectura: aun filtrado, no permite modificar nada.
+    """
+
+    __tablename__ = "tokens_api"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    creado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    ultimo_uso: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    creado_por: Mapped[Usuario | None] = relationship()
+
+
+class EventoTasa(Base):
+    """Marca temporal de un intento, para el limitador de tasa con backend en BD.
+
+    Solo se usa cuando ``PASSWD_RATE_LIMIT_BACKEND=bd`` (despliegues con varias
+    instancias). No contiene datos sensibles: una clave (p. ej. ``login:<ip>``)
+    y el momento del intento.
+    """
+
+    __tablename__ = "eventos_tasa"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    clave: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    momento: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, index=True)
 
 
 # ---------------------------------------------------------------------------

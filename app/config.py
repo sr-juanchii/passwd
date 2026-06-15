@@ -77,9 +77,24 @@ class Settings:
 
     # Rotación de credenciales: días sin rotar antes de alertar
     rotation_max_days: int = field(default_factory=lambda: _env_int("ROTATION_MAX_DAYS", 90))
+    # Historial de contraseñas anteriores conservadas por credencial
+    password_history_max: int = field(default_factory=lambda: _env_int("PASSWORD_HISTORY_MAX", 5))
 
     # MFA
     totp_issuer: str = field(default_factory=lambda: _env("TOTP_ISSUER", "Gestor-Passwd"))
+
+    # Notificaciones por correo (opt-in; los correos NUNCA incluyen secretos)
+    notify_enabled: bool = field(default_factory=lambda: _env_bool("NOTIFY_ENABLED", False))
+    smtp_host: str = field(default_factory=lambda: _env("SMTP_HOST", ""))
+    smtp_port: int = field(default_factory=lambda: _env_int("SMTP_PORT", 587))
+    smtp_user: str = field(default_factory=lambda: _env("SMTP_USER", ""))
+    smtp_password: str = field(default="", repr=False)
+    smtp_from: str = field(default_factory=lambda: _env("SMTP_FROM", ""))
+    smtp_tls: bool = field(default_factory=lambda: _env_bool("SMTP_TLS", True))
+    notify_to: str = field(default_factory=lambda: _env("NOTIFY_TO", ""))
+
+    # Backend del limitador de tasa: "memoria" (un proceso) o "bd" (compartido)
+    rate_limit_backend: str = field(default_factory=lambda: _env("RATE_LIMIT_BACKEND", "memoria"))
 
     # Arranque inicial del administrador (solo si no existen usuarios)
     admin_username: str = field(default_factory=lambda: _env("ADMIN_USERNAME", ""))
@@ -101,6 +116,7 @@ class Settings:
         self.encryption_key = os.environ.get(f"{_PREFIX}ENCRYPTION_KEY") or _leer_o_generar_secreto(
             self.data_dir / ".encryption_key", lambda: Fernet.generate_key().decode("ascii")
         )
+        self.smtp_password = os.environ.get(f"{_PREFIX}SMTP_PASSWORD", "")
 
 
 _settings: Settings | None = None

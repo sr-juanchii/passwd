@@ -46,10 +46,20 @@ CREDENCIAL_REVELADA = "credencial_revelada"
 CREDENCIAL_COPIADA = "credencial_copiada"
 REVELADO_TASA_EXCEDIDA = "revelado_tasa_excedido"
 
+NOTA_ACTUALIZADA = "nota_actualizada"
+NOTA_REVELADA = "nota_revelada"
+
+HISTORIAL_REVELADO = "historial_revelado"
+
 ACCESO_DENEGADO = "acceso_denegado"
 
 ACCESO_CONCEDIDO = "acceso_concedido"
 ACCESO_REVOCADO = "acceso_revocado"
+
+AUDITORIA_EXPORTADA = "auditoria_exportada"
+
+TOKEN_CREADO = "token_api_creado"  # noqa: S105 — nombre de acción, no es un secreto
+TOKEN_REVOCADO = "token_api_revocado"  # noqa: S105 — nombre de acción, no es un secreto
 
 RESPALDO_CREADO = "respaldo_creado"
 RESPALDO_RESTAURADO = "respaldo_restaurado"

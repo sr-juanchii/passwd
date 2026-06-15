@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}Importar inventario — {{ app_name }}{% endblock %}
+{% block contenido %}
+<h1>Importar inventario (CSV)</h1>
+
+{% if creados is defined %}
+<div class="aviso {{ 'aviso-exito' if not errores else 'aviso-info' }}">
+  {{ creados }} de {{ total }} fila(s) importadas correctamente{{ '.' if not errores else '; ' ~ errores|length ~ ' con error.' }}
+</div>
+{% if errores %}
+<div class="tarjeta">
+  <h2>Filas con error</h2>
+  <ul>{% for e in errores %}<li class="texto-suave">{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="tarjeta tarjeta-formulario">
+  <p class="texto-suave">Para la migración inicial desde una hoja de cálculo. El archivo se procesa
+     en memoria y <strong>no se guarda</strong>; como contiene contraseñas en claro, <strong>destrúyalo</strong>
+     después de importar. Límite de tamaño por petición: divida importaciones muy grandes.</p>
+  <form method="post" action="/importar" enctype="multipart/form-data" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="archivo">Archivo CSV (UTF-8)</label>
+    <input id="archivo" name="archivo" type="file" accept=".csv,text/csv" required>
+    <button type="submit" class="boton boton-primario">Importar</button>
+  </form>
+</div>
+
+<div class="tarjeta">
+  <h2>Formato</h2>
+  <p class="texto-suave">Cabecera con columnas; la columna <code>tipo</code> indica qué se crea. Se
+     procesan por orden de dependencia (servidores → hipervisores → VMs → credenciales).</p>
+  <pre class="bloque-notas">tipo,nombre,tipo_servidor,padre,activo_tipo,plataforma,version,sistema_operativo,ip,descripcion,estado,etiquetas,usuario_acceso,password,servicio,puerto
+servidor,srv-bd,funcion_unica,,,,,Debian 12,10.0.0.5,BD de nómina,activo,"producción,crítico",,,,
+servidor,srv-virt,host_virtualizacion,,,,,Proxmox,10.0.0.6,Host,activo,producción,,,,
+hipervisor,pve-01,,srv-virt,,Proxmox VE,8.2,,10.0.0.7,Nodo,activo,,,,,
+vm,vm-correo,,pve-01,,,,Ubuntu 24.04,10.0.1.10,Correo,activo,correo,,,,
+credencial,,,srv-bd,servidor,,,,,Acceso root,,,root,S3cret!,SSH,22</pre>
+</div>
+{% endblock %}

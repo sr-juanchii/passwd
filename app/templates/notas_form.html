@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Notas seguras — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="{{ url_volver }}">← Volver a {{ activo.nombre }}</a></p>
+<div class="tarjeta tarjeta-formulario">
+  <h1>Notas seguras de {{ activo.nombre }}</h1>
+  <p class="texto-suave">Texto sensible (instrucciones de acceso, tokens, pasos de recuperación…).
+     Se cifra en reposo; dejarlo en blanco elimina las notas.</p>
+  <form method="post" action="/activos/{{ tipo_activo }}/{{ activo_id }}/notas" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="contenido">Contenido</label>
+    <textarea id="contenido" name="contenido" rows="10" maxlength="20000">{{ contenido }}</textarea>
+    <button type="submit" class="boton boton-primario">Guardar notas</button>
+  </form>
+</div>
+{% endblock %}

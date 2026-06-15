@@ -30,8 +30,12 @@
     {% else %}
     <dd><a href="/servidores/{{ hipervisor.servidor_fisico_id }}">{{ hipervisor.servidor_fisico.nombre }}</a></dd>
     {% endif %}
+    <dt>Estado</dt><dd><span class="insignia insignia-estado-{{ hipervisor.estado }}">{{ etiquetas_estado.get(hipervisor.estado, hipervisor.estado) }}</span></dd>
     <dt>Descripción</dt><dd>{{ hipervisor.descripcion or '—' }}</dd>
     <dt>IP de gestión</dt><dd class="texto-mono">{{ hipervisor.ip_gestion or '—' }}</dd>
+    <dt>Etiquetas</dt><dd>
+      {% for t in hipervisor.lista_etiquetas %}<span class="insignia insignia-etiqueta">{{ t }}</span> {% else %}—{% endfor %}
+    </dd>
     <dt>Registrado</dt><dd>{{ hipervisor.creado_en.strftime('%d/%m/%Y %H:%M') }} UTC</dd>
   </dl>
 </div>
@@ -71,5 +75,6 @@
   {% endwith %}
 </div>
 
+{% include "_notas.html" %}
 {% if puede('accesos.gestionar') %}{% include "_accesos.html" %}{% endif %}
 {% endblock %}

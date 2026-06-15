@@ -33,7 +33,12 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Exposición mínima | Botón **«Copiar» sin visualización**: la contraseña va directo al portapapeles sin mostrarse en pantalla y se limpia a los 30 s; «Revelar» se re-oculta solo; **límite anti-exfiltración** por usuario (20 accesos/5 min configurables) compartido entre ambas vías |
 | Rotación | **Alerta visual** en el panel y en cada activo cuando una credencial supera los 90 días (configurable) sin rotarse; el contador se reinicia al cambiar la contraseña |
 | Respaldo | **Respaldo cifrado portátil** por CLI (`respaldo`/`restaurar`): todo el sistema en un archivo cifrado con frase (scrypt + Fernet), restaurable incluso en otra instancia con claves distintas |
-| Auditoría | Bitácora completa: logins (éxito/fallo), MFA, bloqueos, gestión de usuarios, CRUD del inventario, accesos denegados y **cada acceso a una contraseña** (revelado y copiado por separado, incluso los intentos bloqueados por exceso), con usuario, IP y agente; retención configurable (mínimo 90 días) |
+| Auditoría | Bitácora completa: logins (éxito/fallo), MFA, bloqueos, gestión de usuarios, CRUD del inventario, accesos denegados y **cada acceso a una contraseña** (revelado y copiado por separado, incluso los intentos bloqueados por exceso), con usuario, IP y agente; retención configurable (mínimo 90 días); **exportación a CSV** (filtrada, auditada, con mitigación de inyección de fórmulas) |
+| Visibilidad | **Dashboard de métricas** de seguridad (rotación pendiente, logins fallidos 24 h/7 d, cuentas sin MFA, top de accesos a credenciales, concesiones por caducar) y **búsqueda global** del inventario filtrada por el control de acceso por objeto |
+| Inventario ampliado | Campos de **hardware** (RAM/CPU/almacenamiento/serie/garantía/proveedor) y **estado** (activo/mantenimiento/retirado); **etiquetas** con búsqueda; **notas seguras cifradas** por activo (revelado auditado); **historial de contraseñas** anteriores; **importación masiva CSV** (en memoria, cifrando al guardar) |
+| Operación proactiva | **Alertas por correo** opt-in (cuenta bloqueada, posible exfiltración, alta de usuario, fallo de respaldo; sin secretos); **respaldos programados** con retención y aviso de fallo; **limitador de tasa** opcional en BD para despliegues multi-instancia |
+| Integración | **API REST de solo lectura** con tokens Bearer para SIEM/automatización (`/api/v1/auditoria`, `/api/v1/inventario`; nunca expone secretos); tokens gestionados y revocables |
+| Interfaz | Modo claro/oscuro persistente, compatible con la CSP estricta (sin código embebido) |
 | Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff, COOP/CORP), límite de tamaño de petición (OWASP API4), mensajes genéricos anti enumeración, API docs deshabilitadas, **pip-audit** en CI contra dependencias vulnerables |
 
 Cumplimiento documentado con evidencia por control:
@@ -41,10 +46,12 @@ Cumplimiento documentado con evidencia por control:
 - [`docs/cumplimiento-iso-27003.md`](docs/cumplimiento-iso-27003.md) — alineación ISO/IEC 27003 y Anexo A
 - [`docs/cumplimiento-owasp.md`](docs/cumplimiento-owasp.md) — **OWASP Top 10 (2021) y API Security Top 10 (2023)**
 - [`docs/verificacion-cumplimiento.md`](docs/verificacion-cumplimiento.md) — **informe de verificación** (pruebas, SAST y evidencia dinámica)
+- [`docs/control-acceso.md`](docs/control-acceso.md) — control de acceso por objeto (roles y concesiones)
 
 Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a producción):
 - [`docs/guia-implementacion.md`](docs/guia-implementacion.md) — **guía de implementación completa**
 - [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md) — **HTTPS con nginx y rotación de certificados**
+- [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md) — **hoja de ruta de mejoras** (viabilidad y fases)
 
 ## Roles
 
@@ -131,7 +138,7 @@ lista completa con sus valores por defecto (sesiones, bloqueo, retención de aud
 
 ```bash
 pip install -r requirements-dev.txt
-pytest          # 63 pruebas: flujo MFA, códigos de recuperación, RBAC, control de acceso por objeto, CSRF, cifrado, respaldo, expiración de sesión, anti-exfiltración, cascadas, auditoría
+pytest          # 103 pruebas: MFA, recuperación, RBAC, acceso por objeto, CSRF, cifrado, respaldo, export CSV, métricas, búsqueda, hardware/tags, notas, historial, importación CSV, migraciones, email, rate limit BD, API de tokens, modo oscuro, anti-exfiltración, cascadas, auditoría
 ruff check app tests
 bandit -r app --severity-level medium
 pip-audit -r requirements.txt
@@ -153,7 +160,7 @@ app/
 ├── audit.py           # bitácora de auditoría y retención
 ├── deps.py            # dependencias: sesión activa, permisos, CSRF, render
 ├── security/          # Argon2id, Fernet, TOTP+QR, sesiones, límite de tasa
-├── routes/            # auth (login/MFA), inventario, credenciales, accesos, usuarios, auditoría
+├── routes/            # auth, inventario, búsqueda, credenciales, accesos, usuarios, auditoría (+CSV), métricas
 ├── templates/         # interfaz en español (Jinja2)
 └── static/            # CSS y JS compatibles con la CSP estricta
 tests/                 # suite completa de pruebas de seguridad y funcionalidad

@@ -64,6 +64,25 @@ function pedirPassword(credencialId, accion) {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  // Tema claro/oscuro persistido en el navegador (localStorage).
+  try {
+    if (localStorage.getItem("tema") === "oscuro") {
+      document.documentElement.dataset.tema = "oscuro";
+    }
+  } catch (e) { /* almacenamiento no disponible */ }
+  var toggleTema = document.getElementById("toggle-tema");
+  if (toggleTema) {
+    toggleTema.addEventListener("click", function () {
+      var oscuro = document.documentElement.dataset.tema === "oscuro";
+      if (oscuro) {
+        delete document.documentElement.dataset.tema;
+      } else {
+        document.documentElement.dataset.tema = "oscuro";
+      }
+      try { localStorage.setItem("tema", oscuro ? "claro" : "oscuro"); } catch (e) { /* ignore */ }
+    });
+  }
+
   // Confirmación previa en formularios destructivos.
   document.querySelectorAll("form[data-confirmar]").forEach(function (formulario) {
     formulario.addEventListener("submit", function (evento) {
@@ -107,6 +126,94 @@ document.addEventListener("DOMContentLoaded", function () {
         .catch(function (error) {
           if (destino) destino.textContent = "(" + error.message + ")";
           boton.textContent = etiquetaOriginal;
+        })
+        .finally(function () {
+          boton.disabled = false;
+        });
+    });
+  });
+
+  // Revelado de una contraseña anterior del historial (auditado).
+  document.querySelectorAll("button[data-revelar-historial]").forEach(function (boton) {
+    boton.addEventListener("click", function () {
+      var destino = document.getElementById(boton.dataset.destino);
+      if (!destino) return;
+      if (boton.dataset.visible === "1") {
+        destino.textContent = "••••••••";
+        boton.dataset.visible = "0";
+        boton.textContent = "Revelar";
+        return;
+      }
+      boton.disabled = true;
+      fetch("/credenciales/" + boton.dataset.revelarHistorial + "/revelar", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "csrf_token=" + encodeURIComponent(tokenCsrf()),
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          if (r.status === 429) throw new Error("límite alcanzado");
+          if (!r.ok) throw new Error("no autorizado");
+          return r.json();
+        })
+        .then(function (datos) {
+          destino.textContent = datos.password;
+          boton.dataset.visible = "1";
+          boton.textContent = "Ocultar";
+          window.setTimeout(function () {
+            if (boton.dataset.visible === "1") {
+              destino.textContent = "••••••••";
+              boton.dataset.visible = "0";
+              boton.textContent = "Revelar";
+            }
+          }, 30000);
+        })
+        .catch(function (e) { destino.textContent = "(" + e.message + ")"; })
+        .finally(function () { boton.disabled = false; });
+    });
+  });
+
+  // Revelado de notas seguras (auditado). Se ocultan a los 30 segundos.
+  document.querySelectorAll("button[data-revelar-notas]").forEach(function (boton) {
+    boton.addEventListener("click", function () {
+      var destino = document.getElementById(boton.dataset.destino);
+      if (!destino) return;
+      if (boton.dataset.visible === "1") {
+        destino.hidden = true;
+        destino.textContent = "";
+        boton.dataset.visible = "0";
+        boton.textContent = "Ver notas";
+        return;
+      }
+      boton.disabled = true;
+      fetch("/activos/" + boton.dataset.revelarNotas + "/notas/revelar", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "csrf_token=" + encodeURIComponent(tokenCsrf()),
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          if (r.status === 429) throw new Error("límite alcanzado; espere unos minutos");
+          if (!r.ok) throw new Error("no autorizado");
+          return r.json();
+        })
+        .then(function (datos) {
+          destino.textContent = datos.notas || "(sin contenido)";
+          destino.hidden = false;
+          boton.dataset.visible = "1";
+          boton.textContent = "Ocultar notas";
+          window.setTimeout(function () {
+            if (boton.dataset.visible === "1") {
+              destino.hidden = true;
+              destino.textContent = "";
+              boton.dataset.visible = "0";
+              boton.textContent = "Ver notas";
+            }
+          }, 30000);
+        })
+        .catch(function (e) {
+          destino.hidden = false;
+          destino.textContent = "(" + e.message + ")";
         })
         .finally(function () {
           boton.disabled = false;

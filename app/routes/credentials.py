@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import access, audit
@@ -26,11 +27,13 @@ from app.models import (
     ROL_ANALISTA,
     Credencial,
     Hipervisor,
+    HistorialCredencial,
     MaquinaVirtual,
     ServidorFisico,
     Usuario,
     ahora_utc,
 )
+from app.notifications import enviar_alerta
 from app.security import ratelimit
 from app.security.crypto import cifrar, descifrar
 
@@ -38,6 +41,18 @@ router = APIRouter()
 
 GESTIONAR = Depends(requiere_permiso("credenciales.gestionar"))
 REVELAR = Depends(requiere_permiso("credenciales.revelar"))
+
+
+def _podar_historial(db: Session, credencial_id: int) -> None:
+    """Conserva solo las últimas N entradas del historial de una credencial."""
+    maximo = get_settings().password_history_max
+    entradas = db.scalars(
+        select(HistorialCredencial)
+        .where(HistorialCredencial.credencial_id == credencial_id)
+        .order_by(HistorialCredencial.rotada_en.desc(), HistorialCredencial.id.desc())
+    ).all()
+    for sobrante in entradas[maximo:]:
+        db.delete(sobrante)
 
 _MODELOS_ACTIVO = {
     ACTIVO_FISICO: (ServidorFisico, "servidor físico", "/servidores/{id}"),
@@ -145,7 +160,8 @@ def credencial_editar_form(
     activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
     instancia, _, url_volver = _resolver_activo(db, tipo, activo_id)
     return render(request, "credencial_form.html",
-                  _ctx_form(usuario, credencial, tipo, instancia, url_volver))
+                  {**_ctx_form(usuario, credencial, tipo, instancia, url_volver),
+                   "historial": credencial.historial})
 
 
 @router.post("/credenciales/{credencial_id}/editar", dependencies=[Depends(verificar_csrf)])
@@ -187,8 +203,15 @@ def credencial_editar(
     credencial.descripcion = descripcion.strip()
     rotada = bool(password)
     if rotada:  # contraseña en blanco = conservar la actual
+        # Se archiva la contraseña anterior (cifrada) antes de sustituirla,
+        # conservando solo las últimas N (historial de rotaciones).
+        db.add(HistorialCredencial(
+            credencial_id=credencial.id, password_cifrada=credencial.password_cifrada,
+            rotada_por_id=usuario.id,
+        ))
         credencial.password_cifrada = cifrar(password)
         credencial.password_rotada_en = ahora_utc()
+        _podar_historial(db, credencial.id)
     audit.registrar(db, audit.CREDENCIAL_ACTUALIZADA, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,
                     detalle=f"{credencial.usuario_acceso}@{instancia.nombre}"
@@ -254,6 +277,7 @@ def _entregar_password(
         f"revelar:{usuario.id}",
         limite=settings.reveal_rate_limit,
         ventana_minutos=settings.reveal_rate_window_minutes,
+        db=db,
     ):
         audit.registrar(db, audit.REVELADO_TASA_EXCEDIDA, request=request, usuario=usuario,
                         objeto_tipo="credencial", objeto_id=credencial_id,
@@ -261,6 +285,11 @@ def _entregar_password(
                                 f"en {settings.reveal_rate_window_minutes} min superado.",
                         exito=False)
         db.commit()  # conservar la evidencia pese al error que sigue
+        enviar_alerta(
+            "Posible exfiltración de credenciales",
+            f"El usuario «{usuario.username}» superó el límite de accesos a contraseñas "
+            f"({settings.reveal_rate_limit} en {settings.reveal_rate_window_minutes} min).",
+        )
         raise HTTPException(status_code=429,
                             detail="Límite de accesos a contraseñas alcanzado; espere unos minutos.")
 
@@ -283,6 +312,37 @@ def credencial_revelar(
 ):
     """Muestra la contraseña en pantalla; queda registrado en auditoría."""
     return _entregar_password(request, db, usuario, credencial_id, audit.CREDENCIAL_REVELADA)
+
+
+@router.post("/credenciales/{credencial_id}/historial/{historial_id}/revelar",
+             dependencies=[Depends(verificar_csrf)])
+def historial_revelar(
+    request: Request,
+    credencial_id: int,
+    historial_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+):
+    """Revela una contraseña anterior (solo gestores; auditado y limitado)."""
+    entrada = db.get(HistorialCredencial, historial_id)
+    if entrada is None or entrada.credencial_id != credencial_id:
+        raise HTTPException(status_code=404, detail="La entrada de historial no existe.")
+
+    settings = get_settings()
+    if not ratelimit.permitir_intento(
+        f"revelar:{usuario.id}", limite=settings.reveal_rate_limit,
+        ventana_minutos=settings.reveal_rate_window_minutes,
+    ):
+        audit.registrar(db, audit.REVELADO_TASA_EXCEDIDA, request=request, usuario=usuario,
+                        objeto_tipo="historial_credencial", objeto_id=historial_id, exito=False)
+        db.commit()
+        raise HTTPException(status_code=429, detail="Límite de accesos alcanzado; espere unos minutos.")
+
+    audit.registrar(db, audit.HISTORIAL_REVELADO, request=request, usuario=usuario,
+                    objeto_tipo="credencial", objeto_id=credencial_id,
+                    detalle=f"Contraseña anterior del {entrada.rotada_en:%d/%m/%Y %H:%M}")
+    return JSONResponse({"password": descifrar(entrada.password_cifrada)},
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.post("/credenciales/{credencial_id}/copiar", dependencies=[Depends(verificar_csrf)])

@@ -1,0 +1,23 @@
+{# Panel de notas seguras. Requiere: activo, tipo_activo, activo_id, puede_revelar, csrf_token. #}
+{% if puede_revelar or puede('inventario.gestionar') %}
+<div class="tarjeta">
+  <div class="encabezado-seccion">
+    <h2>Notas seguras</h2>
+    {% if puede('inventario.gestionar') %}
+    <a class="boton" href="/activos/{{ tipo_activo }}/{{ activo_id }}/notas">Editar notas</a>
+    {% endif %}
+  </div>
+  {% if activo.notas_cifradas %}
+    <p class="texto-suave">Información sensible cifrada en reposo. Su consulta queda registrada en auditoría.</p>
+    {% if puede_revelar %}
+    <button type="button" class="boton" data-revelar-notas="{{ tipo_activo }}/{{ activo_id }}"
+            data-destino="notas-{{ tipo_activo }}-{{ activo_id }}">Ver notas</button>
+    <pre class="bloque-notas" id="notas-{{ tipo_activo }}-{{ activo_id }}" hidden></pre>
+    {% else %}
+    <p class="texto-suave">Hay notas, pero no tiene permiso para verlas.</p>
+    {% endif %}
+  {% else %}
+    <p class="texto-suave">Sin notas registradas.</p>
+  {% endif %}
+</div>
+{% endif %}

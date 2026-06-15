@@ -21,7 +21,20 @@ from app.config import get_settings
 from app.database import get_db, init_db
 from app.deps import RedirigirLogin, render
 from app.models import ROL_ADMIN, Usuario
-from app.routes import accesos, audit_view, auth, credentials, inventory, users
+from app.routes import (
+    accesos,
+    api,
+    audit_view,
+    auth,
+    credentials,
+    importer,
+    inventory,
+    metrics,
+    notes,
+    search,
+    tokens,
+    users,
+)
 from app.security.passwords import hashear_password
 from app.security.sessions import purgar_sesiones_expiradas
 
@@ -184,9 +197,15 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(inventory.router)
+    app.include_router(search.router)
     app.include_router(credentials.router)
     app.include_router(accesos.router)
+    app.include_router(notes.router)
+    app.include_router(importer.router)
     app.include_router(users.router)
+    app.include_router(metrics.router)
+    app.include_router(tokens.router)
+    app.include_router(api.router)
     app.include_router(audit_view.router)
 
     @app.get("/healthz")
