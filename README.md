@@ -66,7 +66,34 @@ CSV, métricas, importación CSV, búsqueda global y tema claro/oscuro.
 Consume una **API JSON** (`/api/web`, en [`app/api_web/`](app/api_web/)) que
 reutiliza el mismo modelo de seguridad del backend: sesión por cookie HttpOnly,
 anti-CSRF (cabecera `X-CSRF-Token`), RBAC y control de acceso por objeto. Ambas
-interfaces conviven. Detalles y puesta en marcha en [`frontend/README.md`](frontend/README.md).
+interfaces conviven. Detalles en [`frontend/README.md`](frontend/README.md).
+
+### Ejecutar el frontend con Docker (recomendado)
+
+Levanta backend + frontend Next.js + nginx (HTTPS) enrutando `/api/*` al backend
+y el resto al frontend:
+
+```bash
+cp .env.example .env        # editar PASSWD_ADMIN_* y PASSWD_DOMAIN
+# Certificado en infrastructure/nginx/certs/{fullchain,privkey}.pem
+# (pruebas: sh infrastructure/nginx/generar-cert-autofirmado.sh localhost)
+docker compose -f docker-compose.yml -f docker-compose.frontend.yml up -d --build
+# Disponible en https://<PASSWD_DOMAIN>
+```
+
+### Ejecutar el frontend en local (desarrollo)
+
+```bash
+uvicorn app.main:app --port 8000           # backend (con PASSWD_COOKIE_SECURE=false)
+cd frontend && pnpm install && pnpm dev     # http://localhost:3000 (proxya /api al backend)
+```
+
+### Verificación funcional
+
+`python scripts/verificar_api_web.py` ejercita end-to-end **todas** las
+funciones de la API JSON (auth+MFA, inventario, credenciales, rotación e
+historial, notas, control de acceso por objeto, usuarios, tokens, auditoría
+con export CSV, métricas, búsqueda, importación CSV y cascadas).
 
 ## Roles
 

@@ -1,0 +1,58 @@
+# Stack completo con el frontend Next.js + shadcn detrás de nginx (HTTPS).
+#
+# Despliega tres servicios: el backend FastAPI (API JSON), el frontend Next.js y
+# nginx, que termina TLS y enruta /api/* y /healthz al backend y el resto al
+# frontend. Sustituye al overlay docker-compose.nginx.yml (que sirve la web Jinja).
+#
+# Uso:
+#   1. Definir PASSWD_ADMIN_* y PASSWD_DOMAIN en .env (ver .env.example).
+#   2. Colocar certificados en infrastructure/nginx/certs/{fullchain,privkey}.pem
+#      (pruebas: ./infrastructure/nginx/generar-cert-autofirmado.sh localhost).
+#   3. docker compose -f docker-compose.yml -f docker-compose.frontend.yml up -d --build
+#   4. Abrir https://<PASSWD_DOMAIN>  (la web Jinja sigue disponible en las
+#      rutas servidas por el backend si se accede directamente a él).
+
+services:
+  app:
+    # Detrás de nginx: confía en las cabeceras de reenvío y deja de publicarse.
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0",
+              "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    ports: !reset []
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      # Aunque nginx enruta /api directamente al backend, fijamos la base por si
+      # alguna petición /api llegara al servidor Next (rewrites de respaldo).
+      PASSWD_API_BASE: http://app:8000
+    expose:
+      - "3000"
+    networks:
+      - red-passwd
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PASSWD_DOMAIN: ${PASSWD_DOMAIN:-localhost}
+      NGINX_ENVSUBST_FILTER: "^PASSWD_"
+    volumes:
+      - ./infrastructure/nginx/templates-frontend:/etc/nginx/templates:ro
+      - ./infrastructure/nginx/certs:/etc/nginx/certs:ro
+      - certbot-webroot:/var/www/certbot:ro
+    networks:
+      - red-passwd
+
+volumes:
+  certbot-webroot:

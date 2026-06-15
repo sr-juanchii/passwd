@@ -42,6 +42,21 @@ cookie de primera parte.
 
 ## Producción
 
+### Con Docker (recomendado)
+
+Desde la raíz del repositorio, un único comando levanta backend + frontend +
+nginx (TLS); nginx enruta `/api/*` y `/healthz` al backend y el resto al
+frontend Next.js:
+
+    cp .env.example .env        # PASSWD_ADMIN_* y PASSWD_DOMAIN
+    docker compose -f docker-compose.yml -f docker-compose.frontend.yml up -d --build
+
+La imagen del frontend (`Dockerfile`) usa la salida `standalone` de Next.js
+(imagen mínima, usuario sin privilegios). Certificados y rotación TLS en
+`../docs/guia-nginx-tls.md`.
+
+### Sin Docker
+
 `pnpm build && pnpm start`, siempre detrás de un proxy TLS (nginx) que enrute
 `/api/*` al backend y el resto al servidor Next.js. La cookie de sesión exige
 HTTPS (`PASSWD_COOKIE_SECURE=true`, por defecto).
