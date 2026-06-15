@@ -52,11 +52,11 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
   Bearer (sin cookies ni CSRF), solo lectura, **nunca expone secretos**; endpoints de auditoría
   (ingestión incremental para SIEM) e inventario. Tokens gestionados por admin (`/tokens`), solo
   hash en BD, revocables y limitados por tasa.
-- 🟡 **LDAP / Active Directory / OIDC**: **diseñado** en [`integracion-oidc.md`](integracion-oidc.md).
-  No se habilita a ciegas: toca el flujo de autenticación, requiere el IdP de la organización y
-  decisiones de política (aprovisionamiento, roles, break-glass, MFA del IdP). Se implementará
-  con esos datos y una revisión de seguridad dedicada; `authlib` además no es instalable en este
-  entorno sin alterar `cryptography`.
+- ⏸️ **LDAP / Active Directory / OIDC**: **sin prioridad por ahora; no se incorpora a `main`.**
+  Toca el flujo de autenticación y requiere el IdP de la organización y decisiones de política
+  (aprovisionamiento, roles, break-glass, MFA del IdP) más una revisión de seguridad dedicada.
+  Queda como candidata futura; cuando se priorice se retomará el diseño y se implementará con esos
+  datos.
 
 ## Extras de bajo coste
 

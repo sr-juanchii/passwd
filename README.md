@@ -37,7 +37,7 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Visibilidad | **Dashboard de métricas** de seguridad (rotación pendiente, logins fallidos 24 h/7 d, cuentas sin MFA, top de accesos a credenciales, concesiones por caducar) y **búsqueda global** del inventario filtrada por el control de acceso por objeto |
 | Inventario ampliado | Campos de **hardware** (RAM/CPU/almacenamiento/serie/garantía/proveedor) y **estado** (activo/mantenimiento/retirado); **etiquetas** con búsqueda; **notas seguras cifradas** por activo (revelado auditado); **historial de contraseñas** anteriores; **importación masiva CSV** (en memoria, cifrando al guardar) |
 | Operación proactiva | **Alertas por correo** opt-in (cuenta bloqueada, posible exfiltración, alta de usuario, fallo de respaldo; sin secretos); **respaldos programados** con retención y aviso de fallo; **limitador de tasa** opcional en BD para despliegues multi-instancia |
-| Integración | **API REST de solo lectura** con tokens Bearer para SIEM/automatización (`/api/v1/auditoria`, `/api/v1/inventario`; nunca expone secretos); tokens gestionados y revocables. SSO **OIDC** diseñado (ver [`docs/integracion-oidc.md`](docs/integracion-oidc.md)) |
+| Integración | **API REST de solo lectura** con tokens Bearer para SIEM/automatización (`/api/v1/auditoria`, `/api/v1/inventario`; nunca expone secretos); tokens gestionados y revocables |
 | Interfaz | Modo claro/oscuro persistente, compatible con la CSP estricta (sin código embebido) |
 | Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff, COOP/CORP), límite de tamaño de petición (OWASP API4), mensajes genéricos anti enumeración, API docs deshabilitadas, **pip-audit** en CI contra dependencias vulnerables |
 
@@ -46,7 +46,7 @@ Cumplimiento documentado con evidencia por control:
 - [`docs/cumplimiento-iso-27003.md`](docs/cumplimiento-iso-27003.md) — alineación ISO/IEC 27003 y Anexo A
 - [`docs/cumplimiento-owasp.md`](docs/cumplimiento-owasp.md) — **OWASP Top 10 (2021) y API Security Top 10 (2023)**
 - [`docs/verificacion-cumplimiento.md`](docs/verificacion-cumplimiento.md) — **informe de verificación** (pruebas, SAST y evidencia dinámica)
-- [`docs/control-acceso.md`](docs/control-acceso.md) · [`docs/integracion-oidc.md`](docs/integracion-oidc.md) — control de acceso por objeto y diseño de SSO
+- [`docs/control-acceso.md`](docs/control-acceso.md) — control de acceso por objeto (roles y concesiones)
 
 Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a producción):
 - [`docs/guia-implementacion.md`](docs/guia-implementacion.md) — **guía de implementación completa**
