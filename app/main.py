@@ -208,6 +208,11 @@ def create_app() -> FastAPI:
     app.include_router(api.router)
     app.include_router(audit_view.router)
 
+    # API JSON para el frontend Next.js (coexiste con la web Jinja).
+    from app.api_web import router as api_web_router
+
+    app.include_router(api_web_router)
+
     @app.get("/healthz")
     def healthz() -> JSONResponse:
         return JSONResponse({"estado": "ok", "version": __version__})
