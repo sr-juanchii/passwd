@@ -63,6 +63,14 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
 - ✅ **Modo oscuro** (atributo `data-tema` en `<html>` + `localStorage`, sin código embebido,
   compatible con la CSP estricta).
 
+## Visión a largo plazo (sin priorizar)
+
+- 🔭 **Rotación remota de contraseñas (evolución a PAM)**: que el sistema cambie la contraseña
+  directamente en el servidor (ciclo cerrado). Cambio de paradigma de bóveda pasiva a plataforma
+  de acceso privilegiado, con su propio modelo de amenazas. Visión, riesgos y hoja de fases en
+  [`vision-rotacion-remota.md`](vision-rotacion-remota.md).
+- ⏸️ **LDAP / Active Directory / OIDC** (SSO): candidata futura, sin prioridad (ver Fase 4).
+
 ## Reconsiderar (ROI bajo para este sistema)
 
 - ⚠️ **Auditoría en tiempo real (WebSocket)**: añade asincronía para poco valor; alternativa
