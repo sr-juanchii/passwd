@@ -53,6 +53,21 @@ Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a 
 - [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md) — **HTTPS con nginx y rotación de certificados**
 - [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md) — **hoja de ruta de mejoras** (viabilidad y fases)
 
+## Interfaz alternativa: Next.js + shadcn/ui
+
+Además de la interfaz Jinja (servida por la propia aplicación), el repositorio
+incluye un **frontend moderno en [`frontend/`](frontend/)** construido con
+**Next.js (App Router, React 19)** y **shadcn/ui**, con **paridad funcional
+completa**: autenticación por etapas con MFA, inventario relacional, gestión de
+credenciales (generador, copiar/revelar con auto-ocultado, historial), notas
+seguras, control de acceso por objeto, usuarios, tokens, auditoría con export
+CSV, métricas, importación CSV, búsqueda global y tema claro/oscuro.
+
+Consume una **API JSON** (`/api/web`, en [`app/api_web/`](app/api_web/)) que
+reutiliza el mismo modelo de seguridad del backend: sesión por cookie HttpOnly,
+anti-CSRF (cabecera `X-CSRF-Token`), RBAC y control de acceso por objeto. Ambas
+interfaces conviven. Detalles y puesta en marcha en [`frontend/README.md`](frontend/README.md).
+
 ## Roles
 
 | Permiso | admin | operador | auditor | analista |
