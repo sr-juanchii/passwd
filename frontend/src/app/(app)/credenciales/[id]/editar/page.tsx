@@ -8,6 +8,7 @@ import type { CredencialDetalle, HistorialEntrada } from "@/lib/types";
 import { rutaActivo } from "@/lib/constants";
 import { PageHeader } from "@/components/page-header";
 import { CredencialForm } from "@/components/forms/credencial-form";
+import { ErrorRecurso } from "@/components/error-recurso";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -58,13 +59,17 @@ export default function EditarCredencialPage() {
   const { id } = useParams<{ id: string }>();
   const cid = Number(id);
   const [data, setData] = useState<CredencialDetalle | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.credencial(cid).then(setData).catch((e) => {
-      toast.error(e instanceof ApiError ? e.message : "No se pudo cargar la credencial.");
+      setError(e instanceof ApiError ? e.message : "No se pudo cargar la credencial.");
     });
   }, [cid]);
 
+  if (error) {
+    return <ErrorRecurso titulo="Credencial no disponible" mensaje={error} />;
+  }
   if (!data) {
     return (
       <div className="flex justify-center py-20">

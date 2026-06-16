@@ -13,6 +13,7 @@ import { CredencialesTabla } from "@/components/credenciales-tabla";
 import { NotasPanel } from "@/components/notas-panel";
 import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
+import { ErrorRecurso } from "@/components/error-recurso";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -22,12 +23,14 @@ export default function VmDetallePage() {
   const router = useRouter();
   const vid = Number(id);
   const [d, setD] = useState<VmDetalle | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     try {
+      setError(null);
       setD(await api.vm(vid));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "No se pudo cargar la VM.");
+      setError(e instanceof ApiError ? e.message : "No se pudo cargar la VM.");
     }
   }, [vid]);
 
@@ -35,6 +38,9 @@ export default function VmDetallePage() {
     void cargar();
   }, [cargar]);
 
+  if (error) {
+    return <ErrorRecurso titulo="Máquina virtual no disponible" mensaje={error} />;
+  }
   if (!d) {
     return (
       <div className="flex justify-center py-20">

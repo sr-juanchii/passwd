@@ -7,19 +7,23 @@ import { api, ApiError } from "@/lib/api";
 import type { VmDetalle } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { VmForm } from "@/components/forms/vm-form";
-import { toast } from "sonner";
+import { ErrorRecurso } from "@/components/error-recurso";
 
 export default function EditarVmPage() {
   const { id } = useParams<{ id: string }>();
   const vid = Number(id);
   const [data, setData] = useState<VmDetalle | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.vm(vid).then(setData).catch((e) => {
-      toast.error(e instanceof ApiError ? e.message : "No se pudo cargar la VM.");
+      setError(e instanceof ApiError ? e.message : "No se pudo cargar la VM.");
     });
   }, [vid]);
 
+  if (error) {
+    return <ErrorRecurso titulo="Máquina virtual no disponible" mensaje={error} />;
+  }
   if (!data) {
     return (
       <div className="flex justify-center py-20">

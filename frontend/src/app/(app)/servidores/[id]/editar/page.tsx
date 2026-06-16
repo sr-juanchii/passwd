@@ -7,19 +7,23 @@ import { api, ApiError } from "@/lib/api";
 import type { ServidorDetalle } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { ServidorForm } from "@/components/forms/servidor-form";
-import { toast } from "sonner";
+import { ErrorRecurso } from "@/components/error-recurso";
 
 export default function EditarServidorPage() {
   const { id } = useParams<{ id: string }>();
   const sid = Number(id);
   const [data, setData] = useState<ServidorDetalle | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.servidor(sid).then(setData).catch((e) => {
-      toast.error(e instanceof ApiError ? e.message : "No se pudo cargar el servidor.");
+      setError(e instanceof ApiError ? e.message : "No se pudo cargar el servidor.");
     });
   }, [sid]);
 
+  if (error) {
+    return <ErrorRecurso titulo="Servidor no disponible" mensaje={error} />;
+  }
   if (!data) {
     return (
       <div className="flex justify-center py-20">

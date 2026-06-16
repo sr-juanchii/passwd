@@ -7,19 +7,23 @@ import { api, ApiError } from "@/lib/api";
 import type { HipervisorDetalle } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { HipervisorForm } from "@/components/forms/hipervisor-form";
-import { toast } from "sonner";
+import { ErrorRecurso } from "@/components/error-recurso";
 
 export default function EditarHipervisorPage() {
   const { id } = useParams<{ id: string }>();
   const hid = Number(id);
   const [data, setData] = useState<HipervisorDetalle | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.hipervisor(hid).then(setData).catch((e) => {
-      toast.error(e instanceof ApiError ? e.message : "No se pudo cargar el hipervisor.");
+      setError(e instanceof ApiError ? e.message : "No se pudo cargar el hipervisor.");
     });
   }, [hid]);
 
+  if (error) {
+    return <ErrorRecurso titulo="Hipervisor no disponible" mensaje={error} />;
+  }
   if (!data) {
     return (
       <div className="flex justify-center py-20">

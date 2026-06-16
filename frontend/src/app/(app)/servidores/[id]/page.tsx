@@ -14,6 +14,7 @@ import { CredencialesTabla } from "@/components/credenciales-tabla";
 import { NotasPanel } from "@/components/notas-panel";
 import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
+import { ErrorRecurso } from "@/components/error-recurso";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,12 +25,14 @@ export default function ServidorDetallePage() {
   const router = useRouter();
   const sid = Number(id);
   const [d, setD] = useState<ServidorDetalle | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     try {
+      setError(null);
       setD(await api.servidor(sid));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "No se pudo cargar el servidor.");
+      setError(e instanceof ApiError ? e.message : "No se pudo cargar el servidor.");
     }
   }, [sid]);
 
@@ -37,6 +40,9 @@ export default function ServidorDetallePage() {
     void cargar();
   }, [cargar]);
 
+  if (error) {
+    return <ErrorRecurso titulo="Servidor no disponible" mensaje={error} />;
+  }
   if (!d) {
     return (
       <div className="flex justify-center py-20">
