@@ -5,7 +5,7 @@
     "dockerfilePath": "/Dockerfile"
   },
   "deploy": {
-    "startCommand": "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}",
+    "startCommand": "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=*",
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
@@ -20,7 +20,9 @@
         "PASSWD_ENCRYPTION_KEY": "${{PASSWD_ENCRYPTION_KEY}}",
         "PASSWD_ADMIN_USERNAME": "${{PASSWD_ADMIN_USERNAME}}",
         "PASSWD_ADMIN_EMAIL": "${{PASSWD_ADMIN_EMAIL}}",
-        "PASSWD_ADMIN_PASSWORD": "${{PASSWD_ADMIN_PASSWORD}}"
+        "PASSWD_ADMIN_PASSWORD": "${{PASSWD_ADMIN_PASSWORD}}",
+        "PASSWD_COOKIE_SECURE": "true",
+        "PASSWD_RATE_LIMIT_BACKEND": "bd"
       }
     }
   }

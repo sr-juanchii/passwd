@@ -1,0 +1,14 @@
+# Caddy como proxy inverso del backend con HTTPS automático (Let's Encrypt).
+# El dominio se inyecta por la variable PASSWD_API_DOMAIN (docker-compose.backend.yml).
+# Caddy obtiene y renueva el certificado solo; reenvía a la API en el puerto 8000
+# y añade las cabeceras X-Forwarded-* (la app las usa para la IP real en auditoría).
+
+{$PASSWD_API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+
+	# Límite de tamaño de petición como primera barrera (la app aplica el suyo).
+	request_body {
+		max_size 1MB
+	}
+}

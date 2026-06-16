@@ -42,7 +42,13 @@ export function getCsrf() {
   return csrfToken;
 }
 
-const BASE = "/api/web";
+// Base de la API. Por defecto relativa: el proxy de Next (next.config.ts)
+// reenvía /api/web al backend y el navegador ve un único origen (cookies de
+// primera parte, más seguro). Si se define NEXT_PUBLIC_API_BASE, el frontend
+// llama al backend de forma DIRECTA (cross-origin) — útil para v0/Vercel con el
+// backend en un VPS; requiere CORS + cookies SameSite=None en el backend.
+const API_ROOT = (process.env.NEXT_PUBLIC_API_BASE ?? "").replace(/\/$/, "");
+const BASE = `${API_ROOT}/api/web`;
 
 type Opts = {
   method?: string;

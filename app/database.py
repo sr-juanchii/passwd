@@ -30,6 +30,10 @@ def get_engine() -> Engine:
         opciones: dict = {"pool_pre_ping": True}
         if database_url.startswith("sqlite"):
             opciones["connect_args"] = {"check_same_thread": False}
+        elif database_url.startswith(("postgresql", "postgres")):
+            # Fuerza UTF-8 en el cliente (las BD gestionadas tipo Neon son UTF8);
+            # evita errores de codificación si el servidor declarara otra cosa.
+            opciones["connect_args"] = {"client_encoding": "utf8"}
         _engine = create_engine(database_url, **opciones)
         if database_url.startswith("sqlite"):
 

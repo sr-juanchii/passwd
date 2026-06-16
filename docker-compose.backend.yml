@@ -1,0 +1,58 @@
+# Despliegue SOLO del backend (API) en un VPS, detrás de Caddy con HTTPS
+# automático (Let's Encrypt). Pensado para conectar un frontend alojado en
+# Vercel/v0 (cross-site): la API queda en https://<PASSWD_API_DOMAIN> y el
+# frontend la consume con CORS + cookies SameSite=None.
+#
+# Requisitos: un dominio (o subdominio) apuntando a la IP del VPS y los puertos
+# 80/443 abiertos. Uso:
+#   1) cp .env.example .env  y define al menos:
+#        PASSWD_ADMIN_USERNAME / PASSWD_ADMIN_EMAIL / PASSWD_ADMIN_PASSWORD
+#        PASSWD_API_DOMAIN=api.tu-dominio.tld
+#        PASSWD_CORS_ORIGINS=https://tu-frontend.vercel.app
+#        PASSWD_COOKIE_SAMESITE=none
+#        PASSWD_COOKIE_SECURE=true
+#        # genera y FIJA estas dos para no perder los datos cifrados entre redeploys:
+#        PASSWD_SECRET_KEY=...      PASSWD_ENCRYPTION_KEY=...
+#   2) docker compose -f docker-compose.backend.yml up -d --build
+#
+# La web Jinja también queda servida por la misma API (en las rutas no /api).
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PASSWD_DATA_DIR: /srv/passwd/data
+    expose:
+      - "8000"
+    volumes:
+      - datos-passwd:/srv/passwd/data
+    networks:
+      - red-passwd
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PASSWD_API_DOMAIN: ${PASSWD_API_DOMAIN:-localhost}
+    volumes:
+      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - red-passwd
+
+volumes:
+  datos-passwd:
+  caddy-data:
+  caddy-config:
+
+networks:
+  red-passwd:
+    driver: bridge
