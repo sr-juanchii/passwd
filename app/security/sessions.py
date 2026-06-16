@@ -98,14 +98,24 @@ def purgar_sesiones_expiradas(db: Session) -> int:
     return len(antiguas)
 
 
+def samesite_y_secure() -> tuple[str, bool]:
+    """SameSite y Secure efectivos para las cookies (config cross-site)."""
+    settings = get_settings()
+    samesite = settings.cookie_samesite
+    # SameSite=None exige Secure; en cualquier caso respeta COOKIE_SECURE.
+    secure = settings.cookie_secure or samesite == "none"
+    return samesite, secure
+
+
 def configurar_cookie(respuesta, token: str) -> None:
     settings = get_settings()
+    samesite, secure = samesite_y_secure()
     respuesta.set_cookie(
         key=COOKIE_SESION,
         value=token,
         httponly=True,
-        secure=settings.cookie_secure,
-        samesite="strict",
+        secure=secure,
+        samesite=samesite,
         max_age=settings.session_max_hours * 3600,
         path="/",
     )

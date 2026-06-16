@@ -1,0 +1,19 @@
+# Contexto de build del backend (Dockerfile). Mantiene la imagen pequeña y los
+# despliegues en PaaS rápidos: solo se necesita requirements.txt y app/.
+.git
+.github
+frontend
+tests
+docs
+infrastructure
+scripts
+*.md
+docker-compose*.yml
+.env
+.env.*
+!.env.example
+data
+**/__pycache__
+**/*.pyc
+.ruff_cache
+.pytest_cache

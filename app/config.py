@@ -31,6 +31,11 @@ def _env_bool(nombre: str, por_defecto: bool) -> bool:
     return valor in {"1", "true", "yes", "si", "sí", "on"}
 
 
+def _env_lista(nombre: str, por_defecto: str = "") -> list[str]:
+    """Lista separada por comas (p. ej. orígenes CORS)."""
+    return [parte.strip() for parte in _env(nombre, por_defecto).split(",") if parte.strip()]
+
+
 def _leer_o_generar_secreto(ruta: Path, generador) -> str:
     """Lee un secreto persistido o lo genera con permisos restrictivos."""
     if ruta.exists():
@@ -55,6 +60,15 @@ class Settings:
     session_idle_minutes: int = field(default_factory=lambda: _env_int("SESSION_IDLE_MINUTES", 15))
     session_max_hours: int = field(default_factory=lambda: _env_int("SESSION_MAX_HOURS", 8))
     cookie_secure: bool = field(default_factory=lambda: _env_bool("COOKIE_SECURE", True))
+    # SameSite de las cookies de sesión: "strict" (mismo origen, por defecto y más
+    # seguro) o "none" para despliegues cross-site (frontend en otro dominio, p. ej.
+    # Vercel/v0 + backend en un VPS). "none" obliga a Secure (HTTPS).
+    cookie_samesite: str = field(default_factory=lambda: _env("COOKIE_SAMESITE", "strict").strip().lower())
+
+    # Orígenes permitidos para CORS con credenciales (vacío = sin CORS, mismo
+    # origen). Define el/los dominios del frontend, p. ej.:
+    #   PASSWD_CORS_ORIGINS=https://mi-app.vercel.app,https://preview.vercel.app
+    cors_origins: list[str] = field(default_factory=lambda: _env_lista("CORS_ORIGINS", ""))
 
     # Cuentas (CIS 5.2, 6.2 — política de contraseñas y bloqueo)
     password_min_length: int = field(default_factory=lambda: _env_int("PASSWORD_MIN_LENGTH", 12))
@@ -105,6 +119,11 @@ class Settings:
     encryption_key: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
+        if self.cookie_samesite not in {"strict", "lax", "none"}:
+            self.cookie_samesite = "strict"
+        # SameSite=None solo es válido con cookies Secure (requisito del navegador).
+        if self.cookie_samesite == "none":
+            self.cookie_secure = True
         self.data_dir = self.data_dir.resolve()
         if not self.database_url:
             self.data_dir.mkdir(parents=True, exist_ok=True)
