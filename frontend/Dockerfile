@@ -4,18 +4,20 @@
 # ── Dependencias ─────────────────────────────────────────────────────────────
 FROM node:22-slim AS deps
 WORKDIR /app
-RUN corepack enable
+# Corepack usa la versión de pnpm fijada en package.json (campo packageManager),
+# sin prompt interactivo de descarga.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN corepack enable && pnpm install --frozen-lockfile
 
 # ── Build ────────────────────────────────────────────────────────────────────
 FROM node:22-slim AS build
 WORKDIR /app
-RUN corepack enable
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build
+RUN corepack enable && pnpm build
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
 FROM node:22-slim AS runtime
