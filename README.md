@@ -53,6 +53,83 @@ Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a 
 - [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md) — **HTTPS con nginx y rotación de certificados**
 - [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md) — **hoja de ruta de mejoras** (viabilidad y fases)
 
+## Interfaz alternativa: Next.js + shadcn/ui
+
+Además de la interfaz Jinja (servida por la propia aplicación), el repositorio
+incluye un **frontend moderno en [`frontend/`](frontend/)** construido con
+**Next.js (App Router, React 19)** y **shadcn/ui**, con **paridad funcional
+completa**: autenticación por etapas con MFA, inventario relacional, gestión de
+credenciales (generador, copiar/revelar con auto-ocultado, historial), notas
+seguras, control de acceso por objeto, usuarios, tokens, auditoría con export
+CSV, métricas, importación CSV, búsqueda global y tema claro/oscuro.
+
+Consume una **API JSON** (`/api/web`, en [`app/api_web/`](app/api_web/)) que
+reutiliza el mismo modelo de seguridad del backend: sesión por cookie HttpOnly,
+anti-CSRF (cabecera `X-CSRF-Token`), RBAC y control de acceso por objeto. Ambas
+interfaces conviven. Detalles en [`frontend/README.md`](frontend/README.md).
+
+### Ejecutar el frontend con Docker (recomendado)
+
+Levanta backend + frontend Next.js + nginx (HTTPS) enrutando `/api/*` al backend
+y el resto al frontend:
+
+```bash
+cp .env.example .env        # editar PASSWD_ADMIN_* y PASSWD_DOMAIN
+# Certificado en infrastructure/nginx/certs/{fullchain,privkey}.pem
+# (pruebas: sh infrastructure/nginx/generar-cert-autofirmado.sh localhost)
+docker compose -f docker-compose.yml -f docker-compose.frontend.yml up -d --build
+# Disponible en https://<PASSWD_DOMAIN>
+```
+
+#### En Windows (PowerShell)
+
+```powershell
+Copy-Item .env.example .env     # editar PASSWD_ADMIN_* y PASSWD_DOMAIN
+# Certificado autofirmado de pruebas (usa OpenSSL local o, si no está, Docker):
+powershell -ExecutionPolicy Bypass -File .\infrastructure\nginx\generar-cert-autofirmado.ps1 localhost
+docker compose -f docker-compose.yml -f docker-compose.frontend.yml up -d --build
+# Disponible en https://localhost (acepte la advertencia del certificado autofirmado)
+```
+
+Si prefiere no usar el script, el certificado de pruebas se genera con un único
+contenedor (no requiere instalar OpenSSL):
+
+```powershell
+docker run --rm -v "${PWD}\infrastructure\nginx\certs:/certs" alpine/openssl `
+  req -x509 -nodes -newkey rsa:2048 -days 365 `
+  -keyout /certs/privkey.pem -out /certs/fullchain.pem `
+  -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+> En producción **no** use certificados autofirmados: coloque los de su CA o
+> Let's Encrypt en `infrastructure/nginx/certs/`. Guía completa y rotación en
+> [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md).
+
+### Ejecutar el frontend en local (desarrollo)
+
+Sin Docker ni TLS (más simple para desarrollar); el navegador habla con Next y
+este proxya `/api` al backend, así que **no hace falta certificado**:
+
+```bash
+# Linux/macOS
+PASSWD_COOKIE_SECURE=false uvicorn app.main:app --port 8000
+cd frontend && pnpm install && pnpm dev     # http://localhost:3000
+```
+
+```powershell
+# Windows (PowerShell)
+$env:PASSWD_COOKIE_SECURE = "false"; uvicorn app.main:app --port 8000
+# en otra terminal:
+cd frontend; pnpm install; pnpm dev          # http://localhost:3000
+```
+
+### Verificación funcional
+
+`python scripts/verificar_api_web.py` ejercita end-to-end **todas** las
+funciones de la API JSON (auth+MFA, inventario, credenciales, rotación e
+historial, notas, control de acceso por objeto, usuarios, tokens, auditoría
+con export CSV, métricas, búsqueda, importación CSV y cascadas).
+
 ## Roles
 
 | Permiso | admin | operador | auditor | analista |

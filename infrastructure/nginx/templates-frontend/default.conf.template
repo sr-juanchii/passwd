@@ -1,0 +1,82 @@
+# ── Gestor de Contraseñas — TLS con nginx delante del frontend Next.js ───────
+# Enruta:  /api/* y /healthz  -> backend FastAPI (app:8000)
+#          el resto            -> frontend Next.js (frontend:3000)
+#
+# Procesada con envsubst al arrancar (solo variables PASSWD_*). Los certificados
+# se leen de /etc/nginx/certs/{fullchain,privkey}.pem (rotación: reemplazar y recargar).
+
+server_tokens off;
+
+# ── HTTP (80): desafío ACME y redirección a HTTPS ────────────────────────────
+server {
+    listen 80 default_server;
+    server_name ${PASSWD_DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS (443) ──────────────────────────────────────────────────────────────
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${PASSWD_DOMAIN};
+
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:tls_passwd:10m;
+    ssl_session_tickets off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    resolver 127.0.0.11 valid=300s;
+    resolver_timeout 5s;
+
+    # HSTS la emite nginx (único emisor). El resto de cabeceras de seguridad de
+    # las rutas /api las pone el backend y se reenvían tal cual.
+    proxy_hide_header Strict-Transport-Security;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # Endurecido también para las respuestas del frontend.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    client_max_body_size 4m;
+
+    # ── nginx detrás de OTRO proxy (opcional, ver guía-nginx-tls.md §realip) ──
+    #set_real_ip_from 10.0.0.0/8;
+    #real_ip_header X-Forwarded-For;
+    #real_ip_recursive on;
+
+    # API JSON y de tokens + healthcheck -> backend FastAPI.
+    location ~ ^/(api/|healthz) {
+        proxy_pass http://app:8000;
+        proxy_http_version 1.1;
+        proxy_set_header X-Forwarded-For $remote_addr;     # anti-spoofing del registro
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Host $host;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+    }
+
+    # Todo lo demás -> frontend Next.js.
+    location / {
+        proxy_pass http://frontend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+    }
+}
