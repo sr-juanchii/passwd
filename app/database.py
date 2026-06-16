@@ -24,15 +24,18 @@ def get_engine() -> Engine:
     global _engine, _session_factory
     if _engine is None:
         settings = get_settings()
+        database_url = settings.database_url
+        if database_url.startswith("mysql://"):
+            database_url = database_url.replace("mysql://", "mysql+pymysql://", 1)
         opciones: dict = {"pool_pre_ping": True}
-        if settings.database_url.startswith("sqlite"):
+        if database_url.startswith("sqlite"):
             opciones["connect_args"] = {"check_same_thread": False}
-        elif settings.database_url.startswith(("postgresql", "postgres")):
+        elif database_url.startswith(("postgresql", "postgres")):
             # Fuerza UTF-8 en el cliente (las BD gestionadas tipo Neon son UTF8);
             # evita errores de codificación si el servidor declarara otra cosa.
             opciones["connect_args"] = {"client_encoding": "utf8"}
-        _engine = create_engine(settings.database_url, **opciones)
-        if settings.database_url.startswith("sqlite"):
+        _engine = create_engine(database_url, **opciones)
+        if database_url.startswith("sqlite"):
 
             @event.listens_for(_engine, "connect")
             def _activar_fk(dbapi_conn, _record) -> None:  # pragma: no cover
