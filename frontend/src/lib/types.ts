@@ -2,7 +2,6 @@
 
 export type Rol = "admin" | "operador" | "auditor" | "analista";
 export type EstadoActivo = "activo" | "mantenimiento" | "retirado";
-export type TipoServidor = "funcion_unica" | "host_virtualizacion";
 export type TipoActivo = "fisico" | "hipervisor" | "vm";
 export type NivelAcceso = "ver" | "ver_credenciales";
 export type Etapa = "cambio_password" | "mfa_enrolamiento" | "mfa_pendiente" | "activa";
@@ -65,6 +64,8 @@ export interface HipervisorNodo {
   nombre: string;
   plataforma: string;
   estado: EstadoActivo;
+  ip_gestion: string;
+  etiquetas: string[];
   credenciales: Credencial[];
   vms: VmNodo[];
 }
@@ -72,13 +73,10 @@ export interface HipervisorNodo {
 export interface ServidorNodo {
   id: number;
   nombre: string;
-  tipo: TipoServidor;
-  etiqueta_tipo: string;
   estado: EstadoActivo;
   ip_gestion: string;
   etiquetas: string[];
   credenciales: Credencial[];
-  hipervisores: HipervisorNodo[];
 }
 
 export interface Resumen {
@@ -106,7 +104,8 @@ export interface Concesion {
 export interface DashboardAdmin {
   es_analista: false;
   resumen: Resumen;
-  arbol: ServidorNodo[];
+  servidores: ServidorNodo[];
+  hipervisores: HipervisorNodo[];
 }
 export interface DashboardAnalista {
   es_analista: true;
@@ -122,7 +121,6 @@ export interface AnalistaRef {
 
 export interface ServidorInput {
   nombre: string;
-  tipo: TipoServidor;
   descripcion: string;
   sistema_operativo: string;
   marca_modelo: string;
@@ -140,10 +138,8 @@ export interface ServidorInput {
 
 export interface ServidorDetalle extends ServidorInput {
   id: number;
-  etiqueta_tipo: string;
   lista_etiquetas: string[];
   credenciales: Credencial[];
-  hipervisores: { id: number; nombre: string; plataforma: string; estado: EstadoActivo }[];
   puede_gestionar: boolean;
   puede_gestionar_accesos: boolean;
   tiene_notas: boolean;
@@ -157,14 +153,21 @@ export interface HipervisorInput {
   version: string;
   ip_gestion: string;
   descripcion: string;
+  marca_modelo: string;
+  ubicacion: string;
+  ram: string;
+  cpu: string;
+  almacenamiento: string;
+  numero_serie: string;
+  garantia_hasta: string;
+  proveedor: string;
   estado: EstadoActivo;
   etiquetas: string;
 }
 
 export interface HipervisorDetalle extends HipervisorInput {
   id: number;
-  servidor_fisico_id: number;
-  servidor_fisico_nombre: string;
+  lista_etiquetas: string[];
   credenciales: Credencial[];
   vms: { id: number; nombre: string; sistema_operativo: string; estado: EstadoActivo }[];
   puede_gestionar: boolean;

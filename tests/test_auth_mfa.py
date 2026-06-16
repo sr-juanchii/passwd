@@ -57,7 +57,7 @@ def test_flujo_completo_password_cambio_y_mfa(client):
 
     pagina = client.get("/")
     assert pagina.status_code == 200
-    assert "Inventario de servidores" in pagina.text
+    assert "Inventario" in pagina.text
 
     db = sesion_bd()
     try:

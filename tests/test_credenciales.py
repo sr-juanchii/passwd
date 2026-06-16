@@ -131,7 +131,7 @@ def test_auditor_no_puede_revelar_ni_gestionar(client, crear_cliente):
     # Puede ver el inventario, pero sin botones de gestión
     panel = cliente_auditor.get("/")
     assert panel.status_code == 200
-    assert "+ Servidor físico" not in panel.text
+    assert "+ Servidor dedicado" not in panel.text
 
     detalle = cliente_auditor.get(f"/servidores/{fisico}")
     assert detalle.status_code == 200

@@ -43,9 +43,12 @@ def get_engine() -> Engine:
 def init_db() -> None:
     """Crea las tablas que falten y reconcilia columnas nuevas (cambios aditivos)."""
     from app import models  # noqa: F401  (registra los modelos)
-    from app.schema_sync import reconciliar_esquema
+    from app.schema_sync import migrar_inventario_nivel_superior, reconciliar_esquema
 
     engine = get_engine()
+    # Migración no aditiva del inventario (hipervisor de nivel superior) ANTES de
+    # create_all, para que este recree las tablas de inventario con el esquema nuevo.
+    migrar_inventario_nivel_superior(engine)
     Base.metadata.create_all(engine)
     reconciliar_esquema(engine)
 

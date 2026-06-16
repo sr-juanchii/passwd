@@ -6,7 +6,6 @@ import {
   Boxes,
   ChevronRight,
   Cpu,
-  HardDrive,
   KeyRound,
   Loader2,
   MonitorSmartphone,
@@ -71,21 +70,41 @@ function CredCount({ n }: { n: number }) {
   );
 }
 
-function rotacionPendiente(nodo: ServidorNodo | HipervisorNodo): number {
-  let total = nodo.credenciales.filter((c) => c.rotacion_vencida).length;
-  if ("hipervisores" in nodo) {
-    for (const h of nodo.hipervisores) total += rotacionPendiente(h);
-  }
-  if ("vms" in nodo) {
-    for (const v of nodo.vms) total += v.credenciales.filter((c) => c.rotacion_vencida).length;
-  }
+function alertasServidor(s: ServidorNodo): number {
+  return s.credenciales.filter((c) => c.rotacion_vencida).length;
+}
+
+function alertasHipervisor(h: HipervisorNodo): number {
+  let total = h.credenciales.filter((c) => c.rotacion_vencida).length;
+  for (const v of h.vms) total += v.credenciales.filter((c) => c.rotacion_vencida).length;
   return total;
 }
 
-function NodoServidor({ s, puedeGestionar }: { s: ServidorNodo; puedeGestionar: boolean }) {
+function TarjetaServidor({ s }: { s: ServidorNodo }) {
+  const alertas = alertasServidor(s);
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center gap-2 space-y-0 py-3">
+        <Server className="h-4 w-4 text-muted-foreground" />
+        <Link href={rutaActivo("fisico", s.id)} className="flex-1 font-medium hover:underline">
+          {s.nombre}
+        </Link>
+        <EstadoBadge estado={s.estado} />
+        {alertas > 0 && (
+          <Badge variant="destructive" className="gap-1">
+            <TriangleAlert className="h-3 w-3" /> {alertas}
+          </Badge>
+        )}
+        <CredCount n={s.credenciales.length} />
+        {s.ip_gestion && <span className="hidden text-xs text-muted-foreground sm:inline">{s.ip_gestion}</span>}
+      </CardHeader>
+    </Card>
+  );
+}
+
+function NodoHipervisor({ h }: { h: HipervisorNodo }) {
   const [abierto, setAbierto] = useState(false);
-  const esHost = s.tipo === "host_virtualizacion";
-  const alertas = rotacionPendiente(s);
+  const alertas = alertasHipervisor(h);
   return (
     <Card>
       <CardHeader className="flex-row items-center gap-2 space-y-0 py-3">
@@ -95,65 +114,42 @@ function NodoServidor({ s, puedeGestionar }: { s: ServidorNodo; puedeGestionar: 
           aria-expanded={abierto}
         >
           <ChevronRight className={`h-4 w-4 transition-transform ${abierto ? "rotate-90" : ""}`} />
-          <Server className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium">{s.nombre}</span>
-          <Badge variant="outline">{s.etiqueta_tipo}</Badge>
-          <EstadoBadge estado={s.estado} />
+          <Cpu className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium">{h.nombre}</span>
+          {h.plataforma && <Badge variant="secondary">{h.plataforma}</Badge>}
+          <EstadoBadge estado={h.estado} />
           {alertas > 0 && (
             <Badge variant="destructive" className="gap-1">
               <TriangleAlert className="h-3 w-3" /> {alertas}
             </Badge>
           )}
         </button>
-        <CredCount n={s.credenciales.length} />
+        <span className="text-xs text-muted-foreground">{h.vms.length} VM(s)</span>
+        <CredCount n={h.credenciales.length} />
         <Button size="sm" variant="ghost" asChild>
-          <Link href={rutaActivo("fisico", s.id)}>Abrir</Link>
+          <Link href={rutaActivo("hipervisor", h.id)}>Abrir</Link>
         </Button>
       </CardHeader>
       {abierto && (
-        <CardContent className="space-y-2 pl-10">
-          {s.ip_gestion && (
-            <p className="text-xs text-muted-foreground">Gestión: {s.ip_gestion}</p>
-          )}
-          {esHost && (
-            <div className="space-y-1">
-              {s.hipervisores.length === 0 && (
-                <p className="text-sm text-muted-foreground">Sin hipervisores.</p>
-              )}
-              {s.hipervisores.map((h) => (
-                <div key={h.id} className="rounded-md border p-2">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="h-4 w-4 text-muted-foreground" />
-                    <Link href={rutaActivo("hipervisor", h.id)} className="font-medium hover:underline">
-                      {h.nombre}
-                    </Link>
-                    {h.plataforma && <Badge variant="secondary">{h.plataforma}</Badge>}
-                    <EstadoBadge estado={h.estado} />
-                    <CredCount n={h.credenciales.length} />
-                  </div>
-                  {h.vms.length > 0 && (
-                    <ul className="mt-1 space-y-1 pl-6">
-                      {h.vms.map((v) => (
-                        <li key={v.id} className="flex items-center gap-2 text-sm">
-                          <MonitorSmartphone className="h-3.5 w-3.5 text-muted-foreground" />
-                          <Link href={rutaActivo("vm", v.id)} className="hover:underline">
-                            {v.nombre}
-                          </Link>
-                          <CredCount n={v.credenciales.length} />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-              {puedeGestionar && (
-                <Button size="sm" variant="outline" asChild>
-                  <Link href={`/servidores/${s.id}/hipervisores/nuevo`}>
-                    <Plus className="h-3.5 w-3.5" /> Hipervisor
+        <CardContent className="space-y-1 pl-10">
+          {h.ip_gestion && <p className="text-xs text-muted-foreground">Gestión: {h.ip_gestion}</p>}
+          {h.vms.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin máquinas virtuales.</p>
+          ) : (
+            <ul className="space-y-1">
+              {h.vms.map((v) => (
+                <li key={v.id} className="flex items-center gap-2 text-sm">
+                  <MonitorSmartphone className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Link href={rutaActivo("vm", v.id)} className="hover:underline">
+                    {v.nombre}
                   </Link>
-                </Button>
-              )}
-            </div>
+                  {v.sistema_operativo && (
+                    <span className="text-xs text-muted-foreground">{v.sistema_operativo}</span>
+                  )}
+                  <CredCount n={v.credenciales.length} />
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       )}
@@ -252,23 +248,31 @@ export default function DashboardPage() {
   }
 
   const r: Resumen = data.resumen;
+  const vacio = data.servidores.length === 0 && data.hipervisores.length === 0;
   return (
     <>
       <PageHeader
         titulo="Inventario"
-        descripcion="Infraestructura de servidores, hipervisores y máquinas virtuales."
+        descripcion="Servidores dedicados e hipervisores con sus máquinas virtuales."
         acciones={
           puedeGestionar && (
-            <Button asChild>
-              <Link href="/servidores/nuevo">
-                <Plus className="h-4 w-4" /> Nuevo servidor
-              </Link>
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline">
+                <Link href="/servidores/nuevo">
+                  <Plus className="h-4 w-4" /> Servidor dedicado
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link href="/hipervisores/nuevo">
+                  <Plus className="h-4 w-4" /> Hipervisor
+                </Link>
+              </Button>
+            </div>
           )
         }
       />
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <TarjetaResumen icono={Server} etiqueta="Servidores físicos" valor={r.servidores} />
+        <TarjetaResumen icono={Server} etiqueta="Servidores dedicados" valor={r.servidores} />
         <TarjetaResumen icono={Cpu} etiqueta="Hipervisores" valor={r.hipervisores} />
         <TarjetaResumen icono={MonitorSmartphone} etiqueta="Máquinas virtuales" valor={r.vms} />
         <TarjetaResumen icono={KeyRound} etiqueta="Credenciales" valor={r.credenciales} />
@@ -280,27 +284,32 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="space-y-2">
-        {data.arbol.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-              <Boxes className="h-10 w-10 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                Aún no hay servidores registrados.
-              </p>
-              {puedeGestionar && (
-                <Button asChild>
-                  <Link href="/servidores/nuevo">
-                    <Plus className="h-4 w-4" /> Registrar el primero
-                  </Link>
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+      {vacio && (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+            <Boxes className="h-10 w-10 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Aún no hay activos registrados.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      <section className="mb-6 space-y-2">
+        <h2 className="text-lg font-medium">Servidores dedicados</h2>
+        {data.servidores.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No hay servidores dedicados.</p>
         ) : (
-          data.arbol.map((s) => <NodoServidor key={s.id} s={s} puedeGestionar={puedeGestionar} />)
+          data.servidores.map((s) => <TarjetaServidor key={s.id} s={s} />)
         )}
-      </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-lg font-medium">Hipervisores</h2>
+        {data.hipervisores.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No hay hipervisores.</p>
+        ) : (
+          data.hipervisores.map((h) => <NodoHipervisor key={h.id} h={h} />)
+        )}
+      </section>
     </>
   );
 }

@@ -3,22 +3,12 @@
 {% block contenido %}
 <p><a class="enlace-suave" href="{{ '/servidores/' ~ servidor.id if servidor else '/' }}">← Volver</a></p>
 <div class="tarjeta tarjeta-formulario">
-  <h1>{{ 'Editar servidor físico' if servidor else 'Nuevo servidor físico' }}</h1>
+  <h1>{{ 'Editar servidor dedicado' if servidor else 'Nuevo servidor dedicado' }}</h1>
   <form method="post" action="{{ '/servidores/' ~ servidor.id ~ '/editar' if servidor else '/servidores/nuevo' }}" class="formulario">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <label for="nombre">Nombre / hostname *</label>
     <input id="nombre" name="nombre" type="text" required maxlength="120" value="{{ servidor.nombre if servidor else '' }}">
-
-    <label for="tipo">Tipo de servidor *</label>
-    <select id="tipo" name="tipo">
-      <option value="funcion_unica" {{ 'selected' if servidor and servidor.tipo == 'funcion_unica' }}>
-        Función única — servidor físico dedicado a un solo sistema
-      </option>
-      <option value="host_virtualizacion" {{ 'selected' if servidor and servidor.tipo == 'host_virtualizacion' }}>
-        Host de virtualización — sin función única; aloja hipervisores y VMs
-      </option>
-    </select>
 
     <label for="descripcion">Descripción del sistema / función</label>
     <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"

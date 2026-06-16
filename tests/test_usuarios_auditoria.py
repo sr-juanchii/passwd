@@ -172,4 +172,4 @@ def test_cambio_de_rol_revoca_sesiones(client, crear_cliente):
     assert verificar_mfa(cliente_objetivo, secreto, desplazamiento=30).status_code == 303
     panel = cliente_objetivo.get("/")
     assert panel.status_code == 200
-    assert "+ Servidor físico" in panel.text  # permiso de gestión visible
+    assert "+ Servidor dedicado" in panel.text  # permiso de gestión visible

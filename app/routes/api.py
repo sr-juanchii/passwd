@@ -98,14 +98,21 @@ def api_inventario(
     vms = db.scalars(select(MaquinaVirtual).order_by(MaquinaVirtual.nombre)).all()
 
     def _srv(s: ServidorFisico) -> dict:
-        return {"id": s.id, "nombre": s.nombre, "tipo": s.tipo, "estado": s.estado,
+        return {"id": s.id, "nombre": s.nombre, "estado": s.estado,
                 "sistema_operativo": s.sistema_operativo, "ip_gestion": s.ip_gestion,
                 "etiquetas": s.lista_etiquetas}
 
+    def _hv(h: Hipervisor) -> dict:
+        return {"id": h.id, "nombre": h.nombre, "plataforma": h.plataforma, "version": h.version,
+                "estado": h.estado, "ip_gestion": h.ip_gestion, "marca_modelo": h.marca_modelo,
+                "ubicacion": h.ubicacion, "ram": h.ram, "cpu": h.cpu,
+                "almacenamiento": h.almacenamiento, "numero_serie": h.numero_serie,
+                "garantia_hasta": h.garantia_hasta, "proveedor": h.proveedor,
+                "etiquetas": h.lista_etiquetas}
+
     return {
         "servidores_fisicos": [_srv(s) for s in servidores],
-        "hipervisores": [{"id": h.id, "nombre": h.nombre, "plataforma": h.plataforma,
-                          "estado": h.estado, "servidor_fisico_id": h.servidor_fisico_id} for h in hipervisores],
+        "hipervisores": [_hv(h) for h in hipervisores],
         "maquinas_virtuales": [{"id": v.id, "nombre": v.nombre, "estado": v.estado,
                                 "sistema_operativo": v.sistema_operativo, "ip": v.ip,
                                 "hipervisor_id": v.hipervisor_id} for v in vms],

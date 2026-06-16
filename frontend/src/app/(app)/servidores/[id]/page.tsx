@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Cpu, Loader2, Pencil, Plus } from "lucide-react";
+import { Loader2, Pencil } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ServidorDetalle } from "@/lib/types";
-import { rutaActivo } from "@/lib/constants";
 import { PageHeader } from "@/components/page-header";
 import { EstadoBadge } from "@/components/estado-badge";
 import { Propiedades } from "@/components/propiedades";
@@ -17,7 +16,6 @@ import { BotonEliminar } from "@/components/boton-eliminar";
 import { ErrorRecurso } from "@/components/error-recurso";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 
 export default function ServidorDetallePage() {
@@ -61,15 +59,13 @@ export default function ServidorDetallePage() {
     }
   }
 
-  const esHost = d.tipo === "host_virtualizacion";
-
   return (
     <>
       <PageHeader
         titulo={
           <span className="flex items-center gap-2">
             {d.nombre}
-            <Badge variant="outline">{d.etiqueta_tipo}</Badge>
+            <Badge variant="outline">Servidor dedicado</Badge>
             <EstadoBadge estado={d.estado} />
           </span>
         }
@@ -85,7 +81,7 @@ export default function ServidorDetallePage() {
               </Button>
               <BotonEliminar
                 titulo={`¿Eliminar ${d.nombre}?`}
-                descripcion="Se eliminarán también sus hipervisores, VMs y credenciales asociadas. Esta acción no se puede deshacer."
+                descripcion="Se eliminarán también sus credenciales asociadas. Esta acción no se puede deshacer."
                 onConfirmar={eliminar}
               />
             </>
@@ -124,39 +120,6 @@ export default function ServidorDetallePage() {
             },
           ]}
         />
-
-        {esHost && (
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">Hipervisores</CardTitle>
-              {d.puede_gestionar && (
-                <Button size="sm" asChild>
-                  <Link href={`/servidores/${sid}/hipervisores/nuevo`}>
-                    <Plus className="h-4 w-4" /> Nuevo hipervisor
-                  </Link>
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              {d.hipervisores.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sin hipervisores registrados.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {d.hipervisores.map((h) => (
-                    <li key={h.id} className="flex items-center gap-2 rounded-md border p-2">
-                      <Cpu className="h-4 w-4 text-muted-foreground" />
-                      <Link href={rutaActivo("hipervisor", h.id)} className="font-medium hover:underline">
-                        {h.nombre}
-                      </Link>
-                      {h.plataforma && <Badge variant="secondary">{h.plataforma}</Badge>}
-                      <EstadoBadge estado={h.estado} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         <CredencialesTabla
           credenciales={d.credenciales}

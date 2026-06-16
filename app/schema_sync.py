@@ -24,6 +24,55 @@ from app.database import Base
 
 logger = logging.getLogger("passwd.schema")
 
+# Tablas del subgrafo de inventario en orden hijo→padre (para poder borrarlas
+# respetando las claves foráneas).
+_TABLAS_INVENTARIO = (
+    "historial_credenciales",
+    "credenciales",
+    "concesiones_acceso",
+    "maquinas_virtuales",
+    "hipervisores",
+    "servidores_fisicos",
+)
+
+
+def migrar_inventario_nivel_superior(engine: Engine) -> bool:
+    """Migra el inventario al modelo de hipervisores de nivel superior.
+
+    En el modelo nuevo el hipervisor es un activo de nivel superior (no se anida
+    bajo un servidor físico), por lo que la tabla ``hipervisores`` ya no tiene la
+    columna ``servidor_fisico_id``. Si se detecta el esquema antiguo (esa columna
+    presente), se recrean las tablas de inventario con el esquema nuevo.
+
+    Es un cambio NO aditivo (cambia claves foráneas y columnas), de modo que solo
+    es seguro porque el inventario se considera recreable; las cuentas de usuario
+    y la bitácora de auditoría NO se tocan. Idempotente: no hace nada si el
+    esquema ya es el nuevo o si la base está vacía.
+    """
+    inspector = inspect(engine)
+    tablas = set(inspector.get_table_names())
+    if "hipervisores" not in tablas:
+        return False  # base nueva: create_all construirá el esquema nuevo
+    columnas = {c["name"] for c in inspector.get_columns("hipervisores")}
+    if "servidor_fisico_id" not in columnas:
+        return False  # ya está en el esquema nuevo
+
+    logger.warning(
+        "Esquema de inventario antiguo detectado (hipervisor anidado). Recreando "
+        "las tablas de inventario con el modelo nuevo; el inventario previo se descarta "
+        "(usuarios y auditoría se conservan)."
+    )
+    es_sqlite = engine.dialect.name == "sqlite"
+    with engine.begin() as conexion:
+        if es_sqlite:
+            conexion.execute(text("PRAGMA foreign_keys=OFF"))
+        for tabla in _TABLAS_INVENTARIO:
+            if tabla in tablas:
+                conexion.execute(text(f"DROP TABLE IF EXISTS {tabla}"))
+        if es_sqlite:
+            conexion.execute(text("PRAGMA foreign_keys=ON"))
+    return True
+
 
 def reconciliar_esquema(engine: Engine) -> list[str]:
     """Añade columnas que falten en las tablas existentes. Devuelve lo aplicado."""

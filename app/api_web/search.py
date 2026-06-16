@@ -47,8 +47,6 @@ def _servidor_breve(servidor: ServidorFisico) -> dict:
     return {
         "id": servidor.id,
         "nombre": servidor.nombre,
-        "tipo": servidor.tipo,
-        "etiqueta_tipo": servidor.etiqueta_tipo,
         "estado": servidor.estado,
         "ip_gestion": servidor.ip_gestion,
     }

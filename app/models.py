@@ -2,16 +2,17 @@
 
 Jerarquía del inventario (segmentación lógica solicitada):
 
-    ServidorFisico (tipo = funcion_unica)      → servidor físico dedicado a un solo sistema
-    ServidorFisico (tipo = host_virtualizacion) → servidor físico sin función única que aloja
-        └── Hipervisor (Proxmox, ESXi, Hyper-V, …)
-                └── MaquinaVirtual (cada una con su sistema y función)
+    ServidorFisico  → servidor físico dedicado a una sola función (con sus credenciales)
+    Hipervisor      → máquina física que ejecuta un hipervisor (Proxmox, ESXi, Hyper-V…)
+        └── MaquinaVirtual (cada una con su sistema y función)
 
-Cada nivel (servidor físico, hipervisor o máquina virtual) puede tener una o
-varias credenciales (usuario + contraseña cifrada en reposo + descripción del
-sistema o servicio al que da acceso). La integridad se garantiza con claves
-foráneas y una restricción CHECK que obliga a que cada credencial pertenezca
-exactamente a un activo.
+Servidores dedicados e hipervisores son dos tipos de activo de **nivel superior**
+independientes: el hipervisor es la propia máquina física (con su hardware) y
+contiene directamente sus máquinas virtuales. Cada nivel (servidor, hipervisor o
+máquina virtual) puede tener una o varias credenciales (usuario + contraseña
+cifrada en reposo + descripción del sistema o servicio al que da acceso). La
+integridad se garantiza con claves foráneas y una restricción CHECK que obliga a
+que cada credencial pertenezca exactamente a un activo.
 """
 
 from __future__ import annotations
@@ -124,15 +125,6 @@ class SesionWeb(Base):
 # Inventario relacional
 # ---------------------------------------------------------------------------
 
-TIPO_FUNCION_UNICA = "funcion_unica"
-TIPO_HOST_VIRTUALIZACION = "host_virtualizacion"
-TIPOS_SERVIDOR = (TIPO_FUNCION_UNICA, TIPO_HOST_VIRTUALIZACION)
-
-ETIQUETAS_TIPO_SERVIDOR = {
-    TIPO_FUNCION_UNICA: "Servidor físico de función única",
-    TIPO_HOST_VIRTUALIZACION: "Servidor físico host de virtualización",
-}
-
 # Estado del ciclo de vida de un activo (validado en la aplicación).
 ESTADO_ACTIVO = "activo"
 ESTADO_MANTENIMIENTO = "mantenimiento"
@@ -156,19 +148,12 @@ def normalizar_etiquetas(texto: str) -> str:
 
 
 class ServidorFisico(Base):
-    """Servidor físico: dedicado a una sola función o host de hipervisores."""
+    """Servidor físico dedicado a una sola función (con sus credenciales)."""
 
     __tablename__ = "servidores_fisicos"
-    __table_args__ = (
-        CheckConstraint(
-            f"tipo IN ('{TIPO_FUNCION_UNICA}', '{TIPO_HOST_VIRTUALIZACION}')",
-            name="ck_servidores_tipo",
-        ),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
-    tipo: Mapped[str] = mapped_column(String(32), nullable=False, default=TIPO_FUNCION_UNICA)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
     sistema_operativo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     marca_modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
@@ -188,16 +173,9 @@ class ServidorFisico(Base):
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
-    hipervisores: Mapped[list[Hipervisor]] = relationship(
-        back_populates="servidor_fisico", cascade="all, delete-orphan", order_by="Hipervisor.nombre"
-    )
     credenciales: Mapped[list[Credencial]] = relationship(
         back_populates="servidor_fisico", cascade="all, delete-orphan"
     )
-
-    @property
-    def etiqueta_tipo(self) -> str:
-        return ETIQUETAS_TIPO_SERVIDOR.get(self.tipo, self.tipo)
 
     @property
     def lista_etiquetas(self) -> list[str]:
@@ -205,26 +183,35 @@ class ServidorFisico(Base):
 
 
 class Hipervisor(Base):
-    """Hipervisor instalado en un servidor físico host de virtualización."""
+    """Máquina física que ejecuta un hipervisor y aloja máquinas virtuales.
+
+    Es un activo de nivel superior con su propio hardware (no se anida bajo un
+    servidor físico). Contiene directamente sus máquinas virtuales.
+    """
 
     __tablename__ = "hipervisores"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    servidor_fisico_id: Mapped[int] = mapped_column(
-        ForeignKey("servidores_fisicos.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    nombre: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     plataforma: Mapped[str] = mapped_column(String(60), nullable=False, default="")  # Proxmox, ESXi, Hyper-V…
     version: Mapped[str] = mapped_column(String(60), nullable=False, default="")
     ip_gestion: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Hardware de la máquina física (el hipervisor ES el servidor físico).
+    marca_modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    ubicacion: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    ram: Mapped[str] = mapped_column(String(60), nullable=False, default="", server_default="")
+    cpu: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    almacenamiento: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    numero_serie: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    garantia_hasta: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
+    proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
 
-    servidor_fisico: Mapped[ServidorFisico] = relationship(back_populates="hipervisores")
     maquinas_virtuales: Mapped[list[MaquinaVirtual]] = relationship(
         back_populates="hipervisor", cascade="all, delete-orphan", order_by="MaquinaVirtual.nombre"
     )

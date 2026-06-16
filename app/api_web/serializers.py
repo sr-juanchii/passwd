@@ -138,6 +138,8 @@ def serializar_hipervisor_nodo(db: Session, usuario: Usuario, hipervisor: Hiperv
         "nombre": hipervisor.nombre,
         "plataforma": hipervisor.plataforma,
         "estado": hipervisor.estado,
+        "ip_gestion": hipervisor.ip_gestion,
+        "etiquetas": hipervisor.lista_etiquetas,
         "credenciales": _credenciales_de(db, usuario, hipervisor.credenciales),
         "vms": [serializar_vm_nodo(db, usuario, v) for v in hipervisor.maquinas_virtuales],
     }
@@ -147,13 +149,10 @@ def serializar_servidor_nodo(db: Session, usuario: Usuario, servidor: ServidorFi
     return {
         "id": servidor.id,
         "nombre": servidor.nombre,
-        "tipo": servidor.tipo,
-        "etiqueta_tipo": servidor.etiqueta_tipo,
         "estado": servidor.estado,
         "ip_gestion": servidor.ip_gestion,
         "etiquetas": servidor.lista_etiquetas,
         "credenciales": _credenciales_de(db, usuario, servidor.credenciales),
-        "hipervisores": [serializar_hipervisor_nodo(db, usuario, h) for h in servidor.hipervisores],
     }
 
 
@@ -166,8 +165,6 @@ def serializar_servidor_detalle(servidor: ServidorFisico) -> dict:
     return {
         "id": servidor.id,
         "nombre": servidor.nombre,
-        "tipo": servidor.tipo,
-        "etiqueta_tipo": servidor.etiqueta_tipo,
         "descripcion": servidor.descripcion,
         "sistema_operativo": servidor.sistema_operativo,
         "marca_modelo": servidor.marca_modelo,
@@ -193,13 +190,17 @@ def serializar_hipervisor_detalle(hipervisor: Hipervisor) -> dict:
         "version": hipervisor.version,
         "ip_gestion": hipervisor.ip_gestion,
         "descripcion": hipervisor.descripcion,
+        "marca_modelo": hipervisor.marca_modelo,
+        "ubicacion": hipervisor.ubicacion,
+        "ram": hipervisor.ram,
+        "cpu": hipervisor.cpu,
+        "almacenamiento": hipervisor.almacenamiento,
+        "numero_serie": hipervisor.numero_serie,
+        "garantia_hasta": hipervisor.garantia_hasta,
+        "proveedor": hipervisor.proveedor,
         "estado": hipervisor.estado,
         "etiquetas": hipervisor.etiquetas,
         "lista_etiquetas": hipervisor.lista_etiquetas,
-        "servidor_fisico_id": hipervisor.servidor_fisico_id,
-        "servidor_fisico_nombre": (
-            hipervisor.servidor_fisico.nombre if hipervisor.servidor_fisico else ""
-        ),
     }
 
 
@@ -223,6 +224,7 @@ def serializar_hipervisor_breve(hipervisor: Hipervisor) -> dict:
         "id": hipervisor.id,
         "nombre": hipervisor.nombre,
         "plataforma": hipervisor.plataforma,
+        "ip_gestion": hipervisor.ip_gestion,
         "estado": hipervisor.estado,
     }
 

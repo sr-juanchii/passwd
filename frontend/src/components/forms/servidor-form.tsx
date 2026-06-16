@@ -3,25 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
-import type { ServidorInput, TipoServidor } from "@/lib/types";
-import { ETIQUETAS_TIPO_SERVIDOR } from "@/lib/constants";
+import type { ServidorInput } from "@/lib/types";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { CampoArea, CampoEstado, CampoTexto } from "./campos";
 import { toast } from "sonner";
 
 const VACIO: ServidorInput = {
   nombre: "",
-  tipo: "funcion_unica",
   descripcion: "",
   sistema_operativo: "",
   marca_modelo: "",
@@ -68,21 +58,6 @@ export function ServidorForm({
       <Card>
         <CardContent className="grid gap-4 py-6 sm:grid-cols-2">
           <CampoTexto id="nombre" label="Nombre" required value={v.nombre} onChange={(x) => set("nombre", x)} />
-          <div className="space-y-2">
-            <Label>Tipo</Label>
-            <Select value={v.tipo} onValueChange={(x) => set("tipo", x as TipoServidor)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(ETIQUETAS_TIPO_SERVIDOR) as TipoServidor[]).map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {ETIQUETAS_TIPO_SERVIDOR[t]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
           <CampoTexto id="so" label="Sistema operativo" value={v.sistema_operativo} onChange={(x) => set("sistema_operativo", x)} />
           <CampoTexto id="marca" label="Marca / Modelo" value={v.marca_modelo} onChange={(x) => set("marca_modelo", x)} />
           <CampoTexto id="ubic" label="Ubicación" value={v.ubicacion} onChange={(x) => set("ubicacion", x)} />

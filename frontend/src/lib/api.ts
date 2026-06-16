@@ -126,19 +126,12 @@ export const api = {
     request<{ ok: boolean }>(`/servidores/${id}`, { method: "DELETE", csrf: true }),
 
   hipervisor: (id: number) => request<HipervisorDetalle>(`/hipervisores/${id}`),
-  crearHipervisor: (servidorId: number, b: HipervisorInput) =>
-    request<{ id: number }>(`/servidores/${servidorId}/hipervisores`, {
-      method: "POST",
-      body: b,
-      csrf: true,
-    }),
+  crearHipervisor: (b: HipervisorInput) =>
+    request<{ id: number }>("/hipervisores", { method: "POST", body: b, csrf: true }),
   editarHipervisor: (id: number, b: HipervisorInput) =>
     request<{ id: number }>(`/hipervisores/${id}`, { method: "PUT", body: b, csrf: true }),
   eliminarHipervisor: (id: number) =>
-    request<{ ok: boolean; servidor_fisico_id: number }>(`/hipervisores/${id}`, {
-      method: "DELETE",
-      csrf: true,
-    }),
+    request<{ ok: boolean }>(`/hipervisores/${id}`, { method: "DELETE", csrf: true }),
 
   vm: (id: number) => request<VmDetalle>(`/vms/${id}`),
   crearVm: (hipervisorId: number, b: VmInput) =>

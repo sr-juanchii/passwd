@@ -1,4 +1,4 @@
-import type { EstadoActivo, NivelAcceso, Rol, TipoActivo, TipoServidor } from "./types";
+import type { EstadoActivo, NivelAcceso, Rol, TipoActivo } from "./types";
 
 export const ETIQUETAS_ROL: Record<Rol, string> = {
   admin: "Administrador",
@@ -11,11 +11,6 @@ export const ETIQUETAS_ESTADO: Record<EstadoActivo, string> = {
   activo: "Activo",
   mantenimiento: "Mantenimiento",
   retirado: "Retirado",
-};
-
-export const ETIQUETAS_TIPO_SERVIDOR: Record<TipoServidor, string> = {
-  funcion_unica: "Función única",
-  host_virtualizacion: "Host de virtualización",
 };
 
 export const ETIQUETAS_NIVEL: Record<NivelAcceso, string> = {

@@ -31,11 +31,14 @@
   <h2>Formato</h2>
   <p class="texto-suave">Cabecera con columnas; la columna <code>tipo</code> indica qué se crea. Se
      procesan por orden de dependencia (servidores → hipervisores → VMs → credenciales).</p>
-  <pre class="bloque-notas">tipo,nombre,tipo_servidor,padre,activo_tipo,plataforma,version,sistema_operativo,ip,descripcion,estado,etiquetas,usuario_acceso,password,servicio,puerto
-servidor,srv-bd,funcion_unica,,,,,Debian 12,10.0.0.5,BD de nómina,activo,"producción,crítico",,,,
-servidor,srv-virt,host_virtualizacion,,,,,Proxmox,10.0.0.6,Host,activo,producción,,,,
-hipervisor,pve-01,,srv-virt,,Proxmox VE,8.2,,10.0.0.7,Nodo,activo,,,,,
-vm,vm-correo,,pve-01,,,,Ubuntu 24.04,10.0.1.10,Correo,activo,correo,,,,
-credencial,,,srv-bd,servidor,,,,,Acceso root,,,root,S3cret!,SSH,22</pre>
+  <pre class="bloque-notas">tipo,nombre,padre,activo_tipo,plataforma,version,sistema_operativo,ip,descripcion,estado,etiquetas,usuario_acceso,password,servicio,puerto
+servidor,srv-bd,,,,,Debian 12,10.0.0.5,BD de nómina,activo,"producción,crítico",,,,
+hipervisor,pve-01,,,Proxmox VE,8.2,,10.0.0.7,Nodo de virtualización,activo,,,,,
+vm,vm-correo,pve-01,,,,Ubuntu 24.04,10.0.1.10,Correo,activo,correo,,,,
+credencial,,srv-bd,servidor,,,,,Acceso root,,,root,S3cret!,SSH,22</pre>
+  <p class="texto-suave">El hipervisor es un activo de nivel superior (no requiere
+     <code>padre</code>); las VMs usan <code>padre</code> = nombre del hipervisor. Las columnas de
+     hardware (<code>marca_modelo, ubicacion, ram, cpu, almacenamiento, numero_serie, garantia_hasta, proveedor</code>)
+     son opcionales para servidores e hipervisores.</p>
 </div>
 {% endblock %}
