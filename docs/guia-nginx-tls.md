@@ -55,6 +55,8 @@ Cliente ──HTTPS/443──> nginx (TLS)  ──HTTP interno──> app:8000 (
 
 ## 2. Puesta en marcha rápida (PRUEBAS, certificado autofirmado)
 
+### Linux / macOS
+
 ```bash
 cp .env.example .env          # definir PASSWD_ADMIN_* y PASSWD_DOMAIN (localhost para pruebas)
 # Certificado de prueba (CN=localhost):
@@ -63,6 +65,32 @@ sh infrastructure/nginx/generar-cert-autofirmado.sh localhost
 docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
 ```
 
+### Windows (PowerShell)
+
+El script `.sh` no corre nativamente en Windows; use el equivalente PowerShell.
+Prefiere el OpenSSL del sistema (el de Git para Windows sirve) y, si no lo
+encuentra, ejecuta OpenSSL dentro de un contenedor Docker (sin instalar nada):
+
+```powershell
+Copy-Item .env.example .env    # definir PASSWD_ADMIN_* y PASSWD_DOMAIN
+powershell -ExecutionPolicy Bypass -File .\infrastructure\nginx\generar-cert-autofirmado.ps1 localhost
+
+docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
+```
+
+Alternativa de una sola línea sin el script (solo Docker, sin OpenSSL local):
+
+```powershell
+docker run --rm -v "${PWD}\infrastructure\nginx\certs:/certs" alpine/openssl `
+  req -x509 -nodes -newkey rsa:2048 -days 365 `
+  -keyout /certs/privkey.pem -out /certs/fullchain.pem `
+  -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+> Para el stack con el frontend Next.js, sustituya `docker-compose.nginx.yml`
+> por `docker-compose.frontend.yml` en el comando `up` (el certificado y su
+> ubicación son idénticos).
+
 Abrir `https://localhost`. El navegador advertirá que el certificado no es de confianza
 (normal en autofirmados): acéptelo solo en pruebas. Verificación rápida:
 
@@ -70,6 +98,9 @@ Abrir `https://localhost`. El navegador advertirá que el certificado no es de c
 curl -kI https://localhost            # 200 y cabeceras de seguridad
 curl -I  http://localhost             # 301 -> https
 ```
+
+En Windows, el equivalente de `curl` en PowerShell es
+`curl.exe -kI https://localhost` (use `curl.exe`, no el alias `Invoke-WebRequest`).
 
 ---
 
@@ -248,9 +279,13 @@ partir de un CSR con clave nueva.
 ## 8. Resumen de comandos
 
 ```bash
-# Pruebas (autofirmado)
+# Pruebas (autofirmado) — Linux/macOS
 sh infrastructure/nginx/generar-cert-autofirmado.sh localhost
 docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
+
+# Pruebas (autofirmado) — Windows PowerShell
+#   powershell -ExecutionPolicy Bypass -File .\infrastructure\nginx\generar-cert-autofirmado.ps1 localhost
+#   docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
 
 # Producción (CA): colocar certs en infrastructure/nginx/certs/ y:
 docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build

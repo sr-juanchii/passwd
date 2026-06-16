@@ -81,11 +81,46 @@ docker compose -f docker-compose.yml -f docker-compose.frontend.yml up -d --buil
 # Disponible en https://<PASSWD_DOMAIN>
 ```
 
+#### En Windows (PowerShell)
+
+```powershell
+Copy-Item .env.example .env     # editar PASSWD_ADMIN_* y PASSWD_DOMAIN
+# Certificado autofirmado de pruebas (usa OpenSSL local o, si no está, Docker):
+powershell -ExecutionPolicy Bypass -File .\infrastructure\nginx\generar-cert-autofirmado.ps1 localhost
+docker compose -f docker-compose.yml -f docker-compose.frontend.yml up -d --build
+# Disponible en https://localhost (acepte la advertencia del certificado autofirmado)
+```
+
+Si prefiere no usar el script, el certificado de pruebas se genera con un único
+contenedor (no requiere instalar OpenSSL):
+
+```powershell
+docker run --rm -v "${PWD}\infrastructure\nginx\certs:/certs" alpine/openssl `
+  req -x509 -nodes -newkey rsa:2048 -days 365 `
+  -keyout /certs/privkey.pem -out /certs/fullchain.pem `
+  -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+> En producción **no** use certificados autofirmados: coloque los de su CA o
+> Let's Encrypt en `infrastructure/nginx/certs/`. Guía completa y rotación en
+> [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md).
+
 ### Ejecutar el frontend en local (desarrollo)
 
+Sin Docker ni TLS (más simple para desarrollar); el navegador habla con Next y
+este proxya `/api` al backend, así que **no hace falta certificado**:
+
 ```bash
-uvicorn app.main:app --port 8000           # backend (con PASSWD_COOKIE_SECURE=false)
-cd frontend && pnpm install && pnpm dev     # http://localhost:3000 (proxya /api al backend)
+# Linux/macOS
+PASSWD_COOKIE_SECURE=false uvicorn app.main:app --port 8000
+cd frontend && pnpm install && pnpm dev     # http://localhost:3000
+```
+
+```powershell
+# Windows (PowerShell)
+$env:PASSWD_COOKIE_SECURE = "false"; uvicorn app.main:app --port 8000
+# en otra terminal:
+cd frontend; pnpm install; pnpm dev          # http://localhost:3000
 ```
 
 ### Verificación funcional
