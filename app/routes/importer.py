@@ -9,10 +9,12 @@ Formato (una fila por activo o credencial; columna `tipo` discrimina):
 
     tipo            columnas usadas
     -------------   ---------------------------------------------------------
-    servidor        nombre, tipo_servidor(funcion_unica|host_virtualizacion),
-                    sistema_operativo, ip, descripcion, estado, etiquetas
-    hipervisor      nombre, padre(=nombre del servidor físico), plataforma,
-                    version, ip, descripcion, estado, etiquetas
+    servidor        nombre, sistema_operativo, ip, descripcion, estado, etiquetas
+                    (+ hardware opcional: marca_modelo, ubicacion, ram, cpu,
+                    almacenamiento, numero_serie, garantia_hasta, proveedor)
+    hipervisor      nombre, plataforma, version, ip, descripcion, estado,
+                    etiquetas (+ los mismos campos de hardware opcionales);
+                    es un activo de nivel superior, no requiere padre
     vm              nombre, padre(=nombre del hipervisor), sistema_operativo,
                     ip, descripcion, estado, etiquetas
     credencial      activo_tipo(servidor|hipervisor|vm), padre(=nombre activo),
