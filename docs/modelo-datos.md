@@ -2,11 +2,12 @@
 
 ## Jerarquía del inventario
 
-La segmentación pedida se modela con tres niveles enlazados por claves foráneas:
+La segmentación se modela con **dos activos de nivel superior** (servidor físico dedicado e
+hipervisor) enlazados por claves foráneas. El hipervisor es la propia máquina física (con su
+hardware) y aloja directamente sus máquinas virtuales:
 
 ```mermaid
 erDiagram
-    SERVIDOR_FISICO ||--o{ HIPERVISOR : "aloja (solo tipo host_virtualizacion)"
     HIPERVISOR ||--o{ MAQUINA_VIRTUAL : "ejecuta"
     SERVIDOR_FISICO ||--o{ CREDENCIAL : "tiene"
     HIPERVISOR ||--o{ CREDENCIAL : "tiene"
@@ -23,21 +24,21 @@ erDiagram
     SERVIDOR_FISICO {
         int id PK
         string nombre UK
-        string tipo "funcion_unica | host_virtualizacion"
         text descripcion "sistema o funcion que cumple"
         string sistema_operativo
         string marca_modelo
         string ubicacion
         string ip_gestion
+        string ram_cpu_almacenamiento "hardware"
     }
     HIPERVISOR {
         int id PK
-        int servidor_fisico_id FK
-        string nombre
+        string nombre UK
         string plataforma "Proxmox, ESXi, Hyper-V..."
         string version
         string ip_gestion
         text descripcion
+        string ram_cpu_almacenamiento "hardware propio"
     }
     MAQUINA_VIRTUAL {
         int id PK
@@ -109,12 +110,10 @@ erDiagram
 
 ## Reglas de integridad
 
-1. **Tipos de servidor físico**: `funcion_unica` (dedicado a un solo sistema) o
-   `host_virtualizacion` (sin función única; aloja hipervisores). Restricción CHECK en BD
-   y validación de negocio: no se pueden crear hipervisores bajo un servidor de función
-   única, ni degradar a función única un servidor que tenga hipervisores.
-2. **Máquinas virtuales**: siempre pertenecen a un hipervisor (`hipervisor_id NOT NULL`);
-   un hipervisor siempre pertenece a un servidor físico (`servidor_fisico_id NOT NULL`).
+1. **Activos de nivel superior**: el servidor físico dedicado y el hipervisor son entidades
+   independientes; el hipervisor es la propia máquina física (con su hardware) y no se anida
+   bajo un servidor físico.
+2. **Máquinas virtuales**: siempre pertenecen a un hipervisor (`hipervisor_id NOT NULL`).
 3. **Credenciales**: restricción CHECK que exige exactamente **una** de las tres claves
    foráneas (`servidor_fisico_id`, `hipervisor_id`, `maquina_virtual_id`); imposible una
    credencial huérfana o ambigua.

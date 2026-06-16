@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app import audit
 from app.models import (
+    ESTADO_ACTIVO,
     CodigoRecuperacionMFA,
     Credencial,
     Hipervisor,
@@ -82,15 +83,20 @@ def exportar(db: Session, frase: str) -> bytes:
             for c in db.scalars(select(CodigoRecuperacionMFA)).all()
         ],
         "servidores_fisicos": [
-            {"id": s.id, "nombre": s.nombre, "tipo": s.tipo, "descripcion": s.descripcion,
+            {"id": s.id, "nombre": s.nombre, "descripcion": s.descripcion,
              "sistema_operativo": s.sistema_operativo, "marca_modelo": s.marca_modelo,
-             "ubicacion": s.ubicacion, "ip_gestion": s.ip_gestion, "creado_en": _fecha(s.creado_en)}
+             "ubicacion": s.ubicacion, "ip_gestion": s.ip_gestion, "ram": s.ram, "cpu": s.cpu,
+             "almacenamiento": s.almacenamiento, "numero_serie": s.numero_serie,
+             "garantia_hasta": s.garantia_hasta, "proveedor": s.proveedor,
+             "estado": s.estado, "etiquetas": s.etiquetas, "creado_en": _fecha(s.creado_en)}
             for s in db.scalars(select(ServidorFisico)).all()
         ],
         "hipervisores": [
-            {"id": h.id, "servidor_fisico_id": h.servidor_fisico_id, "nombre": h.nombre,
-             "plataforma": h.plataforma, "version": h.version, "ip_gestion": h.ip_gestion,
-             "descripcion": h.descripcion, "creado_en": _fecha(h.creado_en)}
+            {"id": h.id, "nombre": h.nombre, "plataforma": h.plataforma, "version": h.version,
+             "ip_gestion": h.ip_gestion, "descripcion": h.descripcion, "marca_modelo": h.marca_modelo,
+             "ubicacion": h.ubicacion, "ram": h.ram, "cpu": h.cpu, "almacenamiento": h.almacenamiento,
+             "numero_serie": h.numero_serie, "garantia_hasta": h.garantia_hasta, "proveedor": h.proveedor,
+             "estado": h.estado, "etiquetas": h.etiquetas, "creado_en": _fecha(h.creado_en)}
             for h in db.scalars(select(Hipervisor)).all()
         ],
         "maquinas_virtuales": [
@@ -187,17 +193,26 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
         ))
     for s in carga["servidores_fisicos"]:
         db.add(ServidorFisico(
-            id=s["id"], nombre=s["nombre"], tipo=s["tipo"], descripcion=s["descripcion"],
+            id=s["id"], nombre=s["nombre"], descripcion=s["descripcion"],
             sistema_operativo=s["sistema_operativo"], marca_modelo=s["marca_modelo"],
             ubicacion=s["ubicacion"], ip_gestion=s["ip_gestion"],
+            ram=s.get("ram", ""), cpu=s.get("cpu", ""), almacenamiento=s.get("almacenamiento", ""),
+            numero_serie=s.get("numero_serie", ""), garantia_hasta=s.get("garantia_hasta", ""),
+            proveedor=s.get("proveedor", ""), estado=s.get("estado", ESTADO_ACTIVO),
+            etiquetas=s.get("etiquetas", ""),
             creado_en=_parse_fecha(s["creado_en"]) or ahora_utc(),
         ))
     db.flush()
     for h in carga["hipervisores"]:
         db.add(Hipervisor(
-            id=h["id"], servidor_fisico_id=h["servidor_fisico_id"], nombre=h["nombre"],
+            id=h["id"], nombre=h["nombre"],
             plataforma=h["plataforma"], version=h["version"], ip_gestion=h["ip_gestion"],
-            descripcion=h["descripcion"], creado_en=_parse_fecha(h["creado_en"]) or ahora_utc(),
+            descripcion=h["descripcion"], marca_modelo=h.get("marca_modelo", ""),
+            ubicacion=h.get("ubicacion", ""), ram=h.get("ram", ""), cpu=h.get("cpu", ""),
+            almacenamiento=h.get("almacenamiento", ""), numero_serie=h.get("numero_serie", ""),
+            garantia_hasta=h.get("garantia_hasta", ""), proveedor=h.get("proveedor", ""),
+            estado=h.get("estado", ESTADO_ACTIVO), etiquetas=h.get("etiquetas", ""),
+            creado_en=_parse_fecha(h["creado_en"]) or ahora_utc(),
         ))
     db.flush()
     for v in carga["maquinas_virtuales"]:

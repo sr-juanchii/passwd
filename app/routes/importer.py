@@ -36,8 +36,6 @@ from app import audit
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
-    TIPO_HOST_VIRTUALIZACION,
-    TIPOS_SERVIDOR,
     Credencial,
     Hipervisor,
     MaquinaVirtual,
@@ -66,46 +64,55 @@ def _estado(valor: str) -> str:
     return valor if valor in ESTADOS_ACTIVO else ESTADO_ACTIVO
 
 
+def _hardware(fila: dict) -> dict:
+    """Campos de hardware opcionales compartidos por servidor e hipervisor."""
+    return {
+        "marca_modelo": (fila.get("marca_modelo") or "").strip(),
+        "ubicacion": (fila.get("ubicacion") or "").strip(),
+        "ram": (fila.get("ram") or "").strip(),
+        "cpu": (fila.get("cpu") or "").strip(),
+        "almacenamiento": (fila.get("almacenamiento") or "").strip(),
+        "numero_serie": (fila.get("numero_serie") or "").strip(),
+        "garantia_hasta": (fila.get("garantia_hasta") or "").strip(),
+        "proveedor": (fila.get("proveedor") or "").strip(),
+    }
+
+
 def _procesar_fila(db: Session, fila: dict) -> str:
     """Crea el activo/credencial de una fila. Devuelve un mensaje; lanza ValueError."""
     tipo = (fila.get("tipo") or "").strip().lower()
     nombre = (fila.get("nombre") or "").strip()
 
     if tipo == "servidor":
-        tipo_srv = (fila.get("tipo_servidor") or "funcion_unica").strip()
-        if tipo_srv not in TIPOS_SERVIDOR:
-            raise ValueError(f"tipo_servidor inválido: {tipo_srv}")
         if not nombre:
             raise ValueError("nombre obligatorio")
         if db.scalar(select(ServidorFisico).where(func.lower(ServidorFisico.nombre) == nombre.lower())):
             raise ValueError(f"ya existe el servidor «{nombre}»")
         db.add(ServidorFisico(
-            nombre=nombre, tipo=tipo_srv,
+            nombre=nombre,
             sistema_operativo=(fila.get("sistema_operativo") or "").strip(),
             ip_gestion=(fila.get("ip") or "").strip(),
             descripcion=(fila.get("descripcion") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            **_hardware(fila),
         ))
         return f"servidor «{nombre}» creado"
 
     if tipo == "hipervisor":
-        padre = db.scalar(select(ServidorFisico).where(
-            func.lower(ServidorFisico.nombre) == (fila.get("padre") or "").strip().lower()))
-        if padre is None:
-            raise ValueError(f"servidor padre «{fila.get('padre')}» no encontrado")
-        if padre.tipo != TIPO_HOST_VIRTUALIZACION:
-            raise ValueError(f"el servidor «{padre.nombre}» no es host de virtualización")
         if not nombre:
             raise ValueError("nombre obligatorio")
+        if db.scalar(select(Hipervisor).where(func.lower(Hipervisor.nombre) == nombre.lower())):
+            raise ValueError(f"ya existe el hipervisor «{nombre}»")
         db.add(Hipervisor(
-            servidor_fisico_id=padre.id, nombre=nombre,
+            nombre=nombre,
             plataforma=(fila.get("plataforma") or "").strip(),
             version=(fila.get("version") or "").strip(),
             ip_gestion=(fila.get("ip") or "").strip(),
             descripcion=(fila.get("descripcion") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            **_hardware(fila),
         ))
         return f"hipervisor «{nombre}» creado"
 

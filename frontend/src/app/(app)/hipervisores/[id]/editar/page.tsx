@@ -38,7 +38,6 @@ export default function EditarHipervisorPage() {
         titulo={`Editar ${data.nombre}`}
         migas={[
           { label: "Inventario", href: "/" },
-          { label: data.servidor_fisico_nombre, href: `/servidores/${data.servidor_fisico_id}` },
           { label: data.nombre, href: `/hipervisores/${hid}` },
           { label: "Editar" },
         ]}

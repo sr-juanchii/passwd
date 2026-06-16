@@ -1,11 +1,9 @@
-"""Inventario relacional: servidores físicos, hipervisores y máquinas virtuales.
+"""Inventario relacional: servidores dedicados, hipervisores y máquinas virtuales.
 
-Reglas de negocio:
-- Un servidor físico es de *función única* (un solo sistema) o *host de
-  virtualización* (sin función única; aloja hipervisores).
-- Solo los hosts de virtualización admiten hipervisores.
-- Las máquinas virtuales viven siempre dentro de un hipervisor.
-- No se permite degradar a función única un servidor con hipervisores.
+Modelo de dos activos de nivel superior:
+- Servidor físico dedicado a una sola función (con sus credenciales).
+- Hipervisor: máquina física (con su hardware) que aloja directamente sus VMs.
+Las máquinas virtuales viven siempre dentro de un hipervisor.
 """
 
 from __future__ import annotations
@@ -30,9 +28,6 @@ from app.models import (
     ESTADO_ACTIVO,
     ESTADOS_ACTIVO,
     ROL_ANALISTA,
-    TIPO_FUNCION_UNICA,
-    TIPO_HOST_VIRTUALIZACION,
-    TIPOS_SERVIDOR,
     Credencial,
     Hipervisor,
     MaquinaVirtual,
@@ -65,11 +60,7 @@ def _obtener_o_404(db: Session, modelo, objeto_id: int):
 
 
 def _exigir_ver_activo(request: Request, db: Session, usuario: Usuario, tipo: str, activo_id: int) -> None:
-    """Control de acceso por objeto: 404 (sin filtrar existencia) si no procede.
-
-    Para el analista, ver un activo exige una concesión vigente. El intento
-    denegado queda auditado y se persiste pese al posterior rollback.
-    """
+    """Control de acceso por objeto: 404 (sin filtrar existencia) si no procede."""
     if access.puede_ver_activo(db, usuario, tipo, activo_id):
         return
     audit.registrar(
@@ -94,7 +85,7 @@ def _ctx_accesos(db: Session, usuario: Usuario, tipo: str, activo_id: int) -> di
 
 
 # ---------------------------------------------------------------------------
-# Panel principal: árbol completo del inventario
+# Panel principal: servidores dedicados e hipervisores
 # ---------------------------------------------------------------------------
 
 
@@ -105,7 +96,7 @@ def dashboard(
     usuario: Annotated[Usuario, VER],
     msg: str = "",
 ):
-    # El analista no ve el árbol completo: solo la lista de activos concedidos.
+    # El analista no ve el inventario completo: solo la lista de activos concedidos.
     if usuario.rol == ROL_ANALISTA:
         concesiones = access.concesiones_vigentes_de_usuario(db, usuario.id)
         concesiones.sort(key=lambda c: (c.tipo_activo, c.nombre_activo.lower()))
@@ -116,19 +107,21 @@ def dashboard(
 
     servidores = db.scalars(
         select(ServidorFisico)
-        .options(
-            selectinload(ServidorFisico.hipervisores)
-            .selectinload(Hipervisor.maquinas_virtuales)
-            .selectinload(MaquinaVirtual.credenciales),
-            selectinload(ServidorFisico.hipervisores).selectinload(Hipervisor.credenciales),
-            selectinload(ServidorFisico.credenciales),
-        )
+        .options(selectinload(ServidorFisico.credenciales))
         .order_by(ServidorFisico.nombre)
+    ).all()
+    hipervisores = db.scalars(
+        select(Hipervisor)
+        .options(
+            selectinload(Hipervisor.maquinas_virtuales).selectinload(MaquinaVirtual.credenciales),
+            selectinload(Hipervisor.credenciales),
+        )
+        .order_by(Hipervisor.nombre)
     ).all()
     limite_rotacion = ahora_utc() - timedelta(days=get_settings().rotation_max_days)
     totales = {
         "fisicos": len(servidores),
-        "hipervisores": db.scalar(select(func.count(Hipervisor.id))) or 0,
+        "hipervisores": len(hipervisores),
         "vms": db.scalar(select(func.count(MaquinaVirtual.id))) or 0,
         "credenciales": db.scalar(select(func.count(Credencial.id))) or 0,
         "rotacion_vencida": db.scalar(
@@ -136,19 +129,20 @@ def dashboard(
         ) or 0,
     }
     return render(request, "dashboard.html", {
-        "usuario_actual": usuario, "servidores": servidores, "totales": totales, "msg": msg,
+        "usuario_actual": usuario, "servidores": servidores, "hipervisores": hipervisores,
+        "totales": totales, "msg": msg,
     })
 
 
 # ---------------------------------------------------------------------------
-# Servidores físicos
+# Servidores físicos dedicados
 # ---------------------------------------------------------------------------
 
 
 @router.get("/servidores/nuevo")
 def servidor_nuevo_form(request: Request, usuario: Annotated[Usuario, GESTIONAR]):
     return render(request, "servidor_form.html",
-                  {"usuario_actual": usuario, "servidor": None, "tipos": TIPOS_SERVIDOR})
+                  {"usuario_actual": usuario, "servidor": None, "estados": ESTADOS_ACTIVO})
 
 
 @router.post("/servidores/nuevo", dependencies=[Depends(verificar_csrf)])
@@ -157,7 +151,6 @@ def servidor_crear(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, GESTIONAR],
     nombre: Annotated[str, Form()] = "",
-    tipo: Annotated[str, Form()] = TIPO_FUNCION_UNICA,
     descripcion: Annotated[str, Form()] = "",
     sistema_operativo: Annotated[str, Form()] = "",
     marca_modelo: Annotated[str, Form()] = "",
@@ -176,17 +169,15 @@ def servidor_crear(
     error = ""
     if not nombre:
         error = "El nombre es obligatorio."
-    elif tipo not in TIPOS_SERVIDOR:
-        error = "Tipo de servidor inválido."
     elif db.scalar(select(ServidorFisico).where(func.lower(ServidorFisico.nombre) == nombre.lower())):
         error = "Ya existe un servidor con ese nombre."
     if error:
         return render(request, "servidor_form.html",
-                      {"usuario_actual": usuario, "servidor": None, "tipos": TIPOS_SERVIDOR,
+                      {"usuario_actual": usuario, "servidor": None,
                        "estados": ESTADOS_ACTIVO, "error": error}, status_code=400)
 
     servidor = ServidorFisico(
-        nombre=nombre, tipo=tipo, descripcion=descripcion.strip(),
+        nombre=nombre, descripcion=descripcion.strip(),
         sistema_operativo=sistema_operativo.strip(), marca_modelo=marca_modelo.strip(),
         ubicacion=ubicacion.strip(), ip_gestion=ip_gestion.strip(),
         ram=ram.strip(), cpu=cpu.strip(), almacenamiento=almacenamiento.strip(),
@@ -197,8 +188,8 @@ def servidor_crear(
     db.add(servidor)
     db.flush()
     audit.registrar(db, audit.ACTIVO_CREADO, request=request, usuario=usuario,
-                    objeto_tipo="servidor_fisico", objeto_id=servidor.id, detalle=f"{nombre} ({tipo})")
-    return _redir(f"/servidores/{servidor.id}", "Servidor físico registrado.")
+                    objeto_tipo="servidor_fisico", objeto_id=servidor.id, detalle=nombre)
+    return _redir(f"/servidores/{servidor.id}", "Servidor dedicado registrado.")
 
 
 @router.get("/servidores/{servidor_id}")
@@ -229,8 +220,7 @@ def servidor_editar_form(
 ):
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
     return render(request, "servidor_form.html",
-                  {"usuario_actual": usuario, "servidor": servidor, "tipos": TIPOS_SERVIDOR,
-                   "estados": ESTADOS_ACTIVO})
+                  {"usuario_actual": usuario, "servidor": servidor, "estados": ESTADOS_ACTIVO})
 
 
 @router.post("/servidores/{servidor_id}/editar", dependencies=[Depends(verificar_csrf)])
@@ -240,7 +230,6 @@ def servidor_editar(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, GESTIONAR],
     nombre: Annotated[str, Form()] = "",
-    tipo: Annotated[str, Form()] = TIPO_FUNCION_UNICA,
     descripcion: Annotated[str, Form()] = "",
     sistema_operativo: Annotated[str, Form()] = "",
     marca_modelo: Annotated[str, Form()] = "",
@@ -260,20 +249,15 @@ def servidor_editar(
     error = ""
     if not nombre:
         error = "El nombre es obligatorio."
-    elif tipo not in TIPOS_SERVIDOR:
-        error = "Tipo de servidor inválido."
-    elif tipo == TIPO_FUNCION_UNICA and servidor.hipervisores:
-        error = "No puede marcarse de función única: tiene hipervisores asociados."
     elif db.scalar(select(ServidorFisico).where(
             func.lower(ServidorFisico.nombre) == nombre.lower(), ServidorFisico.id != servidor.id)):
         error = "Ya existe otro servidor con ese nombre."
     if error:
         return render(request, "servidor_form.html",
-                      {"usuario_actual": usuario, "servidor": servidor, "tipos": TIPOS_SERVIDOR,
+                      {"usuario_actual": usuario, "servidor": servidor,
                        "estados": ESTADOS_ACTIVO, "error": error}, status_code=400)
 
     servidor.nombre = nombre
-    servidor.tipo = tipo
     servidor.descripcion = descripcion.strip()
     servidor.sistema_operativo = sistema_operativo.strip()
     servidor.marca_modelo = marca_modelo.strip()
@@ -301,42 +285,27 @@ def servidor_eliminar(
 ):
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
     nombre = servidor.nombre
-    db.delete(servidor)  # cascada: hipervisores, VMs y credenciales
+    db.delete(servidor)  # cascada: credenciales del servidor
     audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,
                     objeto_tipo="servidor_fisico", objeto_id=servidor_id,
-                    detalle=f"{nombre} (incluye hipervisores, VMs y credenciales en cascada)")
+                    detalle=f"{nombre} (incluye credenciales en cascada)")
     return _redir("/", f"Servidor «{nombre}» eliminado con todo su contenido.")
 
 
 # ---------------------------------------------------------------------------
-# Hipervisores
+# Hipervisores (activos de nivel superior con hardware)
 # ---------------------------------------------------------------------------
 
 
-def _validar_host(servidor: ServidorFisico) -> None:
-    if servidor.tipo != TIPO_HOST_VIRTUALIZACION:
-        raise HTTPException(status_code=400,
-                            detail="Solo un servidor host de virtualización puede alojar hipervisores.")
-
-
-@router.get("/servidores/{servidor_id}/hipervisores/nuevo")
-def hipervisor_nuevo_form(
-    request: Request,
-    servidor_id: int,
-    db: Annotated[Session, Depends(get_db)],
-    usuario: Annotated[Usuario, GESTIONAR],
-):
-    servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
-    _validar_host(servidor)
+@router.get("/hipervisores/nuevo")
+def hipervisor_nuevo_form(request: Request, usuario: Annotated[Usuario, GESTIONAR]):
     return render(request, "hipervisor_form.html",
-                  {"usuario_actual": usuario, "servidor": servidor, "hipervisor": None,
-                   "estados": ESTADOS_ACTIVO})
+                  {"usuario_actual": usuario, "hipervisor": None, "estados": ESTADOS_ACTIVO})
 
 
-@router.post("/servidores/{servidor_id}/hipervisores/nuevo", dependencies=[Depends(verificar_csrf)])
+@router.post("/hipervisores/nuevo", dependencies=[Depends(verificar_csrf)])
 def hipervisor_crear(
     request: Request,
-    servidor_id: int,
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, GESTIONAR],
     nombre: Annotated[str, Form()] = "",
@@ -344,28 +313,42 @@ def hipervisor_crear(
     version: Annotated[str, Form()] = "",
     ip_gestion: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    marca_modelo: Annotated[str, Form()] = "",
+    ubicacion: Annotated[str, Form()] = "",
+    ram: Annotated[str, Form()] = "",
+    cpu: Annotated[str, Form()] = "",
+    almacenamiento: Annotated[str, Form()] = "",
+    numero_serie: Annotated[str, Form()] = "",
+    garantia_hasta: Annotated[str, Form()] = "",
+    proveedor: Annotated[str, Form()] = "",
     estado: Annotated[str, Form()] = ESTADO_ACTIVO,
     etiquetas: Annotated[str, Form()] = "",
 ):
-    servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
-    _validar_host(servidor)
     nombre = nombre.strip()
+    error = ""
     if not nombre or not plataforma.strip():
+        error = "Nombre y plataforma son obligatorios."
+    elif db.scalar(select(Hipervisor).where(func.lower(Hipervisor.nombre) == nombre.lower())):
+        error = "Ya existe un hipervisor con ese nombre."
+    if error:
         return render(request, "hipervisor_form.html",
-                      {"usuario_actual": usuario, "servidor": servidor, "hipervisor": None,
-                       "estados": ESTADOS_ACTIVO,
-                       "error": "Nombre y plataforma son obligatorios."}, status_code=400)
+                      {"usuario_actual": usuario, "hipervisor": None,
+                       "estados": ESTADOS_ACTIVO, "error": error}, status_code=400)
 
     hipervisor = Hipervisor(
-        servidor_fisico_id=servidor.id, nombre=nombre, plataforma=plataforma.strip(),
-        version=version.strip(), ip_gestion=ip_gestion.strip(), descripcion=descripcion.strip(),
-        estado=_estado_valido(estado), etiquetas=normalizar_etiquetas(etiquetas),
+        nombre=nombre, plataforma=plataforma.strip(), version=version.strip(),
+        ip_gestion=ip_gestion.strip(), descripcion=descripcion.strip(),
+        marca_modelo=marca_modelo.strip(), ubicacion=ubicacion.strip(),
+        ram=ram.strip(), cpu=cpu.strip(), almacenamiento=almacenamiento.strip(),
+        numero_serie=numero_serie.strip(), garantia_hasta=garantia_hasta.strip(),
+        proveedor=proveedor.strip(), estado=_estado_valido(estado),
+        etiquetas=normalizar_etiquetas(etiquetas),
     )
     db.add(hipervisor)
     db.flush()
     audit.registrar(db, audit.ACTIVO_CREADO, request=request, usuario=usuario,
                     objeto_tipo="hipervisor", objeto_id=hipervisor.id,
-                    detalle=f"{nombre} ({plataforma}) en {servidor.nombre}")
+                    detalle=f"{nombre} ({plataforma.strip()})")
     return _redir(f"/hipervisores/{hipervisor.id}", "Hipervisor registrado.")
 
 
@@ -397,8 +380,7 @@ def hipervisor_editar_form(
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
     return render(request, "hipervisor_form.html",
-                  {"usuario_actual": usuario, "servidor": hipervisor.servidor_fisico,
-                   "hipervisor": hipervisor, "estados": ESTADOS_ACTIVO})
+                  {"usuario_actual": usuario, "hipervisor": hipervisor, "estados": ESTADOS_ACTIVO})
 
 
 @router.post("/hipervisores/{hipervisor_id}/editar", dependencies=[Depends(verificar_csrf)])
@@ -412,21 +394,42 @@ def hipervisor_editar(
     version: Annotated[str, Form()] = "",
     ip_gestion: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    marca_modelo: Annotated[str, Form()] = "",
+    ubicacion: Annotated[str, Form()] = "",
+    ram: Annotated[str, Form()] = "",
+    cpu: Annotated[str, Form()] = "",
+    almacenamiento: Annotated[str, Form()] = "",
+    numero_serie: Annotated[str, Form()] = "",
+    garantia_hasta: Annotated[str, Form()] = "",
+    proveedor: Annotated[str, Form()] = "",
     estado: Annotated[str, Form()] = ESTADO_ACTIVO,
     etiquetas: Annotated[str, Form()] = "",
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
     nombre = nombre.strip()
+    error = ""
     if not nombre or not plataforma.strip():
+        error = "Nombre y plataforma son obligatorios."
+    elif db.scalar(select(Hipervisor).where(
+            func.lower(Hipervisor.nombre) == nombre.lower(), Hipervisor.id != hipervisor.id)):
+        error = "Ya existe otro hipervisor con ese nombre."
+    if error:
         return render(request, "hipervisor_form.html",
-                      {"usuario_actual": usuario, "servidor": hipervisor.servidor_fisico,
-                       "hipervisor": hipervisor, "estados": ESTADOS_ACTIVO,
-                       "error": "Nombre y plataforma son obligatorios."}, status_code=400)
+                      {"usuario_actual": usuario, "hipervisor": hipervisor,
+                       "estados": ESTADOS_ACTIVO, "error": error}, status_code=400)
     hipervisor.nombre = nombre
     hipervisor.plataforma = plataforma.strip()
     hipervisor.version = version.strip()
     hipervisor.ip_gestion = ip_gestion.strip()
     hipervisor.descripcion = descripcion.strip()
+    hipervisor.marca_modelo = marca_modelo.strip()
+    hipervisor.ubicacion = ubicacion.strip()
+    hipervisor.ram = ram.strip()
+    hipervisor.cpu = cpu.strip()
+    hipervisor.almacenamiento = almacenamiento.strip()
+    hipervisor.numero_serie = numero_serie.strip()
+    hipervisor.garantia_hasta = garantia_hasta.strip()
+    hipervisor.proveedor = proveedor.strip()
     hipervisor.estado = _estado_valido(estado)
     hipervisor.etiquetas = normalizar_etiquetas(etiquetas)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
@@ -443,12 +446,11 @@ def hipervisor_eliminar(
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
     nombre = hipervisor.nombre
-    servidor_id = hipervisor.servidor_fisico_id
     db.delete(hipervisor)
     audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,
                     objeto_tipo="hipervisor", objeto_id=hipervisor_id,
                     detalle=f"{nombre} (incluye VMs y credenciales en cascada)")
-    return _redir(f"/servidores/{servidor_id}", f"Hipervisor «{nombre}» eliminado.")
+    return _redir("/", f"Hipervisor «{nombre}» eliminado con todo su contenido.")
 
 
 # ---------------------------------------------------------------------------

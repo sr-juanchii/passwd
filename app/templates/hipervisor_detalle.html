@@ -1,11 +1,7 @@
 {% extends "base.html" %}
 {% block titulo %}{{ hipervisor.nombre }} — {{ app_name }}{% endblock %}
 {% block contenido %}
-{% if modo_analista %}
-<p><a class="enlace-suave" href="/">← Volver a mis accesos</a></p>
-{% else %}
-<p><a class="enlace-suave" href="/servidores/{{ hipervisor.servidor_fisico_id }}">← Volver a {{ hipervisor.servidor_fisico.nombre }}</a></p>
-{% endif %}
+<p><a class="enlace-suave" href="/">← Volver al inventario</a></p>
 <div class="encabezado-seccion">
   <h1>⚙️ {{ hipervisor.nombre }}
     <span class="insignia insignia-plataforma">{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</span>
@@ -24,15 +20,18 @@
 
 <div class="tarjeta">
   <dl class="lista-datos">
-    <dt>Servidor físico anfitrión</dt>
-    {% if modo_analista %}
-    <dd>{{ hipervisor.servidor_fisico.nombre }}</dd>
-    {% else %}
-    <dd><a href="/servidores/{{ hipervisor.servidor_fisico_id }}">{{ hipervisor.servidor_fisico.nombre }}</a></dd>
-    {% endif %}
     <dt>Estado</dt><dd><span class="insignia insignia-estado-{{ hipervisor.estado }}">{{ etiquetas_estado.get(hipervisor.estado, hipervisor.estado) }}</span></dd>
+    <dt>Plataforma</dt><dd>{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</dd>
     <dt>Descripción</dt><dd>{{ hipervisor.descripcion or '—' }}</dd>
     <dt>IP de gestión</dt><dd class="texto-mono">{{ hipervisor.ip_gestion or '—' }}</dd>
+    <dt>Marca / Modelo</dt><dd>{{ hipervisor.marca_modelo or '—' }}</dd>
+    <dt>Ubicación</dt><dd>{{ hipervisor.ubicacion or '—' }}</dd>
+    <dt>RAM</dt><dd>{{ hipervisor.ram or '—' }}</dd>
+    <dt>CPU</dt><dd>{{ hipervisor.cpu or '—' }}</dd>
+    <dt>Almacenamiento</dt><dd>{{ hipervisor.almacenamiento or '—' }}</dd>
+    <dt>Número de serie</dt><dd>{{ hipervisor.numero_serie or '—' }}</dd>
+    <dt>Garantía hasta</dt><dd>{{ hipervisor.garantia_hasta or '—' }}</dd>
+    <dt>Proveedor</dt><dd>{{ hipervisor.proveedor or '—' }}</dd>
     <dt>Etiquetas</dt><dd>
       {% for t in hipervisor.lista_etiquetas %}<span class="insignia insignia-etiqueta">{{ t }}</span> {% else %}—{% endfor %}
     </dd>

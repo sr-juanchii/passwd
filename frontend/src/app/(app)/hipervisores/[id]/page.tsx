@@ -53,9 +53,9 @@ export default function HipervisorDetallePage() {
 
   async function eliminar() {
     try {
-      const r = await api.eliminarHipervisor(hid);
+      await api.eliminarHipervisor(hid);
       toast.success("Hipervisor eliminado.");
-      router.push(`/servidores/${r.servidor_fisico_id}`);
+      router.push("/");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "No se pudo eliminar.");
     }
@@ -72,11 +72,7 @@ export default function HipervisorDetallePage() {
           </span>
         }
         descripcion={d.descripcion}
-        migas={[
-          { label: "Inventario", href: "/" },
-          { label: d.servidor_fisico_nombre, href: `/servidores/${d.servidor_fisico_id}` },
-          { label: d.nombre },
-        ]}
+        migas={[{ label: "Inventario", href: "/" }, { label: d.nombre }]}
         acciones={
           d.puede_gestionar && (
             <>
@@ -102,11 +98,14 @@ export default function HipervisorDetallePage() {
             { etiqueta: "Plataforma", valor: d.plataforma },
             { etiqueta: "Versión", valor: d.version },
             { etiqueta: "IP de gestión", valor: d.ip_gestion },
-            { etiqueta: "Servidor físico", valor: (
-              <Link href={`/servidores/${d.servidor_fisico_id}`} className="hover:underline">
-                {d.servidor_fisico_nombre}
-              </Link>
-            ) },
+            { etiqueta: "Marca / Modelo", valor: d.marca_modelo },
+            { etiqueta: "Ubicación", valor: d.ubicacion },
+            { etiqueta: "RAM", valor: d.ram },
+            { etiqueta: "CPU", valor: d.cpu },
+            { etiqueta: "Almacenamiento", valor: d.almacenamiento },
+            { etiqueta: "Número de serie", valor: d.numero_serie },
+            { etiqueta: "Garantía hasta", valor: d.garantia_hasta },
+            { etiqueta: "Proveedor", valor: d.proveedor },
             {
               etiqueta: "Etiquetas",
               valor: d.etiquetas ? (

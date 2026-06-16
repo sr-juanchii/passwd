@@ -6,16 +6,18 @@ controles alineados con **CIS Controls v8.1** e **ISO/IEC 27003**.
 
 ## Inventario segmentado y relacional
 
-El inventario refleja la realidad física y lógica de la infraestructura:
+El inventario refleja la realidad física y lógica de la infraestructura con **dos tipos de
+activo de nivel superior**:
 
 ```
-🖥️ Servidor físico (función única)            p. ej. el servidor de la base de datos de nómina
-🖥️ Servidor físico (host de virtualización)   sin función única establecida
-   └── ⚙️ Hipervisor (Proxmox VE, ESXi, Hyper-V…)
-         └── 🗔 Máquina virtual                 cada una con su sistema y función descritos
+🖥️ Servidor físico dedicado            función única (p. ej. la base de datos de nómina)
+⚙️ Hipervisor (Proxmox VE, ESXi…)      máquina física con su hardware que aloja VMs
+   └── 🗔 Máquina virtual              cada una con su sistema y función descritos
 ```
 
-Cada nivel —servidor físico, hipervisor o máquina virtual— almacena sus **credenciales de
+El hipervisor **es** la propia máquina física (con su hardware) y contiene directamente sus
+máquinas virtuales; no se anida bajo un servidor físico. Cada nivel —servidor dedicado,
+hipervisor o máquina virtual— almacena sus **credenciales de
 acceso**: usuario, contraseña (cifrada en reposo), servicio/protocolo (SSH, RDP, iLO/IPMI,
 panel web…), puerto y una **descripción de a qué sistema da acceso**. Las relaciones se
 garantizan con claves foráneas y restricciones CHECK; el detalle está en

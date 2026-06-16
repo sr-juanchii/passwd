@@ -29,14 +29,17 @@
 {% endif %}
 {% else %}
 <div class="encabezado-seccion">
-  <h1>Inventario de servidores</h1>
+  <h1>Inventario</h1>
   {% if puede('inventario.gestionar') %}
-  <a class="boton boton-primario" href="/servidores/nuevo">+ Servidor físico</a>
+  <div class="acciones">
+    <a class="boton boton-primario" href="/servidores/nuevo">+ Servidor dedicado</a>
+    <a class="boton boton-primario" href="/hipervisores/nuevo">+ Hipervisor</a>
+  </div>
   {% endif %}
 </div>
 
 <div class="tarjetas-resumen">
-  <div class="tarjeta-resumen"><span class="cifra">{{ totales.fisicos }}</span> Servidores físicos</div>
+  <div class="tarjeta-resumen"><span class="cifra">{{ totales.fisicos }}</span> Servidores dedicados</div>
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.hipervisores }}</span> Hipervisores</div>
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.vms }}</span> Máquinas virtuales</div>
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.credenciales }}</span> Credenciales</div>
@@ -48,52 +51,48 @@
   {% endif %}
 </div>
 
+<h2>Servidores dedicados</h2>
 {% if not servidores %}
-<div class="tarjeta">
-  <p>No hay servidores registrados todavía.
-  {% if puede('inventario.gestionar') %}Comience registrando un servidor físico.{% endif %}</p>
-</div>
+<div class="tarjeta"><p class="texto-suave">No hay servidores dedicados registrados.</p></div>
 {% endif %}
-
 {% for servidor in servidores %}
 <div class="tarjeta arbol-fisico">
   <div class="arbol-encabezado">
     <div>
       <a class="arbol-titulo" href="/servidores/{{ servidor.id }}">🖥️ {{ servidor.nombre }}</a>
-      <span class="insignia {{ 'insignia-host' if servidor.tipo == 'host_virtualizacion' else 'insignia-unico' }}">
-        {{ servidor.etiqueta_tipo }}
-      </span>
+      <span class="insignia insignia-unico">Servidor dedicado</span>
       {% if servidor.ip_gestion %}<span class="texto-mono">{{ servidor.ip_gestion }}</span>{% endif %}
     </div>
     <span class="texto-suave">{{ servidor.credenciales|length }} credencial(es)</span>
   </div>
   {% if servidor.descripcion %}<p class="texto-suave">{{ servidor.descripcion }}</p>{% endif %}
+</div>
+{% endfor %}
 
-  {% if servidor.tipo == 'host_virtualizacion' %}
-    {% for hipervisor in servidor.hipervisores %}
-    <div class="arbol-hipervisor">
-      <div class="arbol-encabezado">
-        <div>
-          <a class="arbol-subtitulo" href="/hipervisores/{{ hipervisor.id }}">⚙️ {{ hipervisor.nombre }}</a>
-          <span class="insignia insignia-plataforma">{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</span>
-        </div>
-        <span class="texto-suave">{{ hipervisor.credenciales|length }} credencial(es) · {{ hipervisor.maquinas_virtuales|length }} VM(s)</span>
-      </div>
-      {% for vm in hipervisor.maquinas_virtuales %}
-      <div class="arbol-vm">
-        <a href="/vms/{{ vm.id }}">🗔 {{ vm.nombre }}</a>
-        {% if vm.sistema_operativo %}<span class="texto-suave">{{ vm.sistema_operativo }}</span>{% endif %}
-        {% if vm.ip %}<span class="texto-mono">{{ vm.ip }}</span>{% endif %}
-        <span class="texto-suave">— {{ vm.descripcion or 'sin descripción' }}</span>
-      </div>
-      {% else %}
-      <div class="arbol-vm texto-suave">Sin máquinas virtuales registradas.</div>
-      {% endfor %}
+<h2>Hipervisores</h2>
+{% if not hipervisores %}
+<div class="tarjeta"><p class="texto-suave">No hay hipervisores registrados.</p></div>
+{% endif %}
+{% for hipervisor in hipervisores %}
+<div class="tarjeta arbol-fisico">
+  <div class="arbol-encabezado">
+    <div>
+      <a class="arbol-titulo" href="/hipervisores/{{ hipervisor.id }}">⚙️ {{ hipervisor.nombre }}</a>
+      <span class="insignia insignia-plataforma">{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</span>
+      {% if hipervisor.ip_gestion %}<span class="texto-mono">{{ hipervisor.ip_gestion }}</span>{% endif %}
     </div>
-    {% else %}
-    <div class="arbol-hipervisor texto-suave">Host de virtualización sin hipervisores registrados.</div>
-    {% endfor %}
-  {% endif %}
+    <span class="texto-suave">{{ hipervisor.credenciales|length }} credencial(es) · {{ hipervisor.maquinas_virtuales|length }} VM(s)</span>
+  </div>
+  {% for vm in hipervisor.maquinas_virtuales %}
+  <div class="arbol-vm">
+    <a href="/vms/{{ vm.id }}">🗔 {{ vm.nombre }}</a>
+    {% if vm.sistema_operativo %}<span class="texto-suave">{{ vm.sistema_operativo }}</span>{% endif %}
+    {% if vm.ip %}<span class="texto-mono">{{ vm.ip }}</span>{% endif %}
+    <span class="texto-suave">— {{ vm.descripcion or 'sin descripción' }}</span>
+  </div>
+  {% else %}
+  <div class="arbol-vm texto-suave">Sin máquinas virtuales registradas.</div>
+  {% endfor %}
 </div>
 {% endfor %}
 {% endif %}

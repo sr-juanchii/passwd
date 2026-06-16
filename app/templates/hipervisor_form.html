@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block titulo %}{{ 'Editar' if hipervisor else 'Nuevo' }} hipervisor — {{ app_name }}{% endblock %}
 {% block contenido %}
-<p><a class="enlace-suave" href="{{ '/hipervisores/' ~ hipervisor.id if hipervisor else '/servidores/' ~ servidor.id }}">← Volver</a></p>
+<p><a class="enlace-suave" href="{{ '/hipervisores/' ~ hipervisor.id if hipervisor else '/' }}">← Volver</a></p>
 <div class="tarjeta tarjeta-formulario">
-  <h1>{{ 'Editar hipervisor' if hipervisor else 'Nuevo hipervisor en ' ~ servidor.nombre }}</h1>
+  <h1>{{ 'Editar hipervisor' if hipervisor else 'Nuevo hipervisor' }}</h1>
   <form method="post"
-        action="{{ '/hipervisores/' ~ hipervisor.id ~ '/editar' if hipervisor else '/servidores/' ~ servidor.id ~ '/hipervisores/nuevo' }}"
+        action="{{ '/hipervisores/' ~ hipervisor.id ~ '/editar' if hipervisor else '/hipervisores/nuevo' }}"
         class="formulario">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
@@ -28,6 +28,38 @@
     <label for="ip_gestion">IP / URL de gestión</label>
     <input id="ip_gestion" name="ip_gestion" type="text" maxlength="45"
            value="{{ hipervisor.ip_gestion if hipervisor else '' }}" placeholder="Ej.: 192.168.10.6">
+
+    <label for="marca_modelo">Marca / Modelo</label>
+    <input id="marca_modelo" name="marca_modelo" type="text" maxlength="120"
+           value="{{ hipervisor.marca_modelo if hipervisor else '' }}" placeholder="Ej.: Dell PowerEdge R750">
+
+    <label for="ubicacion">Ubicación</label>
+    <input id="ubicacion" name="ubicacion" type="text" maxlength="120"
+           value="{{ hipervisor.ubicacion if hipervisor else '' }}" placeholder="Ej.: CPD principal, rack 3">
+
+    <label for="ram">RAM</label>
+    <input id="ram" name="ram" type="text" maxlength="60"
+           value="{{ hipervisor.ram if hipervisor else '' }}" placeholder="Ej.: 256 GB">
+
+    <label for="cpu">CPU</label>
+    <input id="cpu" name="cpu" type="text" maxlength="120"
+           value="{{ hipervisor.cpu if hipervisor else '' }}" placeholder="Ej.: 2x Intel Xeon Gold">
+
+    <label for="almacenamiento">Almacenamiento</label>
+    <input id="almacenamiento" name="almacenamiento" type="text" maxlength="120"
+           value="{{ hipervisor.almacenamiento if hipervisor else '' }}" placeholder="Ej.: 4x 1.92 TB SSD">
+
+    <label for="numero_serie">Número de serie</label>
+    <input id="numero_serie" name="numero_serie" type="text" maxlength="120"
+           value="{{ hipervisor.numero_serie if hipervisor else '' }}">
+
+    <label for="garantia_hasta">Garantía hasta</label>
+    <input id="garantia_hasta" name="garantia_hasta" type="text" maxlength="40"
+           value="{{ hipervisor.garantia_hasta if hipervisor else '' }}" placeholder="AAAA-MM-DD">
+
+    <label for="proveedor">Proveedor</label>
+    <input id="proveedor" name="proveedor" type="text" maxlength="120"
+           value="{{ hipervisor.proveedor if hipervisor else '' }}">
 
     <label for="descripcion">Descripción</label>
     <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"

@@ -27,8 +27,7 @@
     <dd>{{ vm.hipervisor.nombre }} ({{ vm.hipervisor.plataforma }})</dd>
     {% else %}
     <dd><a href="/hipervisores/{{ vm.hipervisor_id }}">{{ vm.hipervisor.nombre }}</a>
-        ({{ vm.hipervisor.plataforma }}) en
-        <a href="/servidores/{{ vm.hipervisor.servidor_fisico_id }}">{{ vm.hipervisor.servidor_fisico.nombre }}</a></dd>
+        ({{ vm.hipervisor.plataforma }})</dd>
     {% endif %}
     <dt>Estado</dt><dd><span class="insignia insignia-estado-{{ vm.estado }}">{{ etiquetas_estado.get(vm.estado, vm.estado) }}</span></dd>
     <dt>Sistema / función</dt><dd>{{ vm.descripcion or '—' }}</dd>

@@ -86,11 +86,11 @@ check("auth admin -> sesión activa", s["stage"] == "activa" and s["authenticate
 check("admin tiene 10 permisos", sum(1 for v in s["permisos"].values() if v) == 10)
 H = {"X-CSRF-Token": tok}
 
-# === 2. Inventario: host de virtualización -> hipervisor -> vm + credenciales en cada nivel ===
-r = admin.post("/api/web/servidores", headers=H, json={"nombre":"host-01","tipo":"host_virtualizacion","descripcion":"host","sistema_operativo":"Proxmox","marca_modelo":"Dell","ubicacion":"CPD","ip_gestion":"10.0.0.1","ram":"128GB","cpu":"2x Xeon","almacenamiento":"4TB","numero_serie":"SN1","garantia_hasta":"2027-01-01","proveedor":"Dell","estado":"activo","etiquetas":"prod, critico"})
-host_id = r.json()["id"]; check("crear servidor host", r.status_code == 200)
-r = admin.post(f"/api/web/servidores/{host_id}/hipervisores", headers=H, json={"nombre":"pve-01","plataforma":"Proxmox VE","version":"8.1","ip_gestion":"10.0.0.2","descripcion":"","estado":"activo","etiquetas":"virt"})
-hv_id = r.json()["id"]; check("crear hipervisor", r.status_code == 200)
+# === 2. Inventario: servidor dedicado + hipervisor de nivel superior -> vm + credenciales ===
+r = admin.post("/api/web/servidores", headers=H, json={"nombre":"srv-dedicado","descripcion":"BD nómina","sistema_operativo":"Debian","marca_modelo":"Dell","ubicacion":"CPD","ip_gestion":"10.0.0.1","ram":"64GB","cpu":"Xeon","almacenamiento":"2TB","numero_serie":"SN1","garantia_hasta":"2027-01-01","proveedor":"Dell","estado":"activo","etiquetas":"prod, critico"})
+host_id = r.json()["id"]; check("crear servidor dedicado", r.status_code == 200)
+r = admin.post("/api/web/hipervisores", headers=H, json={"nombre":"pve-01","plataforma":"Proxmox VE","version":"8.1","ip_gestion":"10.0.0.2","descripcion":"","marca_modelo":"HPE","ubicacion":"CPD","ram":"256GB","cpu":"2x Xeon","almacenamiento":"8TB","numero_serie":"SN2","garantia_hasta":"2028-01-01","proveedor":"HPE","estado":"activo","etiquetas":"virt"})
+hv_id = r.json()["id"]; check("crear hipervisor (nivel superior)", r.status_code == 200)
 r = admin.post(f"/api/web/hipervisores/{hv_id}/vms", headers=H, json={"nombre":"vm-web","sistema_operativo":"Ubuntu 24.04","ip":"10.0.1.5","descripcion":"web","estado":"activo","etiquetas":"web"})
 vm_id = r.json()["id"]; check("crear VM", r.status_code == 200)
 
@@ -198,23 +198,27 @@ r = admin.get("/api/web/metricas"); m = r.json()
 check("métricas", r.status_code == 200 and all(k in m for k in ["rotacion_vencida","logins_fallidos_24h","sin_mfa","top_accesos","concesiones_por_caducar"]))
 
 # === 12. Búsqueda global ===
-r = admin.get("/api/web/buscar?q=host"); b = r.json()
-check("búsqueda servidores", r.status_code == 200 and any(s["nombre"]=="host-01" for s in b["servidores"]))
+r = admin.get("/api/web/buscar?q=dedicado"); b = r.json()
+check("búsqueda servidores", r.status_code == 200 and any(s["nombre"]=="srv-dedicado" for s in b["servidores"]))
+r = admin.get("/api/web/buscar?q=pve"); bh = r.json()
+check("búsqueda hipervisores", r.status_code == 200 and any(h["nombre"]=="pve-01" for h in bh["hipervisores"]))
 r = admin.get("/api/web/buscar?q=deploy")
 check("búsqueda credenciales (sin password)", r.status_code == 200 and all("password" not in c for c in r.json()["credenciales"]))
 
 # === 13. Importación CSV ===
 csv_data = (
-    "tipo,nombre,tipo_servidor,sistema_operativo,ip,descripcion,estado,etiquetas,padre,plataforma,version,activo_tipo,usuario_acceso,password,servicio,puerto\n"
-    "servidor,srv-bd,funcion_unica,Debian,10.0.2.1,base de datos,activo,bd,,,,,,,,\n"
-    "credencial,,,,,,,,srv-bd,,,servidor,dba,ImportPwd!2026,SSH,22\n"
+    "tipo,nombre,sistema_operativo,ip,descripcion,estado,etiquetas,padre,plataforma,version,activo_tipo,usuario_acceso,password,servicio,puerto\n"
+    "servidor,srv-bd,Debian,10.0.2.1,base de datos,activo,bd,,,,,,,,\n"
+    "hipervisor,pve-imp,,10.0.2.2,nodo,activo,,,Proxmox VE,8.2,,,,,\n"
+    "credencial,,,,,,,srv-bd,,,servidor,dba,ImportPwd!2026,SSH,22\n"
 )
 r = admin.post("/api/web/importar", headers=H, files={"archivo": ("inv.csv", csv_data, "text/csv")})
 imp = r.json()
-check("importación CSV", r.status_code == 200 and imp["creados"]["servidor"]==1 and imp["creados"]["credencial"]==1, str(imp.get("errores")))
+check("importación CSV", r.status_code == 200 and imp["creados"]["servidor"]==1 and imp["creados"]["hipervisor"]==1 and imp["creados"]["credencial"]==1, str(imp.get("errores")))
 
 # === 14. Eliminaciones en cascada ===
-r = admin.delete(f"/api/web/servidores/{host_id}", headers=H); check("eliminar servidor (cascada)", r.status_code == 200)
+r = admin.delete(f"/api/web/servidores/{host_id}", headers=H); check("eliminar servidor dedicado", r.status_code == 200)
+r = admin.delete(f"/api/web/hipervisores/{hv_id}", headers=H); check("eliminar hipervisor (cascada)", r.status_code == 200)
 r = admin.get(f"/api/web/vms/{vm_id}"); check("VM eliminada en cascada -> 404", r.status_code == 404)
 
 # === 15. Login con código de recuperación ===
