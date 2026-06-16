@@ -21,9 +21,21 @@ El repo ya trae la configuración:
 
 1. Railway → **New Project → Deploy from GitHub repo** → elige `sr-juanchii/passwd`.
    Railway detecta `railway.json` y crea el servicio **backend**.
-2. En el proyecto: **New → Database → Add MySQL** (el `railway.json` ya mapea
-   `PASSWD_DATABASE_URL` a `${{MYSQLUSER}}…`). *(Alternativa PostgreSQL: añade
-   Postgres y cambia esa variable a `postgresql://${{PGUSER}}:${{PGPASSWORD}}@${{PGHOST}}:${{PGPORT}}/${{PGDATABASE}}` — el backend ya soporta ambos.)*
+2. En el proyecto: **New → Database → Add MySQL** (opción **principal**). El
+   backend **no arranca sin una BD** accesible (de ahí el `healthcheck failed` si
+   falta). El `railway.json` ya deja `PASSWD_DATABASE_URL` cableado al plugin MySQL:
+   ```
+   PASSWD_DATABASE_URL=mysql+pymysql://${{MySQL.MYSQLUSER}}:${{MySQL.MYSQLPASSWORD}}@${{MySQL.MYSQLHOST}}:${{MySQL.MYSQLPORT}}/${{MySQL.MYSQLDATABASE}}
+   ```
+   Solo asegúrate de que **el servicio de BD se llame `MySQL`** (nombre por
+   defecto del plugin); si lo renombraste, ajusta el prefijo. *(Alternativa más
+   corta: `PASSWD_DATABASE_URL=${{MySQL.MYSQL_URL}}` — el backend reescribe
+   `mysql://…` a `mysql+pymysql://…` automáticamente.)*
+   - *Alternativa PostgreSQL* (si lo prefieres): **Add PostgreSQL** y
+     `PASSWD_DATABASE_URL=${{Postgres.DATABASE_URL}}`.
+   > Importante: la sintaxis de Railway lleva el **nombre del servicio**
+   > (`${{MySQL.MYSQLHOST}}`). Un `${{MYSQLUSER}}` sin prefijo no resuelve y deja la
+   > URL vacía → el backend no conecta y falla el healthcheck.
 
 ## 2. Configurar el backend
 
@@ -83,3 +95,19 @@ forzado → enrolar MFA. Listo.
   tras dormir tarda unos segundos.
 - Solo-backend (frontend en Vercel/v0): despliega únicamente el servicio backend y
   apunta el frontend externo a su dominio (ver `docs/despliegue-backend-vps.md`).
+
+## 6. Solución de problemas
+
+**`Healthcheck failed! 1/1 replicas never became healthy` en `/healthz`.**
+El proceso de la app se cae al arrancar (no llega a escuchar). Causa casi segura:
+la **base de datos no es accesible**. Revisa los **Deploy Logs** del servicio
+backend (no los de build): verás un error tipo `OperationalError / Can't connect`.
+Solución:
+1. Asegúrate de tener una BD en el proyecto y que `PASSWD_DATABASE_URL` resuelva
+   con el nombre del servicio (`${{Postgres.DATABASE_URL}}` o `${{MySQL.MYSQL_URL}}`).
+2. Comprueba que el servicio de BD esté **Activo** y enlazado al backend.
+3. El arranque espera a la BD y reintenta unos segundos; el `healthcheckTimeout`
+   está en 300 s para cubrir el primer arranque (creación de tablas/migración).
+
+Si el log muestra otro error (variable faltante, etc.), corrígelo según el
+mensaje; el backend falla de forma ruidosa a propósito cuando algo esencial falta.

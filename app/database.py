@@ -47,12 +47,41 @@ def get_engine() -> Engine:
     return _engine
 
 
+def _esperar_bd(engine: Engine, intentos: int = 10, espera: float = 3.0) -> None:
+    """Espera a que la BD acepte conexiones (la gestionada puede tardar en arrancar).
+
+    Reintenta con una pausa fija; si tras todos los intentos sigue sin conectar,
+    relanza el error (fallo ruidoso = configuración de BD incorrecta, p. ej. falta
+    el plugin/Neon o ``PASSWD_DATABASE_URL`` no resuelve).
+    """
+    import logging
+    import time
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    logger = logging.getLogger("passwd.db")
+    for intento in range(1, intentos + 1):
+        try:
+            with engine.connect() as conexion:
+                conexion.execute(text("SELECT 1"))
+            return
+        except OperationalError:
+            if intento == intentos:
+                logger.error("No se pudo conectar a la base de datos tras %s intentos.", intentos)
+                raise
+            logger.warning("BD no disponible (intento %s/%s); reintentando en %ss…", intento, intentos, espera)
+            time.sleep(espera)
+
+
 def init_db() -> None:
     """Crea las tablas que falten y reconcilia columnas nuevas (cambios aditivos)."""
     from app import models  # noqa: F401  (registra los modelos)
     from app.schema_sync import migrar_inventario_nivel_superior, reconciliar_esquema
 
     engine = get_engine()
+    # Espera a que la BD acepte conexiones (despliegues gestionados: Railway/Neon…).
+    _esperar_bd(engine)
     # Migración no aditiva del inventario (hipervisor de nivel superior) ANTES de
     # create_all, para que este recree las tablas de inventario con el esquema nuevo.
     migrar_inventario_nivel_superior(engine)
