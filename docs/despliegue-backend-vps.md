@@ -35,6 +35,11 @@ PASSWD_CORS_ORIGINS=https://TU-APP.vercel.app   # uno o varios, separados por co
 # (genéralos una vez y guárdalos en el gestor de secretos del proveedor):
 PASSWD_SECRET_KEY=...            # python -c "import secrets;print(secrets.token_urlsafe(48))"
 PASSWD_ENCRYPTION_KEY=...        # python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+
+# Base de datos: SQLite por defecto (solo si el disco persiste). En hosts
+# efímeros/serverless usa PostgreSQL gestionado (Neon) y el límite de tasa en BD:
+# PASSWD_DATABASE_URL=postgresql://usuario:clave@host/neondb?sslmode=require
+# PASSWD_RATE_LIMIT_BACKEND=bd
 ```
 
 > **Importante**: añade a `PASSWD_CORS_ORIGINS` también los dominios de *preview* de
@@ -73,6 +78,47 @@ Plataformas que dan un subdominio HTTPS y construyen desde el `Dockerfile`
 En todas: define las variables de la sección 2 (incluye `PASSWD_SECRET_KEY` y
 `PASSWD_ENCRYPTION_KEY` para no perder lo cifrado). La URL pública del servicio
 (p. ej. `https://passwd-api.fly.dev`) es la que usarás en el frontend.
+
+## 3C. Google Cloud Run + Neon (Postgres) — recomendado sin gestionar VM
+
+Contenedor *serverless* con HTTPS `*.run.app` automático y escala a cero
+(≈0 coste dentro del *free tier*). Como el disco de Cloud Run es **efímero**, la
+base de datos va en **Neon** (PostgreSQL gestionado, plan gratuito). El backend ya
+soporta PostgreSQL (driver `psycopg2`); verificado de extremo a extremo contra PG.
+
+> Requiere una cuenta de Google Cloud con facturación activada (tarjeta de
+> verificación); dentro del *free tier* no se factura. Neon se registra sin tarjeta.
+
+**1) Base de datos en Neon**
+- Crea un proyecto en https://neon.tech y copia la *connection string* (formato
+  `postgresql://usuario:clave@ep-xxx.region.aws.neon.tech/neondb?sslmode=require`).
+
+**2) Desplegar en Cloud Run** (desde la raíz del repo, con `gcloud` instalado):
+```bash
+gcloud run deploy passwd-api \
+  --source . \                       # construye con el Dockerfile (respeta .gcloudignore/$PORT)
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars "PASSWD_DATABASE_URL=postgresql://USER:PASS@HOST/neondb?sslmode=require" \
+  --set-env-vars "PASSWD_ADMIN_USERNAME=admin,PASSWD_ADMIN_EMAIL=admin@tu.tld" \
+  --set-env-vars "PASSWD_ADMIN_PASSWORD=UnaClaveInicialRobusta!" \
+  --set-env-vars "PASSWD_COOKIE_SECURE=true,PASSWD_COOKIE_SAMESITE=none" \
+  --set-env-vars "PASSWD_CORS_ORIGINS=https://TU-APP.vercel.app" \
+  --set-env-vars "PASSWD_RATE_LIMIT_BACKEND=bd" \
+  --set-env-vars "PASSWD_SECRET_KEY=$(python -c 'import secrets;print(secrets.token_urlsafe(48))')" \
+  --set-env-vars "PASSWD_ENCRYPTION_KEY=$(python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())')"
+```
+Cloud Run te devuelve la URL pública `https://passwd-api-xxxx.run.app` (esa es la
+que pondrás en el frontend).
+
+Notas importantes en Cloud Run (filesystem efímero, varias instancias):
+- **`PASSWD_DATABASE_URL` a Neon** es obligatorio (SQLite no persiste ahí).
+- **Fija `PASSWD_SECRET_KEY` y `PASSWD_ENCRYPTION_KEY`** por entorno: si no, se
+  regeneran en cada arranque y se perderían las sesiones y los datos cifrados.
+  (Mejor aún: guárdalas en Secret Manager y móntalas con `--set-secrets`.)
+- **`PASSWD_RATE_LIMIT_BACKEND=bd`** para que el límite de tasa sea compartido
+  entre instancias (el de memoria es por proceso).
+- La base de Neon debe ser UTF-8 (lo es por defecto).
 
 ## 4. Frontend en Vercel/v0
 

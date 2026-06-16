@@ -11,3 +11,8 @@ cryptography>=41.0
 
 # Controlador MySQL (usado por docker-compose.mysql.yml; inofensivo con SQLite)
 pymysql>=1.1
+
+# Controlador PostgreSQL para BD gestionada gratis (p. ej. Neon) en despliegues
+# serverless/efímeros como Cloud Run, Koyeb o Render. Inofensivo con SQLite/MySQL;
+# con una URL postgresql://… SQLAlchemy usa psycopg2 por defecto.
+psycopg2-binary>=2.9
