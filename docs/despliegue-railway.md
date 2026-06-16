@@ -21,20 +21,21 @@ El repo ya trae la configuración:
 
 1. Railway → **New Project → Deploy from GitHub repo** → elige `sr-juanchii/passwd`.
    Railway detecta `railway.json` y crea el servicio **backend**.
-2. En el proyecto: **New → Database**. El backend **no arranca sin una BD**
-   accesible (de ahí el `healthcheck failed` si falta). Recomendado **PostgreSQL**
-   (verificado de extremo a extremo):
-   - Añade **Add PostgreSQL** y, en el servicio **backend → Variables**, define
-     la referencia (con el **nombre del servicio de BD**, no a secas):
-     ```
-     PASSWD_DATABASE_URL=${{Postgres.DATABASE_URL}}
-     ```
-   - *Alternativa MySQL*: **Add MySQL** y
-     `PASSWD_DATABASE_URL=${{MySQL.MYSQL_URL}}` (la URL `mysql://…` la reescribe el
-     backend a `mysql+pymysql://…` automáticamente).
-   > Importante: la sintaxis correcta de Railway lleva el **nombre del servicio**
-   > (`${{Postgres.DATABASE_URL}}`). Un `${{MYSQLUSER}}` sin prefijo puede no
-   > resolver y dejar la URL vacía → el backend no conecta y falla el healthcheck.
+2. En el proyecto: **New → Database → Add MySQL** (opción **principal**). El
+   backend **no arranca sin una BD** accesible (de ahí el `healthcheck failed` si
+   falta). El `railway.json` ya deja `PASSWD_DATABASE_URL` cableado al plugin MySQL:
+   ```
+   PASSWD_DATABASE_URL=mysql+pymysql://${{MySQL.MYSQLUSER}}:${{MySQL.MYSQLPASSWORD}}@${{MySQL.MYSQLHOST}}:${{MySQL.MYSQLPORT}}/${{MySQL.MYSQLDATABASE}}
+   ```
+   Solo asegúrate de que **el servicio de BD se llame `MySQL`** (nombre por
+   defecto del plugin); si lo renombraste, ajusta el prefijo. *(Alternativa más
+   corta: `PASSWD_DATABASE_URL=${{MySQL.MYSQL_URL}}` — el backend reescribe
+   `mysql://…` a `mysql+pymysql://…` automáticamente.)*
+   - *Alternativa PostgreSQL* (si lo prefieres): **Add PostgreSQL** y
+     `PASSWD_DATABASE_URL=${{Postgres.DATABASE_URL}}`.
+   > Importante: la sintaxis de Railway lleva el **nombre del servicio**
+   > (`${{MySQL.MYSQLHOST}}`). Un `${{MYSQLUSER}}` sin prefijo no resuelve y deja la
+   > URL vacía → el backend no conecta y falla el healthcheck.
 
 ## 2. Configurar el backend
 

@@ -14,7 +14,7 @@
   "environments": {
     "production": {
       "variables": {
-        "PASSWD_DATABASE_URL": "mysql+pymysql://${{MYSQLUSER}}:${{MYSQLPASSWORD}}@${{MYSQLHOST}}:${{MYSQLPORT}}/${{MYSQLDATABASE}}",
+        "PASSWD_DATABASE_URL": "mysql+pymysql://${{MySQL.MYSQLUSER}}:${{MySQL.MYSQLPASSWORD}}@${{MySQL.MYSQLHOST}}:${{MySQL.MYSQLPORT}}/${{MySQL.MYSQLDATABASE}}",
         "PASSWD_DOMAIN": "${{PASSWD_DOMAIN}}",
         "PASSWD_SECRET_KEY": "${{PASSWD_SECRET_KEY}}",
         "PASSWD_ENCRYPTION_KEY": "${{PASSWD_ENCRYPTION_KEY}}",
