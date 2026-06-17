@@ -54,11 +54,7 @@ class CabecerasSeguridadMiddleware(BaseHTTPMiddleware):
         respuesta.headers["Referrer-Policy"] = "no-referrer"
         respuesta.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         respuesta.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        # Con CORS habilitado (frontend en otro origen) la API debe poder leerse
-        # cross-origin; si no, se mantiene el aislamiento estricto same-origin.
-        respuesta.headers["Cross-Origin-Resource-Policy"] = (
-            "cross-origin" if get_settings().cors_origins else "same-origin"
-        )
+        respuesta.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         respuesta.headers["X-Permitted-Cross-Domain-Policies"] = "none"
         if get_settings().cookie_secure:
             respuesta.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -192,20 +188,6 @@ def create_app() -> FastAPI:
     # incluidas las cortocircuitadas por el límite de tamaño (p. ej. un 413).
     app.add_middleware(LimiteTamanoPeticionMiddleware)
     app.add_middleware(CabecerasSeguridadMiddleware)
-    # CORS con credenciales para un frontend en otro origen (p. ej. Vercel/v0).
-    # Se añade el último para quedar como capa MÁS EXTERNA y atender el preflight
-    # OPTIONS y decorar todas las respuestas. Vacío por defecto (mismo origen).
-    if settings.cors_origins:
-        from starlette.middleware.cors import CORSMiddleware
-
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.cors_origins,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            allow_headers=["Content-Type", "X-CSRF-Token", "Authorization"],
-            max_age=600,
-        )
 
     init_db()
     _bootstrap_admin()

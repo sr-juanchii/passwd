@@ -15,15 +15,6 @@ FROM node:22-slim AS build
 WORKDIR /app
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 ENV NEXT_TELEMETRY_DISABLED=1
-# URL del backend. Next "hornea" los rewrites y las variables NEXT_PUBLIC_* en el
-# build, así que la URL debe estar disponible AQUÍ (build args). En Railway/otros
-# builders de Docker, define la variable del servicio y se pasa como --build-arg.
-#   - PASSWD_API_BASE: modo proxy mismo-origen (recomendado; sin CORS).
-#   - NEXT_PUBLIC_API_BASE: modo cross-origin directo (requiere CORS en el backend).
-ARG PASSWD_API_BASE=""
-ARG NEXT_PUBLIC_API_BASE=""
-ENV PASSWD_API_BASE=$PASSWD_API_BASE
-ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN corepack enable && pnpm build
