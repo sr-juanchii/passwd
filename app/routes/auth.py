@@ -53,7 +53,6 @@ from app.security.sessions import (
     revocar_sesion,
     revocar_sesiones_de_usuario,
     rotar_token,
-    samesite_y_secure,
 )
 
 router = APIRouter()
@@ -101,11 +100,10 @@ def _registrar_fallo(db: Session, request: Request, usuario: Usuario) -> None:
 @router.get("/login")
 def login_form(request: Request):
     token = request.cookies.get(COOKIE_CSRF_LOGIN) or secrets.token_urlsafe(24)
-    samesite, secure = samesite_y_secure()
     respuesta = render(request, "login.html", {"csrf_login": token})
     respuesta.set_cookie(
-        COOKIE_CSRF_LOGIN, token, httponly=True, samesite=samesite,
-        secure=secure, max_age=3600, path="/",
+        COOKIE_CSRF_LOGIN, token, httponly=True, samesite="strict",
+        secure=get_settings().cookie_secure, max_age=3600, path="/",
     )
     return respuesta
 

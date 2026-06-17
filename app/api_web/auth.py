@@ -52,7 +52,6 @@ from app.security.sessions import (
     revocar_sesion,
     revocar_sesiones_de_usuario,
     rotar_token,
-    samesite_y_secure,
 )
 
 router = APIRouter()
@@ -136,11 +135,10 @@ def _exigir_csrf(request: Request, sesion: SesionWeb) -> None:
 def csrf_login(request: Request):
     """Emite (o reutiliza) el token de doble cookie para el formulario de login."""
     token = request.cookies.get(COOKIE_CSRF_LOGIN) or secrets.token_urlsafe(24)
-    samesite, secure = samesite_y_secure()
     respuesta = JSONResponse({"csrf_login": token})
     respuesta.set_cookie(
-        COOKIE_CSRF_LOGIN, token, httponly=True, samesite=samesite,
-        secure=secure, max_age=3600, path="/",
+        COOKIE_CSRF_LOGIN, token, httponly=True, samesite="strict",
+        secure=get_settings().cookie_secure, max_age=3600, path="/",
     )
     return respuesta
 
