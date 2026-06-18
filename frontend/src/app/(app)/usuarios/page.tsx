@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Clipboard,
@@ -8,6 +8,9 @@ import {
   Loader2,
   MoreHorizontal,
   Plus,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
   ShieldOff,
   UserCheck,
   UserX,
@@ -19,6 +22,9 @@ import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Mono } from "@/components/ui/mono";
+import { EstadoBadge } from "@/components/estado-badge";
 import {
   Table,
   TableBody,
@@ -64,20 +70,30 @@ import { toast } from "sonner";
 
 const ROLES = Object.keys(ETIQUETAS_ROL) as Rol[];
 
+const ROL_DESC: Record<Rol, string> = {
+  admin: "Control total: usuarios, activos, concesiones.",
+  operador: "Gestiona activos y credenciales.",
+  auditor: "Solo lectura de bitácora y métricas.",
+  analista: "Acceso únicamente a activos concedidos.",
+};
+
+function iniciales(nombre: string, username: string): string {
+  const base = (nombre || username || "?").trim().split(/\s+/).filter(Boolean);
+  if (base.length === 0) return "?";
+  if (base.length === 1) return base[0].slice(0, 2).toUpperCase();
+  return (base[0][0] + base[1][0]).toUpperCase();
+}
+
 export default function UsuariosPage() {
   const { puede } = useSession();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [filtro, setFiltro] = useState("");
 
-  // Diálogo de cambio de rol.
   const [rolUsuario, setRolUsuario] = useState<Usuario | null>(null);
   const [rolSeleccionado, setRolSeleccionado] = useState<Rol>("operador");
   const [guardandoRol, setGuardandoRol] = useState(false);
-
-  // Diálogo de confirmación de reset MFA.
   const [mfaUsuario, setMfaUsuario] = useState<Usuario | null>(null);
-
-  // Diálogo de contraseña temporal.
   const [passwordTemporal, setPasswordTemporal] = useState<{ username: string; password: string } | null>(null);
 
   const cargar = useCallback(async () => {
@@ -95,6 +111,19 @@ export default function UsuariosPage() {
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  const conteos = useMemo(
+    () => ROLES.map((r) => [r, usuarios.filter((u) => u.rol === r).length] as const),
+    [usuarios],
+  );
+
+  const visibles = useMemo(() => {
+    const q = filtro.trim().toLowerCase();
+    if (!q) return usuarios;
+    return usuarios.filter((u) =>
+      (u.nombre_completo + u.username + u.email + u.rol_label).toLowerCase().includes(q),
+    );
+  }, [usuarios, filtro]);
 
   function abrirRol(u: Usuario) {
     setRolUsuario(u);
@@ -163,100 +192,136 @@ export default function UsuariosPage() {
 
   if (!puede("usuarios.gestionar")) {
     return (
-      <div className="space-y-6">
+      <>
         <PageHeader titulo="Usuarios" />
-        <p className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
           No tiene permiso para gestionar usuarios.
         </p>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
         titulo="Usuarios"
-        descripcion="Gestione las cuentas, roles y autenticación de los usuarios."
+        descripcion="Cuentas y control de acceso basado en roles."
         acciones={
           <Button asChild>
             <Link href="/usuarios/nuevo">
-              <Plus className="h-4 w-4" /> Nuevo usuario
+              <Plus /> Nuevo usuario
             </Link>
           </Button>
         }
       />
 
-      {cargando ? (
-        <div className="flex items-center justify-center p-10">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {conteos.map(([r, n]) => (
+            <div key={r} className="flex flex-col gap-1.5 rounded-[14px] border bg-card p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] font-semibold">{ETIQUETAS_ROL[r]}</span>
+                <Mono className="text-base font-semibold">{n}</Mono>
+              </div>
+              <span className="text-[11.5px] leading-snug text-muted-foreground">{ROL_DESC[r]}</span>
+            </div>
+          ))}
         </div>
-      ) : usuarios.length === 0 ? (
-        <p className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No hay usuarios registrados.
-        </p>
-      ) : (
-        <div className="rounded-md border">
+
+        <div className="relative max-w-xs">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-[15px] -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Filtrar usuarios…"
+            className="pl-8"
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value)}
+          />
+        </div>
+
+        {cargando ? (
+          <div className="flex items-center justify-center p-10">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : visibles.length === 0 ? (
+          <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
+            {usuarios.length === 0 ? "No hay usuarios registrados." : "Sin coincidencias."}
+          </p>
+        ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Usuario</TableHead>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Email</TableHead>
                 <TableHead>Rol</TableHead>
                 <TableHead>MFA</TableHead>
                 <TableHead>Estado</TableHead>
+                <TableHead>Último acceso</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {usuarios.map((u) => (
+              {visibles.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell className="font-mono">{u.username}</TableCell>
-                  <TableCell>{u.nombre_completo}</TableCell>
-                  <TableCell>{u.email}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{u.rol_label}</Badge>
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-muted text-[11.5px] font-semibold">
+                        {iniciales(u.nombre_completo, u.username)}
+                      </span>
+                      <div>
+                        <div className="text-[13px] font-medium">{u.nombre_completo || u.username}</div>
+                        <Mono className="text-xs text-muted-foreground">{u.username}</Mono>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={u.rol === "admin" ? "default" : "secondary"}>{u.rol_label}</Badge>
                   </TableCell>
                   <TableCell>
                     {u.mfa_habilitado ? (
-                      <Badge variant="default">Sí</Badge>
+                      <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                        <ShieldCheck className="size-3.5" /> Activo
+                      </span>
                     ) : (
-                      <Badge variant="outline">No</Badge>
+                      <Badge variant="destructive" className="gap-1">
+                        <ShieldAlert /> Sin MFA
+                      </Badge>
                     )}
                   </TableCell>
                   <TableCell>
                     {u.activo ? (
-                      <Badge variant="default">Activo</Badge>
+                      <EstadoBadge estado="activo" />
                     ) : (
                       <Badge variant="destructive">Inactivo</Badge>
                     )}
+                  </TableCell>
+                  <TableCell className="text-[12.5px] text-muted-foreground">
+                    {u.ultimo_acceso ? new Date(u.ultimo_acceso).toLocaleString() : "Nunca"}
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="icon" variant="ghost" title="Acciones">
-                          <MoreHorizontal className="h-4 w-4" />
+                          <MoreHorizontal />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onSelect={() => abrirRol(u)}>
-                          <UserCheck className="h-4 w-4" /> Cambiar rol
+                          <UserCheck /> Cambiar rol
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => void resetPassword(u)}>
-                          <KeyRound className="h-4 w-4" /> Restablecer contraseña
+                          <KeyRound /> Restablecer contraseña
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => setMfaUsuario(u)}>
-                          <ShieldOff className="h-4 w-4" /> Restablecer MFA
+                          <ShieldOff /> Restablecer MFA
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onSelect={() => void alternarActivo(u)}>
                           {u.activo ? (
                             <>
-                              <UserX className="h-4 w-4" /> Desactivar
+                              <UserX /> Desactivar
                             </>
                           ) : (
                             <>
-                              <UserCheck className="h-4 w-4" /> Reactivar
+                              <UserCheck /> Reactivar
                             </>
                           )}
                         </DropdownMenuItem>
@@ -267,8 +332,8 @@ export default function UsuariosPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Diálogo cambiar rol */}
       <Dialog open={rolUsuario !== null} onOpenChange={(o) => !o && setRolUsuario(null)}>
@@ -299,7 +364,7 @@ export default function UsuariosPage() {
               Cancelar
             </Button>
             <Button onClick={guardarRol} disabled={guardandoRol}>
-              {guardandoRol && <Loader2 className="h-4 w-4 animate-spin" />}
+              {guardandoRol && <Loader2 className="animate-spin" />}
               Guardar
             </Button>
           </DialogFooter>
@@ -334,7 +399,7 @@ export default function UsuariosPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2">
-            <code className="flex-1 rounded bg-muted px-3 py-2 font-mono text-sm break-all">
+            <code className="flex-1 rounded-lg bg-muted px-3 py-2 font-mono text-sm break-all">
               {passwordTemporal?.password}
             </code>
             <Button
@@ -343,7 +408,7 @@ export default function UsuariosPage() {
               onClick={() => passwordTemporal && void copiar(passwordTemporal.password)}
               title="Copiar"
             >
-              <Clipboard className="h-4 w-4" />
+              <Clipboard />
             </Button>
           </div>
           <DialogFooter>
@@ -351,6 +416,6 @@ export default function UsuariosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

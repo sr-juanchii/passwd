@@ -1,15 +1,15 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileUp, Loader2, TriangleAlert, Upload } from "lucide-react";
+import { Download, FileUp, Loader2, TriangleAlert, Upload } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ResultadoImportacion } from "@/lib/types";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Mono } from "@/components/ui/mono";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const FORMATO: { tipo: string; columnas: string }[] = [
@@ -24,7 +24,13 @@ export default function ImportarPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [archivo, setArchivo] = useState<File | null>(null);
   const [importando, setImportando] = useState(false);
+  const [arrastrando, setArrastrando] = useState(false);
   const [resultado, setResultado] = useState<ResultadoImportacion | null>(null);
+
+  function elegir(f: File | null) {
+    setArchivo(f);
+    setResultado(null);
+  }
 
   async function importar() {
     if (!archivo) return;
@@ -43,126 +49,149 @@ export default function ImportarPage() {
 
   if (!puede("inventario.gestionar")) {
     return (
-      <div className="space-y-6">
-        <PageHeader titulo="Importar CSV" />
-        <p className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
+      <>
+        <PageHeader titulo="Importar" />
+        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
           No tiene permiso para importar inventario.
         </p>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-3xl">
       <PageHeader
-        titulo="Importar CSV"
-        descripcion="Cargue activos y credenciales de forma masiva desde un archivo CSV."
+        titulo="Importar"
+        descripcion="Cargue activos y credenciales desde un archivo CSV."
       />
 
-      <Alert variant="destructive">
-        <TriangleAlert className="h-4 w-4" />
-        <AlertTitle>El CSV contiene secretos en claro</AlertTitle>
-        <AlertDescription>
-          El archivo incluye contraseñas sin cifrar. Manéjelo por un canal seguro y destrúyalo de forma
-          permanente inmediatamente después de importarlo.
-        </AlertDescription>
-      </Alert>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Archivo</CardTitle>
-          <CardDescription>Seleccione un archivo CSV con el formato indicado más abajo.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-60 space-y-2">
-              <Input
-                ref={inputRef}
-                type="file"
-                accept=".csv"
-                onChange={(e) => {
-                  setArchivo(e.target.files?.[0] ?? null);
-                  setResultado(null);
-                }}
-              />
-            </div>
-            <Button onClick={importar} disabled={!archivo || importando}>
-              {importando ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Upload className="h-4 w-4" />
-              )}
-              Importar
-            </Button>
+      <div className="flex flex-col gap-4">
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setArrastrando(true);
+          }}
+          onDragLeave={() => setArrastrando(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setArrastrando(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) elegir(f);
+          }}
+          className={cn(
+            "rounded-[14px] border-2 border-dashed bg-card p-12 text-center transition-colors",
+            arrastrando ? "border-foreground/40 bg-muted" : "border-border",
+          )}
+        >
+          <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-muted">
+            <Upload className="size-[22px] text-foreground" />
           </div>
-        </CardContent>
-      </Card>
-
-      {resultado && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Resultado de la importación</CardTitle>
-            <CardDescription>{resultado.total} registro(s) creado(s) en total.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">Servidores</div>
-                <div className="text-xl font-semibold">{resultado.creados.servidor}</div>
-              </div>
-              <div className="rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">Hipervisores</div>
-                <div className="text-xl font-semibold">{resultado.creados.hipervisor}</div>
-              </div>
-              <div className="rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">VMs</div>
-                <div className="text-xl font-semibold">{resultado.creados.vm}</div>
-              </div>
-              <div className="rounded-md border p-3">
-                <div className="text-xs text-muted-foreground">Credenciales</div>
-                <div className="text-xl font-semibold">{resultado.creados.credencial}</div>
-              </div>
-            </div>
-
-            {resultado.errores.length > 0 && (
-              <Alert variant="destructive">
-                <TriangleAlert className="h-4 w-4" />
-                <AlertTitle>{resultado.errores.length} error(es)</AlertTitle>
-                <AlertDescription>
-                  <ul className="list-disc space-y-1 pl-4">
-                    {resultado.errores.map((e, i) => (
-                      <li key={i}>{e}</li>
-                    ))}
-                  </ul>
-                </AlertDescription>
-              </Alert>
+          {archivo ? (
+            <p className="mt-3.5 text-[14.5px] font-medium">
+              <Mono>{archivo.name}</Mono>
+            </p>
+          ) : (
+            <>
+              <p className="mt-3.5 text-[14.5px] font-medium">Arrastre un archivo CSV aquí</p>
+              <p className="text-[12.5px] text-muted-foreground">o</p>
+            </>
+          )}
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <Button onClick={() => inputRef.current?.click()} variant={archivo ? "outline" : "default"}>
+              <Upload /> {archivo ? "Cambiar archivo" : "Seleccionar archivo"}
+            </Button>
+            {archivo && (
+              <Button onClick={importar} disabled={importando}>
+                {importando ? <Loader2 className="animate-spin" /> : <FileUp />} Importar
+              </Button>
             )}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => elegir(e.target.files?.[0] ?? null)}
+          />
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileUp className="h-4 w-4" /> Formato del CSV
-          </CardTitle>
-          <CardDescription>
-            La primera columna de cada fila es el <code className="font-mono">tipo</code>
-            (servidor, hipervisor, vm o credencial), seguida de sus columnas. El campo{" "}
-            <code className="font-mono">padre</code> referencia el nombre del activo contenedor.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {FORMATO.map((f) => (
-            <div key={f.tipo} className="space-y-1">
-              <div className="text-sm font-medium">{f.tipo}</div>
-              <code className="block rounded bg-muted px-3 py-2 font-mono text-xs break-words">
-                {f.columnas}
-              </code>
+        <Alert variant="destructive">
+          <TriangleAlert className="size-4" />
+          <AlertTitle>El CSV contiene secretos en claro</AlertTitle>
+          <AlertDescription>
+            El archivo incluye contraseñas sin cifrar. Las contraseñas se cifran al importar y se
+            registra cada alta en la bitácora. Maneje el archivo por un canal seguro y destrúyalo de
+            forma permanente inmediatamente después de importarlo.
+          </AlertDescription>
+        </Alert>
+
+        {resultado && (
+          <div className="overflow-hidden rounded-[14px] border bg-card">
+            <div className="border-b px-4 py-3.5">
+              <span className="text-sm font-semibold">Resultado de la importación</span>
+              <span className="ml-2 text-[13px] text-muted-foreground">
+                {resultado.total} registro(s) creado(s)
+              </span>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+            <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
+              {(
+                [
+                  ["Servidores", resultado.creados.servidor],
+                  ["Hipervisores", resultado.creados.hipervisor],
+                  ["VMs", resultado.creados.vm],
+                  ["Credenciales", resultado.creados.credencial],
+                ] as [string, number][]
+              ).map(([l, v]) => (
+                <div key={l} className="flex flex-col gap-1 bg-card px-4 py-3.5">
+                  <span className="text-xs text-muted-foreground">{l}</span>
+                  <span className="text-xl font-semibold tabular-nums">{v}</span>
+                </div>
+              ))}
+            </div>
+            {resultado.errores.length > 0 && (
+              <div className="p-4">
+                <Alert variant="destructive">
+                  <TriangleAlert className="size-4" />
+                  <AlertTitle>{resultado.errores.length} error(es)</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc space-y-1 pl-4">
+                      {resultado.errores.map((e, i) => (
+                        <li key={i}>{e}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="overflow-hidden rounded-[14px] border bg-card">
+          <div className="flex items-center gap-2.5 border-b px-4 py-3.5">
+            <FileUp className="size-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">Formato del CSV</span>
+          </div>
+          <div className="flex flex-col gap-3 p-4">
+            <p className="text-[13px] text-muted-foreground">
+              La primera columna de cada fila es el <Mono>tipo</Mono> (servidor, hipervisor, vm o
+              credencial), seguida de sus columnas. El campo <Mono>padre</Mono> referencia el nombre
+              del activo contenedor.
+            </p>
+            {FORMATO.map((f) => (
+              <div key={f.tipo} className="flex flex-col gap-1">
+                <div className="text-sm font-medium">{f.tipo}</div>
+                <code className="block rounded-lg bg-muted px-3 py-2 font-mono text-xs break-words">
+                  {f.columnas}
+                </code>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Button variant="outline" className="self-start" disabled>
+          <Download /> Descargar plantilla CSV
+        </Button>
+      </div>
     </div>
   );
 }
