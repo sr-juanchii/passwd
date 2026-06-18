@@ -27,6 +27,16 @@ def get_engine() -> Engine:
         opciones: dict = {"pool_pre_ping": True}
         if settings.database_url.startswith("sqlite"):
             opciones["connect_args"] = {"check_same_thread": False}
+        else:
+            # MySQL/MariaDB usan REPEATABLE READ por defecto: una sesión fija su
+            # snapshot al primer SELECT y no ve los commits posteriores de otras
+            # transacciones durante toda su vida. En el flujo multi-paso (login →
+            # cambio de contraseña → MFA → sesión activa) cada petición es una
+            # transacción nueva que debe ver el cambio recién confirmado por la
+            # anterior; con READ COMMITTED cada sentencia lee el último estado
+            # confirmado, eliminando esa lectura-tras-escritura obsoleta. SQLite
+            # no tiene este problema (sin MVCC multi-versión por conexión).
+            opciones["isolation_level"] = "READ COMMITTED"
         _engine = create_engine(settings.database_url, **opciones)
         if settings.database_url.startswith("sqlite"):
 

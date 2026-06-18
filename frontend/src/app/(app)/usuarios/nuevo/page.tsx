@@ -8,7 +8,6 @@ import type { Rol } from "@/lib/types";
 import { ETIQUETAS_ROL } from "@/lib/constants";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -98,18 +97,19 @@ export default function NuevoUsuarioPage() {
           </Button>
         </div>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Datos del usuario</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={enviar} className="space-y-4">
+        <form onSubmit={enviar}>
+          <div className="overflow-hidden rounded-[14px] border bg-card">
+            <div className="border-b px-5 py-3.5">
+              <span className="text-sm font-semibold">Datos del usuario</span>
+            </div>
+            <div className="flex flex-col gap-4 p-5">
               <div className="space-y-2">
                 <Label htmlFor="username">Usuario</Label>
                 <Input
                   id="username"
                   autoComplete="off"
                   required
+                  className="font-mono"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
@@ -121,6 +121,7 @@ export default function NuevoUsuarioPage() {
                   type="email"
                   autoComplete="off"
                   required
+                  className="font-mono"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -149,18 +150,18 @@ export default function NuevoUsuarioPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex gap-2">
-                <Button type="submit" disabled={enviando}>
-                  {enviando && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Crear usuario
-                </Button>
-                <Button type="button" variant="outline" asChild>
-                  <Link href="/usuarios">Cancelar</Link>
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button type="submit" disabled={enviando}>
+              {enviando && <Loader2 className="animate-spin" />}
+              Crear usuario
+            </Button>
+            <Button type="button" variant="outline" asChild>
+              <Link href="/usuarios">Cancelar</Link>
+            </Button>
+          </div>
+        </form>
       )}
     </div>
   );

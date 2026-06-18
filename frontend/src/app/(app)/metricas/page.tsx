@@ -8,16 +8,18 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  ScrollText,
   ShieldAlert,
   TrendingUp,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Metricas } from "@/lib/types";
-import { ETIQUETAS_TIPO_ACTIVO, rutaActivo } from "@/lib/constants";
+import { rutaActivo } from "@/lib/constants";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Mono } from "@/components/ui/mono";
 import {
   Table,
   TableBody,
@@ -26,29 +28,73 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-function Resumen({
-  titulo,
+function MetricTile({
+  icono: Icono,
+  etiqueta,
   valor,
-  icono,
+  alerta,
 }: {
-  titulo: string;
+  icono: React.ComponentType<{ className?: string }>;
+  etiqueta: string;
   valor: number;
-  icono: React.ReactNode;
+  alerta?: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{titulo}</CardTitle>
-        {icono}
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-semibold">{valor}</div>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-2.5 rounded-[14px] border bg-card p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[12.5px] text-muted-foreground">{etiqueta}</span>
+        <div
+          className={cn(
+            "flex size-[30px] items-center justify-center rounded-lg",
+            alerta ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
+          )}
+        >
+          <Icono className="size-4" />
+        </div>
+      </div>
+      <span
+        className={cn(
+          "text-[28px] leading-none font-semibold tabular-nums",
+          alerta && valor > 0 ? "text-destructive" : "text-foreground",
+        )}
+      >
+        {valor}
+      </span>
+    </div>
   );
 }
+
+function CardPanel({
+  icono: Icono,
+  titulo,
+  accion,
+  className,
+  children,
+}: {
+  icono: React.ComponentType<{ className?: string }>;
+  titulo: string;
+  accion?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn("overflow-hidden rounded-[14px] border bg-card", className)}>
+      <div className="flex items-center justify-between border-b px-4 py-3.5">
+        <div className="flex items-center gap-2.5">
+          <Icono className="size-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">{titulo}</span>
+        </div>
+        {accion}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+const vacio = (txt: string) => <p className="py-2 text-[13px] text-muted-foreground">{txt}</p>;
 
 export default function MetricasPage() {
   const { puede } = useSession();
@@ -63,7 +109,8 @@ export default function MetricasPage() {
         if (activo) setDatos(r);
       })
       .catch((err) => {
-        if (activo) toast.error(err instanceof ApiError ? err.message : "No se pudieron cargar las métricas.");
+        if (activo)
+          toast.error(err instanceof ApiError ? err.message : "No se pudieron cargar las métricas.");
       })
       .finally(() => {
         if (activo) setCargando(false);
@@ -75,79 +122,62 @@ export default function MetricasPage() {
 
   if (!puede("metricas.ver")) {
     return (
-      <div className="space-y-6">
+      <>
         <PageHeader titulo="Métricas" />
-        <p className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
           No tiene permiso para ver las métricas.
         </p>
-      </div>
+      </>
     );
   }
 
-  if (cargando) {
+  if (cargando || !datos) {
     return (
-      <div className="space-y-6">
+      <>
         <PageHeader titulo="Métricas de seguridad" />
         <div className="flex items-center justify-center p-10">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
-      </div>
+      </>
     );
   }
 
-  if (!datos) return null;
+  const maxAcc = Math.max(1, ...datos.top_accesos.map((t) => t.accesos));
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
         titulo="Métricas de seguridad"
-        descripcion="Panel de control del estado de seguridad del inventario."
+        descripcion="Panel del estado de seguridad del inventario."
+        acciones={
+          puede("auditoria.ver") ? (
+            <Button variant="outline" asChild>
+              <Link href="/auditoria">
+                <ScrollText /> Ver auditoría
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Resumen
-          titulo="Logins fallidos (24 h)"
-          valor={datos.logins_fallidos_24h}
-          icono={<Activity className="h-4 w-4 text-muted-foreground" />}
-        />
-        <Resumen
-          titulo="Logins fallidos (7 d)"
-          valor={datos.logins_fallidos_7d}
-          icono={<Activity className="h-4 w-4 text-muted-foreground" />}
-        />
-        <Resumen
-          titulo="Rotación vencida"
-          valor={datos.rotacion_vencida.length}
-          icono={<KeyRound className="h-4 w-4 text-muted-foreground" />}
-        />
-        <Resumen
-          titulo="Cuentas sin MFA"
-          valor={datos.sin_mfa.length}
-          icono={<ShieldAlert className="h-4 w-4 text-muted-foreground" />}
-        />
-        <Resumen
-          titulo="Usuarios bloqueados"
-          valor={datos.bloqueados.length}
-          icono={<Lock className="h-4 w-4 text-muted-foreground" />}
-        />
-      </div>
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <MetricTile icono={Activity} etiqueta="Logins fallidos (24 h)" valor={datos.logins_fallidos_24h} />
+          <MetricTile icono={Activity} etiqueta="Logins fallidos (7 d)" valor={datos.logins_fallidos_7d} />
+          <MetricTile icono={KeyRound} etiqueta="Rotación vencida" valor={datos.rotacion_vencida.length} alerta />
+          <MetricTile icono={ShieldAlert} etiqueta="Cuentas sin MFA" valor={datos.sin_mfa.length} alerta />
+          <MetricTile icono={Lock} etiqueta="Usuarios bloqueados" valor={datos.bloqueados.length} alerta />
+        </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4" /> Credenciales con rotación vencida
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <CardPanel icono={KeyRound} titulo="Credenciales con rotación vencida">
             {datos.rotacion_vencida.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Ninguna credencial con rotación vencida.</p>
+              vacio("Ninguna credencial vencida.")
             ) : (
-              <Table>
+              <Table className="rounded-none shadow-none">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Activo</TableHead>
-                    <TableHead>Tipo</TableHead>
                     <TableHead>Usuario</TableHead>
                     <TableHead className="text-right">Días</TableHead>
                   </TableRow>
@@ -157,11 +187,12 @@ export default function MetricasPage() {
                     <TableRow key={c.id}>
                       <TableCell>
                         <Link href={rutaActivo(c.tipo, c.id)} className="hover:underline">
-                          {c.activo}
+                          <Mono className="font-medium">{c.activo}</Mono>
                         </Link>
                       </TableCell>
-                      <TableCell>{ETIQUETAS_TIPO_ACTIVO[c.tipo]}</TableCell>
-                      <TableCell className="font-mono">{c.usuario_acceso}</TableCell>
+                      <TableCell>
+                        <Mono>{c.usuario_acceso}</Mono>
+                      </TableCell>
                       <TableCell className="text-right">
                         <Badge variant="destructive">{c.dias} días</Badge>
                       </TableCell>
@@ -170,110 +201,81 @@ export default function MetricasPage() {
                 </TableBody>
               </Table>
             )}
-          </CardContent>
-        </Card>
+          </CardPanel>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4" /> Cuentas sin MFA
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {datos.sin_mfa.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Todas las cuentas tienen MFA habilitado.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead>Rol</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {datos.sin_mfa.map((u) => (
-                    <TableRow key={u.username}>
-                      <TableCell className="font-mono">{u.username}</TableCell>
-                      <TableCell>{u.rol}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="h-4 w-4" /> Usuarios bloqueados
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {datos.bloqueados.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay usuarios bloqueados.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead>Bloqueado hasta</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {datos.bloqueados.map((b) => (
-                    <TableRow key={b.username}>
-                      <TableCell className="font-mono">{b.username}</TableCell>
-                      <TableCell>{new Date(b.bloqueado_hasta).toLocaleString()}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" /> Top accesos a credenciales
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardPanel icono={TrendingUp} titulo="Top accesos a credenciales">
             {datos.top_accesos.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin accesos registrados.</p>
+              vacio("Sin accesos registrados.")
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead className="text-right">Accesos</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {datos.top_accesos.map((t) => (
-                    <TableRow key={t.username}>
-                      <TableCell className="font-mono">{t.username}</TableCell>
-                      <TableCell className="text-right">{t.accesos}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="flex flex-col gap-3">
+                {datos.top_accesos.map((t) => (
+                  <div key={t.username} className="flex items-center gap-3">
+                    <Mono className="w-24 truncate text-[13px]">{t.username}</Mono>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${(t.accesos / maxAcc) * 100}%`,
+                          background: "var(--chart-3)",
+                        }}
+                      />
+                    </div>
+                    <Mono className="w-9 text-right text-[13px] font-semibold">{t.accesos}</Mono>
+                  </div>
+                ))}
+              </div>
             )}
-          </CardContent>
-        </Card>
+          </CardPanel>
 
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-4 w-4" /> Concesiones por caducar
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {datos.concesiones_por_caducar.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay concesiones próximas a caducar.</p>
+          <CardPanel
+            icono={ShieldAlert}
+            titulo="Cuentas sin MFA"
+            accion={
+              puede("usuarios.gestionar") && datos.sin_mfa.length > 0 ? (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/usuarios">Gestionar</Link>
+                </Button>
+              ) : undefined
+            }
+          >
+            {datos.sin_mfa.length === 0 ? (
+              vacio("Todas las cuentas tienen MFA.")
             ) : (
-              <Table>
+              <div className="flex flex-col gap-2">
+                {datos.sin_mfa.map((u) => (
+                  <div key={u.username} className="flex items-center gap-2.5">
+                    <ShieldAlert className="size-[15px] text-destructive" />
+                    <Mono className="text-[13px] font-medium">{u.username}</Mono>
+                    <Badge variant="secondary">{u.rol}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardPanel>
+
+          <CardPanel icono={Lock} titulo="Usuarios bloqueados">
+            {datos.bloqueados.length === 0 ? (
+              vacio("No hay usuarios bloqueados.")
+            ) : (
+              <div className="flex flex-col gap-2">
+                {datos.bloqueados.map((b) => (
+                  <div key={b.username} className="flex items-center gap-2.5">
+                    <Lock className="size-[15px] text-muted-foreground" />
+                    <Mono className="text-[13px] font-medium">{b.username}</Mono>
+                    <span className="text-xs text-muted-foreground">
+                      hasta {new Date(b.bloqueado_hasta).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardPanel>
+
+          <CardPanel icono={Clock} titulo="Concesiones por caducar" className="lg:col-span-2">
+            {datos.concesiones_por_caducar.length === 0 ? (
+              vacio("No hay concesiones próximas a caducar.")
+            ) : (
+              <Table className="rounded-none shadow-none">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Usuario</TableHead>
@@ -285,24 +287,28 @@ export default function MetricasPage() {
                 <TableBody>
                   {datos.concesiones_por_caducar.map((c) => (
                     <TableRow key={c.id}>
-                      <TableCell className="font-mono">{c.username}</TableCell>
+                      <TableCell>
+                        <Mono>{c.username}</Mono>
+                      </TableCell>
                       <TableCell>
                         <Link href={rutaActivo(c.tipo, c.activo_id)} className="hover:underline">
-                          {c.activo_nombre}
+                          <Mono className="font-medium">{c.activo_nombre}</Mono>
                         </Link>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{c.nivel_label}</Badge>
                       </TableCell>
-                      <TableCell>{c.expira_en ? new Date(c.expira_en).toLocaleString() : "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {c.expira_en ? new Date(c.expira_en).toLocaleString() : "—"}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             )}
-          </CardContent>
-        </Card>
+          </CardPanel>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

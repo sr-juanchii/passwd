@@ -3,29 +3,52 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Search } from "lucide-react";
+import { Cpu, KeyRound, Loader2, MonitorSmartphone, Search, Server } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { ResultadoBusqueda } from "@/lib/types";
+import type { ResultadoBusqueda, TipoActivo } from "@/lib/types";
 import { ETIQUETAS_TIPO_ACTIVO, rutaActivo } from "@/lib/constants";
 import { PageHeader } from "@/components/page-header";
 import { EstadoBadge } from "@/components/estado-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Chip } from "@/components/ui/chip";
+import { Mono } from "@/components/ui/mono";
 import { toast } from "sonner";
 
-function SeccionVacia() {
+const ICONO: Record<TipoActivo, typeof Server> = {
+  fisico: Server,
+  hipervisor: Cpu,
+  vm: MonitorSmartphone,
+};
+
+function TarjetaActivo({
+  tipo,
+  id,
+  nombre,
+  meta,
+  estado,
+}: {
+  tipo: TipoActivo;
+  id: number;
+  nombre: string;
+  meta: string;
+  estado: ResultadoBusqueda["servidores"][number]["estado"];
+}) {
+  const Icono = ICONO[tipo];
   return (
-    <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-      Sin coincidencias.
-    </p>
+    <Link
+      href={rutaActivo(tipo, id)}
+      className="flex flex-col gap-2 rounded-[11px] border bg-card p-3.5 transition-colors hover:border-foreground/20 hover:bg-muted"
+    >
+      <div className="flex items-center gap-2">
+        <Icono className="size-[15px] text-muted-foreground" />
+        <Mono className="truncate text-[13.5px] font-semibold">{nombre}</Mono>
+        {estado !== "activo" && <EstadoBadge estado={estado} />}
+      </div>
+      <span className="text-[11.5px] text-muted-foreground">
+        {ETIQUETAS_TIPO_ACTIVO[tipo]}
+        {meta ? ` · ${meta}` : ""}
+      </span>
+    </Link>
   );
 }
 
@@ -72,212 +95,117 @@ function BuscarContenido() {
     router.push(consulta ? `/buscar?q=${encodeURIComponent(consulta)}` : "/buscar");
   }
 
-  const tieneResultados =
-    resultado &&
-    (resultado.servidores.length > 0 ||
-      resultado.hipervisores.length > 0 ||
-      resultado.vms.length > 0 ||
-      resultado.credenciales.length > 0);
+  const total =
+    (resultado?.servidores.length ?? 0) +
+    (resultado?.hipervisores.length ?? 0) +
+    (resultado?.vms.length ?? 0) +
+    (resultado?.credenciales.length ?? 0);
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
-        titulo="Búsqueda global"
-        descripcion="Busque servidores, hipervisores, máquinas virtuales y credenciales del inventario."
+        titulo="Buscar"
+        descripcion="Encuentre activos y credenciales en todo el inventario."
       />
 
-      <form onSubmit={enviar} className="flex max-w-xl gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            autoFocus
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            placeholder="Nombre, IP, usuario de acceso…"
-            className="pl-8"
-          />
-        </div>
+      <form onSubmit={enviar} className="relative mb-4 max-w-xl">
+        <Search className="pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-muted-foreground" />
+        <Input
+          autoFocus
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="Nombre, IP, usuario, servicio…"
+          className="h-11 pl-11 text-[15px]"
+        />
       </form>
 
       {!q.trim() ? (
-        <p className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
-          Escriba un término de búsqueda para comenzar.
-        </p>
+        <div className="rounded-[12px] border border-dashed p-12 text-center">
+          <Search className="mx-auto size-7 text-muted-foreground" />
+          <p className="mt-2.5 text-[13.5px] text-muted-foreground">
+            Escriba para buscar activos y credenciales.
+          </p>
+        </div>
       ) : cargando ? (
         <div className="flex items-center justify-center p-10">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
-      ) : !tieneResultados ? (
-        <p className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No se encontraron resultados para <strong>{q}</strong>.
+      ) : total === 0 ? (
+        <p className="rounded-[12px] border border-dashed p-10 text-center text-sm text-muted-foreground">
+          Sin resultados para <strong>{q}</strong>.
         </p>
       ) : (
         resultado && (
-          <div className="grid gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Servidores ({resultado.servidores.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {resultado.servidores.length === 0 ? (
-                  <SeccionVacia />
-                ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nombre</TableHead>
-                          <TableHead>IP de gestión</TableHead>
-                          <TableHead>Ubicación</TableHead>
-                          <TableHead>Estado</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {resultado.servidores.map((s) => (
-                          <TableRow key={s.id}>
-                            <TableCell>
-                              <Link href={rutaActivo("fisico", s.id)} className="font-medium hover:underline">
-                                {s.nombre}
-                              </Link>
-                            </TableCell>
-                            <TableCell className="font-mono">{s.ip_gestion || "—"}</TableCell>
-                            <TableCell>{s.ubicacion || "—"}</TableCell>
-                            <TableCell>
-                              <EstadoBadge estado={s.estado} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          <div className="flex flex-col gap-5">
+            <Mono className="text-[12.5px] text-muted-foreground">{total} resultado(s)</Mono>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Hipervisores ({resultado.hipervisores.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {resultado.hipervisores.length === 0 ? (
-                  <SeccionVacia />
-                ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nombre</TableHead>
-                          <TableHead>Plataforma</TableHead>
-                          <TableHead>IP de gestión</TableHead>
-                          <TableHead>Estado</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {resultado.hipervisores.map((h) => (
-                          <TableRow key={h.id}>
-                            <TableCell>
-                              <Link href={rutaActivo("hipervisor", h.id)} className="font-medium hover:underline">
-                                {h.nombre}
-                              </Link>
-                            </TableCell>
-                            <TableCell>{h.plataforma || "—"}</TableCell>
-                            <TableCell className="font-mono">{h.ip_gestion || "—"}</TableCell>
-                            <TableCell>
-                              <EstadoBadge estado={h.estado} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {(resultado.servidores.length > 0 ||
+              resultado.hipervisores.length > 0 ||
+              resultado.vms.length > 0) && (
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(248px,1fr))]">
+                {resultado.servidores.map((s) => (
+                  <TarjetaActivo
+                    key={`f${s.id}`}
+                    tipo="fisico"
+                    id={s.id}
+                    nombre={s.nombre}
+                    meta={s.ip_gestion}
+                    estado={s.estado}
+                  />
+                ))}
+                {resultado.hipervisores.map((h) => (
+                  <TarjetaActivo
+                    key={`h${h.id}`}
+                    tipo="hipervisor"
+                    id={h.id}
+                    nombre={h.nombre}
+                    meta={h.plataforma || h.ip_gestion}
+                    estado={h.estado}
+                  />
+                ))}
+                {resultado.vms.map((v) => (
+                  <TarjetaActivo
+                    key={`v${v.id}`}
+                    tipo="vm"
+                    id={v.id}
+                    nombre={v.nombre}
+                    meta={v.sistema_operativo || v.ip}
+                    estado={v.estado}
+                  />
+                ))}
+              </div>
+            )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Máquinas virtuales ({resultado.vms.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {resultado.vms.length === 0 ? (
-                  <SeccionVacia />
-                ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nombre</TableHead>
-                          <TableHead>IP</TableHead>
-                          <TableHead>Sistema operativo</TableHead>
-                          <TableHead>Estado</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {resultado.vms.map((v) => (
-                          <TableRow key={v.id}>
-                            <TableCell>
-                              <Link href={rutaActivo("vm", v.id)} className="font-medium hover:underline">
-                                {v.nombre}
-                              </Link>
-                            </TableCell>
-                            <TableCell className="font-mono">{v.ip || "—"}</TableCell>
-                            <TableCell>{v.sistema_operativo || "—"}</TableCell>
-                            <TableCell>
-                              <EstadoBadge estado={v.estado} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Credenciales ({resultado.credenciales.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {resultado.credenciales.length === 0 ? (
-                  <SeccionVacia />
-                ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Usuario</TableHead>
-                          <TableHead>Servicio</TableHead>
-                          <TableHead>Puerto</TableHead>
-                          <TableHead>Activo</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {resultado.credenciales.map((c) => (
-                          <TableRow key={c.id}>
-                            <TableCell className="font-mono">{c.usuario_acceso}</TableCell>
-                            <TableCell>{c.servicio}</TableCell>
-                            <TableCell>{c.puerto ?? "—"}</TableCell>
-                            <TableCell>
-                              <Link
-                                href={rutaActivo(c.tipo_activo, c.activo_id)}
-                                className="hover:underline"
-                              >
-                                {ETIQUETAS_TIPO_ACTIVO[c.tipo_activo]} #{c.activo_id}
-                              </Link>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {resultado.credenciales.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Mono className="text-[12.5px] text-muted-foreground">Credenciales</Mono>
+                <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(248px,1fr))]">
+                  {resultado.credenciales.map((c) => (
+                    <Link
+                      key={c.id}
+                      href={rutaActivo(c.tipo_activo, c.activo_id)}
+                      className="flex flex-col gap-2 rounded-[11px] border bg-card p-3.5 transition-colors hover:border-foreground/20 hover:bg-muted"
+                    >
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="size-[15px] text-muted-foreground" />
+                        <Mono className="truncate text-[13.5px] font-semibold">
+                          {c.usuario_acceso}
+                        </Mono>
+                        <Chip tono="outline">{c.servicio}</Chip>
+                      </div>
+                      <span className="text-[11.5px] text-muted-foreground">
+                        {ETIQUETAS_TIPO_ACTIVO[c.tipo_activo]}
+                        {c.puerto != null ? ` · :${c.puerto}` : ""}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )
       )}
-    </div>
+    </>
   );
 }
 
@@ -286,7 +214,7 @@ export default function BuscarPage() {
     <Suspense
       fallback={
         <div className="flex items-center justify-center p-10">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       }
     >

@@ -15,9 +15,12 @@ import { NotasPanel } from "@/components/notas-panel";
 import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
 import { ErrorRecurso } from "@/components/error-recurso";
-import { Badge } from "@/components/ui/badge";
+import { TituloActivo } from "@/components/inventario/titulo-activo";
+import { RiskDot } from "@/components/risk-dot";
+import { Chip } from "@/components/ui/chip";
+import { Eyebrow, Mono } from "@/components/ui/mono";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { nivelActivo } from "@/lib/riesgo";
 import { toast } from "sonner";
 
 export default function HipervisorDetallePage() {
@@ -65,11 +68,13 @@ export default function HipervisorDetallePage() {
     <>
       <PageHeader
         titulo={
-          <span className="flex items-center gap-2">
-            {d.nombre}
-            {d.plataforma && <Badge variant="secondary">{d.plataforma}</Badge>}
-            <EstadoBadge estado={d.estado} />
-          </span>
+          <TituloActivo
+            tipo="hipervisor"
+            nombre={d.nombre}
+            estado={d.estado}
+            nivel={nivelActivo({ credenciales: d.credenciales })}
+            extra={d.plataforma ? <Chip>{d.plataforma}</Chip> : undefined}
+          />
         }
         descripcion={d.descripcion}
         migas={[{ label: "Inventario", href: "/" }, { label: d.nombre }]}
@@ -78,7 +83,7 @@ export default function HipervisorDetallePage() {
             <>
               <Button variant="outline" asChild>
                 <Link href={`/hipervisores/${hid}/editar`}>
-                  <Pencil className="h-4 w-4" /> Editar
+                  <Pencil /> Editar
                 </Link>
               </Button>
               <BotonEliminar
@@ -96,24 +101,24 @@ export default function HipervisorDetallePage() {
           titulo="Información del hipervisor"
           items={[
             { etiqueta: "Plataforma", valor: d.plataforma },
-            { etiqueta: "Versión", valor: d.version },
-            { etiqueta: "IP de gestión", valor: d.ip_gestion },
+            { etiqueta: "Versión", valor: d.version, mono: true },
+            { etiqueta: "IP de gestión", valor: d.ip_gestion, mono: true },
             { etiqueta: "Marca / Modelo", valor: d.marca_modelo },
             { etiqueta: "Ubicación", valor: d.ubicacion },
-            { etiqueta: "RAM", valor: d.ram },
-            { etiqueta: "CPU", valor: d.cpu },
-            { etiqueta: "Almacenamiento", valor: d.almacenamiento },
-            { etiqueta: "Número de serie", valor: d.numero_serie },
-            { etiqueta: "Garantía hasta", valor: d.garantia_hasta },
+            { etiqueta: "RAM", valor: d.ram, mono: true },
+            { etiqueta: "CPU", valor: d.cpu, mono: true },
+            { etiqueta: "Almacenamiento", valor: d.almacenamiento, mono: true },
+            { etiqueta: "Número de serie", valor: d.numero_serie, mono: true },
+            { etiqueta: "Garantía hasta", valor: d.garantia_hasta, mono: true },
             { etiqueta: "Proveedor", valor: d.proveedor },
             {
               etiqueta: "Etiquetas",
               valor: d.etiquetas ? (
-                <span className="flex flex-wrap gap-1">
+                <span className="flex flex-wrap gap-1.5">
                   {d.etiquetas.split(",").map((t) => t.trim()).filter(Boolean).map((t) => (
-                    <Badge key={t} variant="secondary">
+                    <Chip key={t} tono="outline">
                       {t}
-                    </Badge>
+                    </Chip>
                   ))}
                 </span>
               ) : (
@@ -123,38 +128,47 @@ export default function HipervisorDetallePage() {
           ]}
         />
 
-        <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Máquinas virtuales</CardTitle>
+        <section className="overflow-hidden rounded-[14px] border bg-card">
+          <div className="flex items-center justify-between border-b px-5 py-3.5">
+            <Eyebrow>Máquinas virtuales · {d.vms.length}</Eyebrow>
             {d.puede_gestionar && (
               <Button size="sm" asChild>
                 <Link href={`/hipervisores/${hid}/vms/nueva`}>
-                  <Plus className="h-4 w-4" /> Nueva VM
+                  <Plus /> Nueva VM
                 </Link>
               </Button>
             )}
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div className="p-5">
             {d.vms.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin máquinas virtuales registradas.</p>
             ) : (
-              <ul className="space-y-2">
+              <div className="flex flex-col gap-1.5">
                 {d.vms.map((vm) => (
-                  <li key={vm.id} className="flex items-center gap-2 rounded-md border p-2">
-                    <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
-                    <Link href={rutaActivo("vm", vm.id)} className="font-medium hover:underline">
-                      {vm.nombre}
-                    </Link>
+                  <Link
+                    key={vm.id}
+                    href={rutaActivo("vm", vm.id)}
+                    className="flex items-center gap-2.5 rounded-[9px] border bg-background px-3 py-2.5 transition-colors hover:bg-muted"
+                  >
+                    <RiskDot nivel="ok" size={7} />
+                    <MonitorSmartphone className="size-[15px] text-muted-foreground" />
+                    <Mono className="text-[13px] font-medium">{vm.nombre}</Mono>
                     {vm.sistema_operativo && (
-                      <span className="text-sm text-muted-foreground">{vm.sistema_operativo}</span>
+                      <span className="text-[11.5px] text-muted-foreground">
+                        {vm.sistema_operativo}
+                      </span>
                     )}
-                    <EstadoBadge estado={vm.estado} />
-                  </li>
+                    {vm.estado !== "activo" && (
+                      <span className="ml-auto">
+                        <EstadoBadge estado={vm.estado} />
+                      </span>
+                    )}
+                  </Link>
                 ))}
-              </ul>
+              </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
         <CredencialesTabla
           credenciales={d.credenciales}

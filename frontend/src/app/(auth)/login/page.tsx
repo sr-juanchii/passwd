@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -37,53 +36,64 @@ export default function LoginPage() {
       router.replace(r.next || "/");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al iniciar sesión.");
-      // Refrescar el token CSRF de login para el siguiente intento.
       api.csrfLogin().then((c) => setCsrfLogin(c.csrf_login)).catch(() => {});
       setEnviando(false);
     }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Iniciar sesión</CardTitle>
-        <CardDescription>Introduzca sus credenciales corporativas.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={enviar} className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="username">Usuario</Label>
-            <Input
-              id="username"
-              autoComplete="username"
-              autoFocus
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
+    <div>
+      <div className="mb-6">
+        <h2 className="text-[22px] font-semibold">Iniciar sesión</h2>
+        <p className="mt-1.5 text-[13.5px] text-muted-foreground">
+          Introduzca sus credenciales corporativas.
+        </p>
+      </div>
+      <form onSubmit={enviar} className="flex flex-col gap-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="username">Usuario</Label>
+          <Input
+            id="username"
+            autoComplete="username"
+            autoFocus
+            required
+            className="font-mono"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="password" className="shrink-0">
+              Contraseña
+            </Label>
+            <span className="truncate text-xs text-muted-foreground" title="Contacte a un administrador">
+              ¿Olvidó su contraseña?
+            </span>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={enviando || !csrfLogin}>
-            {enviando && <Loader2 className="h-4 w-4 animate-spin" />}
-            Entrar
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            placeholder="••••••••••••"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        <Button type="submit" className="h-10 w-full" disabled={enviando || !csrfLogin}>
+          {enviando && <Loader2 className="animate-spin" />}
+          Entrar
+        </Button>
+        <p className="flex items-center justify-center gap-1.5 text-[11.5px] text-muted-foreground">
+          <Lock className="size-3" /> Conexión cifrada · MFA obligatorio
+        </p>
+      </form>
+    </div>
   );
 }

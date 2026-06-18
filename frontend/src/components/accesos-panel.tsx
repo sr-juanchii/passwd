@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ShieldPlus, Trash2 } from "lucide-react";
+import { Loader2, ShieldCheck, ShieldPlus, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { AnalistaRef, Concesion, NivelAcceso, TipoActivo } from "@/lib/types";
 import { ETIQUETAS_NIVEL } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Mono } from "@/components/ui/mono";
 import {
   Select,
   SelectContent,
@@ -79,61 +79,63 @@ export function AccesosPanel({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Control de acceso por objeto</CardTitle>
-        <CardDescription>
-          Conceda acceso a analistas sobre este activo. El acceso no se hereda a sus hijos.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {accesos.length > 0 && (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Analista</TableHead>
-                  <TableHead>Nivel</TableHead>
-                  <TableHead>Caduca</TableHead>
-                  <TableHead className="text-right">Acción</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {accesos.map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell>
-                      {a.username}
-                      <span className="block text-xs text-muted-foreground">{a.nombre_completo}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={a.nivel === "ver_credenciales" ? "default" : "secondary"}>
-                        {a.nivel_label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {a.expira_en ? (
-                        <span className={a.expirada ? "text-destructive" : undefined}>
-                          {new Date(a.expira_en).toLocaleDateString()}
-                          {a.expirada && " (expirada)"}
-                        </span>
-                      ) : (
-                        "Sin caducidad"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button size="icon" variant="ghost" onClick={() => revocar(a.id)} title="Revocar">
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+    <section className="overflow-hidden rounded-[14px] border bg-card">
+      <div className="flex items-center gap-2.5 border-b px-5 py-3.5">
+        <ShieldCheck className="size-4 text-muted-foreground" />
+        <div>
+          <div className="text-sm font-semibold">Control de acceso por objeto</div>
+          <div className="text-[12px] text-muted-foreground">
+            Conceda acceso a analistas sobre este activo. El acceso no se hereda a sus hijos.
           </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 p-5">
+        {accesos.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Analista</TableHead>
+                <TableHead>Nivel</TableHead>
+                <TableHead>Caduca</TableHead>
+                <TableHead className="text-right">Acción</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {accesos.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell>
+                    <Mono className="font-medium">{a.username}</Mono>
+                    <span className="block text-xs text-muted-foreground">{a.nombre_completo}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={a.nivel === "ver_credenciales" ? "default" : "secondary"}>
+                      {a.nivel_label}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {a.expira_en ? (
+                      <span className={a.expirada ? "text-destructive" : "text-muted-foreground"}>
+                        {new Date(a.expira_en).toLocaleDateString()}
+                        {a.expirada && " (expirada)"}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Sin caducidad</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="icon-sm" variant="ghost" onClick={() => revocar(a.id)} title="Revocar">
+                      <Trash2 className="text-destructive" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
 
         <form onSubmit={conceder} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Analista</Label>
             <Select value={usuarioId} onValueChange={setUsuarioId}>
               <SelectTrigger>
@@ -154,7 +156,7 @@ export function AccesosPanel({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Nivel</Label>
             <Select value={nivel} onValueChange={(v) => setNivel(v as NivelAcceso)}>
               <SelectTrigger>
@@ -169,7 +171,7 @@ export function AccesosPanel({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Caduca (días)</Label>
             <Input
               type="number"
@@ -181,11 +183,11 @@ export function AccesosPanel({
             />
           </div>
           <Button type="submit" disabled={enviando || !usuarioId}>
-            {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldPlus className="h-4 w-4" />}
+            {enviando ? <Loader2 className="animate-spin" /> : <ShieldPlus />}
             Conceder
           </Button>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

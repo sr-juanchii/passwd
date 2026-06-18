@@ -22,14 +22,16 @@ services:
       - "8000"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # La base de la API se hornea en los rewrites de Next durante el build
+        # (no funciona como variable de runtime). nginx enruta /api directo al
+        # backend; este valor solo afecta al rewrite de respaldo del servidor Next.
+        PASSWD_API_BASE: http://app:8000
     restart: unless-stopped
     depends_on:
       - app
-    environment:
-      # Aunque nginx enruta /api directamente al backend, fijamos la base por si
-      # alguna petición /api llegara al servidor Next (rewrites de respaldo).
-      PASSWD_API_BASE: http://app:8000
     expose:
       - "3000"
     networks:

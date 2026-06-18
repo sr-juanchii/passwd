@@ -15,6 +15,13 @@ FROM node:22-slim AS build
 WORKDIR /app
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 ENV NEXT_TELEMETRY_DISABLED=1
+# La base de la API se hornea en los rewrites en tiempo de BUILD (Next escribe
+# routes-manifest.json al compilar; la variable en runtime NO surte efecto). En
+# el stack con nginx no es la ruta normal —nginx enruta /api directo al backend—
+# pero deja el rewrite de respaldo del servidor Next apuntando al servicio
+# correcto (`app:8000`). Sobreescribible con --build-arg PASSWD_API_BASE=...
+ARG PASSWD_API_BASE=http://app:8000
+ENV PASSWD_API_BASE=$PASSWD_API_BASE
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN corepack enable && pnpm build
