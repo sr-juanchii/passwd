@@ -235,6 +235,11 @@ def login(
     audit.registrar(db, audit.LOGIN_OK, request=request, usuario=usuario,
                     detalle=f"Primer factor correcto; etapa: {etapa}.")
 
+    # Confirmar ANTES de responder: el frontend consulta /session de inmediato y
+    # debe ver la sesión recién creada. El cleanup diferido de get_db (que corre
+    # tras enviar la respuesta) provocaría una lectura-tras-escritura obsoleta en
+    # MySQL (REPEATABLE READ); este commit explícito lo evita.
+    db.commit()
     respuesta = JSONResponse({"stage": etapa, "next": _SIGUIENTE[etapa]})
     configurar_cookie(respuesta, token)
     respuesta.delete_cookie(COOKIE_CSRF_LOGIN, path="/")
@@ -313,6 +318,9 @@ def cambiar_password(
         cuerpo_resp = {"stage": sesion.etapa, "next": _SIGUIENTE[sesion.etapa]}
     else:
         cuerpo_resp = {"ok": True, "next": "/"}
+    # Confirmar antes de responder (ver nota en login): el siguiente paso del
+    # flujo lee la etapa/el token recién rotados de inmediato.
+    db.commit()
     respuesta = JSONResponse(cuerpo_resp)
     configurar_cookie(respuesta, token)
     return respuesta
@@ -335,6 +343,9 @@ def mfa_configurar_datos(
         usuario.totp_secret_cifrado = cifrar(mfa.generar_secreto())
         usuario.mfa_habilitado = False
     secreto = descifrar(usuario.totp_secret_cifrado)
+    # Si se regeneró el secreto hay que confirmarlo antes de responder, pues el
+    # POST de confirmación lo lee de la BD para validar el código TOTP.
+    db.commit()
     return {"qr_data_uri": mfa.qr_svg_data_uri(secreto, usuario.username), "secreto": secreto}
 
 
@@ -368,6 +379,9 @@ def mfa_configurar(
                     detalle=f"{len(codigos_recuperacion)} códigos de recuperación emitidos.")
     audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
 
+    # Confirmar antes de responder: el frontend consulta /session enseguida y
+    # debe ver la sesión ya activa (ver nota en login).
+    db.commit()
     # Los códigos de recuperación se entregan una única vez.
     respuesta = JSONResponse({"codigos_recuperacion": codigos_recuperacion},
                              headers={"Cache-Control": "no-store"})
@@ -440,6 +454,8 @@ def mfa_verificar(
         cuerpo_resp["aviso"] = aviso
         # Compatibilidad con la web: el aviso se transporta vía query si se desea.
         cuerpo_resp["next"] = f"/?msg={quote(aviso)}"
+    # Confirmar antes de responder: el frontend consulta /session a continuación.
+    db.commit()
     respuesta = JSONResponse(cuerpo_resp)
     configurar_cookie(respuesta, token)
     return respuesta
@@ -459,6 +475,9 @@ def logout(
 ):
     revocar_sesion(sesion)
     audit.registrar(db, audit.LOGOUT, request=request, usuario=usuario)
+    # Confirmar antes de responder: el frontend consulta /session tras el logout
+    # y debe ver la sesión ya revocada.
+    db.commit()
     respuesta = JSONResponse({"ok": True})
     borrar_cookie(respuesta)
     return respuesta
