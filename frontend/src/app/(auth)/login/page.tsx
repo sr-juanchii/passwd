@@ -68,10 +68,12 @@ export default function LoginPage() {
           />
         </div>
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="password">Contraseña</Label>
-            <span className="text-xs text-muted-foreground">
-              ¿Olvidó su contraseña? Contacte a un administrador.
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="password" className="shrink-0">
+              Contraseña
+            </Label>
+            <span className="truncate text-xs text-muted-foreground" title="Contacte a un administrador">
+              ¿Olvidó su contraseña?
             </span>
           </div>
           <Input
