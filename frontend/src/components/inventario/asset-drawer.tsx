@@ -55,8 +55,8 @@ export function AssetDrawer({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <RiskDot nivel={nivelActivo(asset)} size={7} />
-                <SheetTitle asChild>
-                  <Mono className="truncate text-lg font-semibold">{asset.nombre}</Mono>
+                <SheetTitle className="truncate font-mono text-lg font-semibold tracking-[0.01em]">
+                  {asset.nombre}
                 </SheetTitle>
               </div>
               <div className="mt-0.5 text-[12.5px] text-muted-foreground">
