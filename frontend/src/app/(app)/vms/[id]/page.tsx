@@ -7,15 +7,17 @@ import { Loader2, Pencil } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { VmDetalle } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
-import { EstadoBadge } from "@/components/estado-badge";
 import { Propiedades } from "@/components/propiedades";
 import { CredencialesTabla } from "@/components/credenciales-tabla";
 import { NotasPanel } from "@/components/notas-panel";
 import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
 import { ErrorRecurso } from "@/components/error-recurso";
-import { Badge } from "@/components/ui/badge";
+import { TituloActivo } from "@/components/inventario/titulo-activo";
+import { Chip } from "@/components/ui/chip";
+import { Mono } from "@/components/ui/mono";
 import { Button } from "@/components/ui/button";
+import { nivelActivo } from "@/lib/riesgo";
 import { toast } from "sonner";
 
 export default function VmDetallePage() {
@@ -63,10 +65,12 @@ export default function VmDetallePage() {
     <>
       <PageHeader
         titulo={
-          <span className="flex items-center gap-2">
-            {d.nombre}
-            <EstadoBadge estado={d.estado} />
-          </span>
+          <TituloActivo
+            tipo="vm"
+            nombre={d.nombre}
+            estado={d.estado}
+            nivel={nivelActivo({ credenciales: d.credenciales })}
+          />
         }
         descripcion={d.descripcion}
         migas={[
@@ -79,7 +83,7 @@ export default function VmDetallePage() {
             <>
               <Button variant="outline" asChild>
                 <Link href={`/vms/${vid}/editar`}>
-                  <Pencil className="h-4 w-4" /> Editar
+                  <Pencil /> Editar
                 </Link>
               </Button>
               <BotonEliminar
@@ -97,23 +101,23 @@ export default function VmDetallePage() {
           titulo="Información de la máquina virtual"
           items={[
             { etiqueta: "Sistema operativo", valor: d.sistema_operativo },
-            { etiqueta: "Dirección IP", valor: d.ip },
+            { etiqueta: "Dirección IP", valor: d.ip, mono: true },
             {
               etiqueta: "Hipervisor",
               valor: (
                 <Link href={`/hipervisores/${d.hipervisor_id}`} className="hover:underline">
-                  {d.hipervisor_nombre}
+                  <Mono>{d.hipervisor_nombre}</Mono>
                 </Link>
               ),
             },
             {
               etiqueta: "Etiquetas",
               valor: d.etiquetas ? (
-                <span className="flex flex-wrap gap-1">
+                <span className="flex flex-wrap gap-1.5">
                   {d.etiquetas.split(",").map((t) => t.trim()).filter(Boolean).map((t) => (
-                    <Badge key={t} variant="secondary">
+                    <Chip key={t} tono="outline">
                       {t}
-                    </Badge>
+                    </Chip>
                   ))}
                 </span>
               ) : (

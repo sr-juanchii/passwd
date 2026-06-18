@@ -8,12 +8,13 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  ScrollText,
   ShieldAlert,
   TrendingUp,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Metricas } from "@/lib/types";
-import { ETIQUETAS_TIPO_ACTIVO, rutaActivo } from "@/lib/constants";
+import { rutaActivo } from "@/lib/constants";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -149,11 +150,13 @@ export default function MetricasPage() {
         titulo="Métricas de seguridad"
         descripcion="Panel del estado de seguridad del inventario."
         acciones={
-          <Button variant="outline" asChild>
-            <Link href={api.auditoriaExportUrl({})} target="_blank">
-              Ver bitácora
-            </Link>
-          </Button>
+          puede("auditoria.ver") ? (
+            <Button variant="outline" asChild>
+              <Link href="/auditoria">
+                <ScrollText /> Ver auditoría
+              </Link>
+            </Button>
+          ) : undefined
         }
       />
 

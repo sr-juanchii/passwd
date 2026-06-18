@@ -1,11 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Eye, EyeOff, Loader2, NotebookPen, Save } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, NotebookPen, Save } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { TipoActivo } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -78,14 +77,17 @@ export function NotasPanel({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Nota segura</CardTitle>
-        <CardDescription>
-          Texto cifrado en reposo. Su revelado queda auditado y se oculta automáticamente.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <section className="overflow-hidden rounded-[14px] border bg-card">
+      <div className="flex items-center gap-2.5 border-b px-5 py-3.5">
+        <Lock className="size-4 text-muted-foreground" />
+        <div>
+          <div className="text-sm font-semibold">Nota segura</div>
+          <div className="text-[12px] text-muted-foreground">
+            Texto cifrado en reposo. Su revelado queda auditado y se oculta automáticamente.
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col gap-3 p-5">
         {editando ? (
           <>
             <Textarea
@@ -93,10 +95,11 @@ export function NotasPanel({
               value={borrador}
               onChange={(e) => setBorrador(e.target.value)}
               placeholder="Información sensible asociada a este activo…"
+              className="font-mono text-[13px]"
             />
             <div className="flex gap-2">
               <Button onClick={guardar} disabled={cargando}>
-                {cargando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {cargando ? <Loader2 className="animate-spin" /> : <Save />}
                 Guardar
               </Button>
               <Button variant="ghost" onClick={() => setEditando(false)} disabled={cargando}>
@@ -107,24 +110,26 @@ export function NotasPanel({
         ) : (
           <>
             {contenido !== null && (
-              <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">{contenido}</pre>
+              <pre className="rounded-lg border bg-muted p-3 font-mono text-[13px] break-words whitespace-pre-wrap">
+                {contenido}
+              </pre>
             )}
             <div className="flex flex-wrap gap-2">
               {tieneNotas && (
                 <Button variant="outline" onClick={ver} disabled={cargando}>
                   {cargando ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin" />
                   ) : contenido !== null ? (
-                    <EyeOff className="h-4 w-4" />
+                    <EyeOff />
                   ) : (
-                    <Eye className="h-4 w-4" />
+                    <Eye />
                   )}
                   {contenido !== null ? "Ocultar nota" : "Ver nota"}
                 </Button>
               )}
               {puedeGestionar && (
                 <Button variant="outline" onClick={abrirEdicion} disabled={cargando}>
-                  <NotebookPen className="h-4 w-4" /> {tieneNotas ? "Editar nota" : "Añadir nota"}
+                  <NotebookPen /> {tieneNotas ? "Editar nota" : "Añadir nota"}
                 </Button>
               )}
               {!tieneNotas && !puedeGestionar && (
@@ -133,7 +138,7 @@ export function NotasPanel({
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

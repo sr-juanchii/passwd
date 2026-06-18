@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { KeyRound, Loader2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -42,40 +41,64 @@ export default function CambiarPasswordPage() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{forzado ? "Cambio de contraseña requerido" : "Cambiar contraseña"}</CardTitle>
-        <CardDescription>
-          {forzado
-            ? "Su contraseña inicial es de un solo uso. Defina una nueva para continuar."
-            : "Mínimo 12 caracteres, sin palabras comunes ni su nombre de usuario."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={enviar} className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="actual">Contraseña actual</Label>
-            <Input id="actual" type="password" autoComplete="current-password" required value={actual} onChange={(e) => setActual(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="nueva">Nueva contraseña</Label>
-            <Input id="nueva" type="password" autoComplete="new-password" required minLength={12} value={nueva} onChange={(e) => setNueva(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirmacion">Confirmar nueva contraseña</Label>
-            <Input id="confirmacion" type="password" autoComplete="new-password" required value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} />
-          </div>
-          <Button type="submit" className="w-full" disabled={enviando}>
-            {enviando && <Loader2 className="h-4 w-4 animate-spin" />}
-            Guardar
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <div>
+      <div className="mb-6 flex size-11 items-center justify-center rounded-[11px] bg-muted">
+        <KeyRound className="size-[22px] text-foreground" />
+      </div>
+      <h2 className="text-[22px] font-semibold">
+        {forzado ? "Cambio de contraseña requerido" : "Cambiar contraseña"}
+      </h2>
+      <p className="mt-1.5 text-[13.5px] leading-normal text-muted-foreground">
+        {forzado
+          ? "Su contraseña inicial es de un solo uso. Defina una nueva para continuar."
+          : "Mínimo 12 caracteres, sin palabras comunes ni su nombre de usuario."}
+      </p>
+
+      <form onSubmit={enviar} className="mt-6 flex flex-col gap-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="actual">Contraseña actual</Label>
+          <Input
+            id="actual"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={actual}
+            onChange={(e) => setActual(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="nueva">Nueva contraseña</Label>
+          <Input
+            id="nueva"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={12}
+            value={nueva}
+            onChange={(e) => setNueva(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="confirmacion">Confirmar nueva contraseña</Label>
+          <Input
+            id="confirmacion"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={confirmacion}
+            onChange={(e) => setConfirmacion(e.target.value)}
+          />
+        </div>
+        <Button type="submit" className="h-10 w-full" disabled={enviando}>
+          {enviando && <Loader2 className="animate-spin" />}
+          Guardar
+        </Button>
+      </form>
+    </div>
   );
 }

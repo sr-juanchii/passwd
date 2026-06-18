@@ -28,8 +28,8 @@ export function BotonEliminar({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="outline" className="text-destructive hover:text-destructive">
-          <Trash2 className="h-4 w-4" /> {etiqueta}
+        <Button variant="destructive">
+          <Trash2 /> {etiqueta}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>

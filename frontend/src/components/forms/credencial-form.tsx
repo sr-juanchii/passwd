@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader2, Save, Wand2 } from "lucide-react";
+import { Eye, EyeOff, Wand2 } from "lucide-react";
 import type { CredencialInput } from "@/lib/types";
 import { SERVICIOS } from "@/lib/constants";
 import { ApiError } from "@/lib/api";
 import { generarPassword } from "@/lib/password-gen";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FormAcciones, FormPanel } from "./form-shell";
 import { toast } from "sonner";
 
 export function CredencialForm({
@@ -69,13 +69,12 @@ export function CredencialForm({
 
   return (
     <form onSubmit={enviar}>
-      <Card>
-        <CardContent className="grid gap-4 py-6 sm:grid-cols-2">
+      <FormPanel titulo="Datos de la credencial">
           <div className="space-y-2">
             <Label htmlFor="usuario">
               Usuario de acceso<span className="text-destructive"> *</span>
             </Label>
-            <Input id="usuario" required value={v.usuario_acceso} onChange={(e) => set("usuario_acceso", e.target.value)} />
+            <Input id="usuario" required className="font-mono" value={v.usuario_acceso} onChange={(e) => set("usuario_acceso", e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label>Servicio / Protocolo</Label>
@@ -135,17 +134,8 @@ export function CredencialForm({
             <Label htmlFor="desc">Descripción (a qué sistema da acceso)</Label>
             <Textarea id="desc" rows={3} value={v.descripcion} onChange={(e) => set("descripcion", e.target.value)} />
           </div>
-        </CardContent>
-      </Card>
-      <div className="mt-4 flex gap-2">
-        <Button type="submit" disabled={enviando}>
-          {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Guardar
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => router.back()}>
-          Cancelar
-        </Button>
-      </div>
+      </FormPanel>
+      <FormAcciones enviando={enviando} onCancelar={() => router.back()} />
     </form>
   );
 }

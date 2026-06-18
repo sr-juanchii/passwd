@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clipboard, Loader2, Plus, Trash2 } from "lucide-react";
+import { Clipboard, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { TokenApi } from "@/lib/types";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Mono } from "@/components/ui/mono";
 import {
   Table,
   TableBody,
@@ -99,48 +99,50 @@ export default function TokensPage() {
 
   if (!puede("tokens.gestionar")) {
     return (
-      <div className="space-y-6">
+      <>
         <PageHeader titulo="Tokens de API" />
-        <p className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
+        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
           No tiene permiso para gestionar tokens.
         </p>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
         titulo="Tokens de API"
         descripcion="Tokens Bearer de solo lectura para integraciones con el SIEM. Preséntelos en la cabecera Authorization."
       />
 
-      {tokenNuevo && (
-        <Alert>
-          <AlertTitle>Token generado</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <span>
-              Copie este token ahora: se muestra <strong>una sola vez</strong> y no podrá recuperarse.
-            </span>
-            <span className="flex w-full items-center gap-2">
-              <code className="flex-1 rounded bg-muted px-3 py-2 font-mono text-sm break-all">
-                {tokenNuevo}
-              </code>
-              <Button size="icon" variant="outline" onClick={() => void copiar(tokenNuevo)} title="Copiar">
-                <Clipboard className="h-4 w-4" />
-              </Button>
-            </span>
-          </AlertDescription>
-        </Alert>
-      )}
+      <div className="flex flex-col gap-4">
+        {tokenNuevo && (
+          <Alert>
+            <KeyRound className="size-4" />
+            <AlertTitle>Token generado</AlertTitle>
+            <AlertDescription className="flex flex-col gap-3">
+              <span>
+                Copie este token ahora: se muestra <strong>una sola vez</strong> y no podrá
+                recuperarse.
+              </span>
+              <span className="flex w-full items-center gap-2">
+                <code className="flex-1 rounded-lg bg-muted px-3 py-2 font-mono text-sm break-all">
+                  {tokenNuevo}
+                </code>
+                <Button size="icon" variant="outline" onClick={() => void copiar(tokenNuevo)} title="Copiar">
+                  <Clipboard />
+                </Button>
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Crear token</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={crear} className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 space-y-2 min-w-60">
+        <div className="overflow-hidden rounded-[14px] border bg-card">
+          <div className="border-b px-5 py-3.5">
+            <span className="text-sm font-semibold">Crear token</span>
+          </div>
+          <form onSubmit={crear} className="flex flex-wrap items-end gap-3 p-5">
+            <div className="min-w-60 flex-1 space-y-2">
               <Label htmlFor="nombre">Nombre descriptivo</Label>
               <Input
                 id="nombre"
@@ -150,23 +152,21 @@ export default function TokensPage() {
               />
             </div>
             <Button type="submit" disabled={creando || !nombre.trim()}>
-              {creando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {creando ? <Loader2 className="animate-spin" /> : <Plus />}
               Crear
             </Button>
           </form>
-        </CardContent>
-      </Card>
-
-      {cargando ? (
-        <div className="flex items-center justify-center p-10">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : tokens.length === 0 ? (
-        <p className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No hay tokens creados.
-        </p>
-      ) : (
-        <div className="rounded-md border">
+
+        {cargando ? (
+          <div className="flex items-center justify-center p-10">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : tokens.length === 0 ? (
+          <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
+            No hay tokens creados.
+          </p>
+        ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -182,8 +182,8 @@ export default function TokensPage() {
               {tokens.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.nombre}</TableCell>
-                  <TableCell>{fecha(t.creado_en)}</TableCell>
-                  <TableCell>{fecha(t.ultimo_uso)}</TableCell>
+                  <TableCell className="text-muted-foreground">{fecha(t.creado_en)}</TableCell>
+                  <TableCell className="text-muted-foreground">{fecha(t.ultimo_uso)}</TableCell>
                   <TableCell>
                     {t.activo ? (
                       <Badge variant="default">Activo</Badge>
@@ -191,13 +191,15 @@ export default function TokensPage() {
                       <Badge variant="destructive">Revocado</Badge>
                     )}
                   </TableCell>
-                  <TableCell>{t.creado_por}</TableCell>
+                  <TableCell>
+                    <Mono className="text-muted-foreground">{t.creado_por}</Mono>
+                  </TableCell>
                   <TableCell className="text-right">
                     {t.activo && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" title="Revocar">
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                          <Button size="icon-sm" variant="ghost" title="Revocar">
+                            <Trash2 className="text-destructive" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
@@ -220,8 +222,8 @@ export default function TokensPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }

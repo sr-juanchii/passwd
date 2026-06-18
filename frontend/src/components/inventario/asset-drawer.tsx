@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   ArrowUpRight,
   Cpu,
-  KeyRound,
   MonitorSmartphone,
   Plus,
   ScrollText,

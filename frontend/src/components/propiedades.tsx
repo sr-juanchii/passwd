@@ -1,30 +1,30 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export interface Propiedad {
   etiqueta: string;
   valor: React.ReactNode;
+  /** Compone el valor en Geist Mono (IPs, números de serie, etc.). */
+  mono?: boolean;
 }
 
 export function Propiedades({ titulo, items }: { titulo?: string; items: Propiedad[] }) {
   const visibles = items.filter((p) => p.valor !== "" && p.valor !== null && p.valor !== undefined);
   if (visibles.length === 0) return null;
   return (
-    <Card>
+    <section className="overflow-hidden rounded-[14px] border bg-card">
       {titulo && (
-        <CardHeader>
-          <CardTitle className="text-base">{titulo}</CardTitle>
-        </CardHeader>
+        <div className="border-b px-5 py-3.5">
+          <span className="text-sm font-semibold">{titulo}</span>
+        </div>
       )}
-      <CardContent>
-        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          {visibles.map((p) => (
-            <div key={p.etiqueta} className="flex flex-col">
-              <dt className="text-xs uppercase tracking-wide text-muted-foreground">{p.etiqueta}</dt>
-              <dd className="text-sm">{p.valor}</dd>
-            </div>
-          ))}
-        </dl>
-      </CardContent>
-    </Card>
+      <dl className="grid gap-x-8 gap-y-3.5 p-5 sm:grid-cols-2">
+        {visibles.map((p) => (
+          <div key={p.etiqueta} className="flex flex-col gap-1">
+            <dt className="text-[12.5px] text-muted-foreground">{p.etiqueta}</dt>
+            <dd className={cn("text-[13px]", p.mono && "font-mono")}>{p.valor}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }

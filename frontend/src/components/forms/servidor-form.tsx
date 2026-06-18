@@ -2,12 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save } from "lucide-react";
 import type { ServidorInput } from "@/lib/types";
 import { ApiError } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { CampoArea, CampoEstado, CampoTexto } from "./campos";
+import { FormAcciones, FormPanel } from "./form-shell";
 import { toast } from "sonner";
 
 const VACIO: ServidorInput = {
@@ -55,8 +53,7 @@ export function ServidorForm({
 
   return (
     <form onSubmit={enviar}>
-      <Card>
-        <CardContent className="grid gap-4 py-6 sm:grid-cols-2">
+      <FormPanel titulo="Datos del servidor">
           <CampoTexto id="nombre" label="Nombre" required value={v.nombre} onChange={(x) => set("nombre", x)} />
           <CampoTexto id="so" label="Sistema operativo" value={v.sistema_operativo} onChange={(x) => set("sistema_operativo", x)} />
           <CampoTexto id="marca" label="Marca / Modelo" value={v.marca_modelo} onChange={(x) => set("marca_modelo", x)} />
@@ -71,17 +68,8 @@ export function ServidorForm({
           <CampoEstado value={v.estado} onChange={(x) => set("estado", x)} />
           <CampoTexto id="etq" label="Etiquetas (separadas por coma)" value={v.etiquetas} onChange={(x) => set("etiquetas", x)} />
           <CampoArea id="desc" label="Descripción" value={v.descripcion} onChange={(x) => set("descripcion", x)} />
-        </CardContent>
-      </Card>
-      <div className="mt-4 flex gap-2">
-        <Button type="submit" disabled={enviando}>
-          {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Guardar
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => router.back()}>
-          Cancelar
-        </Button>
-      </div>
+      </FormPanel>
+      <FormAcciones enviando={enviando} onCancelar={() => router.back()} />
     </form>
   );
 }

@@ -7,15 +7,16 @@ import { Loader2, Pencil } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ServidorDetalle } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
-import { EstadoBadge } from "@/components/estado-badge";
 import { Propiedades } from "@/components/propiedades";
 import { CredencialesTabla } from "@/components/credenciales-tabla";
 import { NotasPanel } from "@/components/notas-panel";
 import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
 import { ErrorRecurso } from "@/components/error-recurso";
-import { Badge } from "@/components/ui/badge";
+import { TituloActivo } from "@/components/inventario/titulo-activo";
+import { Chip } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
+import { nivelActivo } from "@/lib/riesgo";
 import { toast } from "sonner";
 
 export default function ServidorDetallePage() {
@@ -63,11 +64,12 @@ export default function ServidorDetallePage() {
     <>
       <PageHeader
         titulo={
-          <span className="flex items-center gap-2">
-            {d.nombre}
-            <Badge variant="outline">Servidor dedicado</Badge>
-            <EstadoBadge estado={d.estado} />
-          </span>
+          <TituloActivo
+            tipo="fisico"
+            nombre={d.nombre}
+            estado={d.estado}
+            nivel={nivelActivo({ credenciales: d.credenciales })}
+          />
         }
         descripcion={d.descripcion}
         migas={[{ label: "Inventario", href: "/" }, { label: d.nombre }]}
@@ -76,7 +78,7 @@ export default function ServidorDetallePage() {
             <>
               <Button variant="outline" asChild>
                 <Link href={`/servidores/${sid}/editar`}>
-                  <Pencil className="h-4 w-4" /> Editar
+                  <Pencil /> Editar
                 </Link>
               </Button>
               <BotonEliminar
@@ -96,22 +98,22 @@ export default function ServidorDetallePage() {
             { etiqueta: "Sistema operativo", valor: d.sistema_operativo },
             { etiqueta: "Marca / Modelo", valor: d.marca_modelo },
             { etiqueta: "Ubicación", valor: d.ubicacion },
-            { etiqueta: "IP de gestión", valor: d.ip_gestion },
-            { etiqueta: "RAM", valor: d.ram },
-            { etiqueta: "CPU", valor: d.cpu },
-            { etiqueta: "Almacenamiento", valor: d.almacenamiento },
-            { etiqueta: "Número de serie", valor: d.numero_serie },
-            { etiqueta: "Garantía hasta", valor: d.garantia_hasta },
+            { etiqueta: "IP de gestión", valor: d.ip_gestion, mono: true },
+            { etiqueta: "RAM", valor: d.ram, mono: true },
+            { etiqueta: "CPU", valor: d.cpu, mono: true },
+            { etiqueta: "Almacenamiento", valor: d.almacenamiento, mono: true },
+            { etiqueta: "Número de serie", valor: d.numero_serie, mono: true },
+            { etiqueta: "Garantía hasta", valor: d.garantia_hasta, mono: true },
             { etiqueta: "Proveedor", valor: d.proveedor },
             {
               etiqueta: "Etiquetas",
               valor:
                 d.lista_etiquetas.length > 0 ? (
-                  <span className="flex flex-wrap gap-1">
+                  <span className="flex flex-wrap gap-1.5">
                     {d.lista_etiquetas.map((t) => (
-                      <Badge key={t} variant="secondary">
+                      <Chip key={t} tono="outline">
                         {t}
-                      </Badge>
+                      </Chip>
                     ))}
                   </span>
                 ) : (
