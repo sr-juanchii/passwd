@@ -27,6 +27,7 @@ corresponda a su rol.
 | Documento | Para qué |
 |---|---|
 | [`guia-implementacion.md`](guia-implementacion.md) | Instalación, plan de pruebas (UAT), paso a producción y operación continua. |
+| [`guia-preproduccion.md`](guia-preproduccion.md) | **Runbook paso a paso** para desplegar en pre-producción (de los certificados al SMTP). |
 | [`guia-nginx-tls.md`](guia-nginx-tls.md) | HTTPS con nginx, certificados y rotación sin caída. |
 | [`ambientes.md`](ambientes.md) | Plantillas por ambiente (dev/QA/preprod/prod) y TLS sin dominio (por IP). |
 
@@ -62,6 +63,7 @@ corresponda a su rol.
 - **Soy usuario nuevo** → [`manual-usuario.md`](manual-usuario.md).
 - **Administro el sistema** → [`manual-administrador.md`](manual-administrador.md).
 - **Voy a instalarlo/desplegarlo** → [`guia-implementacion.md`](guia-implementacion.md) + [`ambientes.md`](ambientes.md).
+- **Despliego en pre-producción (laboratorio)** → [`guia-preproduccion.md`](guia-preproduccion.md).
 - **Quiero entender el código** → [`arquitectura.md`](arquitectura.md) + [`guia-desarrollo.md`](guia-desarrollo.md).
 - **Necesito integrarlo con un SIEM** → [`referencia-api-rest.md`](referencia-api-rest.md).
 - **Me piden la evidencia de cumplimiento** → [`verificacion-cumplimiento.md`](verificacion-cumplimiento.md).

@@ -62,6 +62,7 @@ Cumplimiento documentado con evidencia por control:
 
 Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a producción):
 - [`docs/guia-implementacion.md`](docs/guia-implementacion.md) — **guía de implementación completa**
+- [`docs/guia-preproduccion.md`](docs/guia-preproduccion.md) — **runbook de despliegue en pre-producción** (de los certificados al SMTP)
 - [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md) — **HTTPS con nginx y rotación de certificados**
 - [`docs/ambientes.md`](docs/ambientes.md) — **ambientes** (dev/QA/preprod/prod) y TLS sin dominio
 - [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md) — **hoja de ruta de mejoras** (viabilidad y fases)
