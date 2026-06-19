@@ -19,6 +19,7 @@ corresponda a su rol.
 | Documento | Audiencia |
 |---|---|
 | [`manual-usuario.md`](manual-usuario.md) | Todo el personal: primer acceso, MFA, inventario, credenciales, notas, búsqueda. |
+| [`manual-uso-ilustrado.md`](manual-uso-ilustrado.md) | **Recorrido visual con capturas** de cada pantalla, paso a paso. |
 | [`manual-administrador.md`](manual-administrador.md) | Administradores: usuarios, concesiones, auditoría, métricas, tokens, importación, respaldo. |
 
 ## 🚀 Despliegue y operación

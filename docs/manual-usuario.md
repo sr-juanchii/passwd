@@ -10,6 +10,9 @@ el [`manual-administrador.md`](manual-administrador.md).
 > la **web clásica** (servida por la propia aplicación) y el **frontend moderno** (Next.js).
 > Este manual describe los flujos; el aspecto concreto puede variar ligeramente entre ambas, pero
 > los pasos y los nombres de las acciones son equivalentes.
+>
+> 📸 ¿Prefiere verlo con **capturas de pantalla**? Vea el
+> [`manual-uso-ilustrado.md`](manual-uso-ilustrado.md).
 
 ---
 
