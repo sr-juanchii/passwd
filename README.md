@@ -208,10 +208,18 @@ defina `MYSQL_PASSWORD` en `.env` (línea sin comentar) y arranque con el archiv
 `docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build`.
 Sin Docker: `PASSWD_DATABASE_URL=mysql+pymysql://usuario:clave@host:3306/passwd`.
 
-### Variables de entorno
+### Variables de entorno y ambientes
 
 Todas opcionales salvo el administrador inicial; ver [`.env.example`](.env.example) para la
 lista completa con sus valores por defecto (sesiones, bloqueo, retención de auditoría, claves).
+
+Para distintos propósitos hay una plantilla por ambiente —copia la que toque a `.env`,
+rellena los secretos y despliega—: [`.env.desarrollo.example`](.env.desarrollo.example),
+[`.env.calidad.example`](.env.calidad.example),
+[`.env.preproduccion.example`](.env.preproduccion.example) y
+[`.env.produccion.example`](.env.produccion.example). La guía completa (incluido el TLS de
+nginx **sin dominio**, por IP de red interna) está en
+[`docs/ambientes.md`](docs/ambientes.md).
 
 ## Pruebas y calidad
 

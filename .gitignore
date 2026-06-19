@@ -4,7 +4,12 @@ data/
 *.sqlite3
 .secret_key
 .encryption_key
+# Entornos: se ignoran los .env reales de cada ambiente; SOLO se versionan las
+# plantillas *.example (.env.example, .env.produccion.example, etc.).
 .env
+.env.*
+!.env.example
+!.env.*.example
 
 # Python
 __pycache__/
@@ -16,8 +21,11 @@ __pycache__/
 .venv/
 venv/
 
-# Certificados TLS de nginx (nunca versionar claves privadas)
+# Certificados TLS de nginx y CA interna (nunca versionar claves privadas)
 infrastructure/nginx/certs/*.pem
+infrastructure/nginx/certs/*.crt
+infrastructure/nginx/certs/*.srl
+infrastructure/nginx/ca/
 
 # Sistemas y editores
 .DS_Store
