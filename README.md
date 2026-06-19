@@ -43,6 +43,16 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Interfaz | Modo claro/oscuro persistente, compatible con la CSP estricta (sin código embebido) |
 | Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff, COOP/CORP), límite de tamaño de petición (OWASP API4), mensajes genéricos anti enumeración, API docs deshabilitadas, **pip-audit** en CI contra dependencias vulnerables |
 
+📚 **Toda la documentación está indexada en [`docs/README.md`](docs/README.md)** (organizada por
+rol: entender el sistema, manuales de uso, despliegue, referencias técnicas, cumplimiento).
+
+Documentación destacada:
+- [`docs/arquitectura.md`](docs/arquitectura.md) — **cómo está construido y de qué se compone** el sistema
+- [`docs/manual-usuario.md`](docs/manual-usuario.md) — **manual de usuario** (todos los roles)
+- [`docs/manual-administrador.md`](docs/manual-administrador.md) — **manual del administrador**
+- [`docs/referencia-configuracion.md`](docs/referencia-configuracion.md) · [`docs/referencia-cli.md`](docs/referencia-cli.md) · [`docs/referencia-api-rest.md`](docs/referencia-api-rest.md) — **referencias** de configuración, CLI y API REST
+- [`docs/guia-desarrollo.md`](docs/guia-desarrollo.md) — **guía de desarrollo** · [`docs/glosario-faq.md`](docs/glosario-faq.md) — **glosario y FAQ**
+
 Cumplimiento documentado con evidencia por control:
 - [`docs/cumplimiento-cis-v8.1.md`](docs/cumplimiento-cis-v8.1.md) — matriz CIS Controls v8.1
 - [`docs/cumplimiento-iso-27003.md`](docs/cumplimiento-iso-27003.md) — alineación ISO/IEC 27003 y Anexo A
@@ -53,6 +63,7 @@ Cumplimiento documentado con evidencia por control:
 Para implantar el sistema (entorno de pruebas, plan de aceptación UAT y paso a producción):
 - [`docs/guia-implementacion.md`](docs/guia-implementacion.md) — **guía de implementación completa**
 - [`docs/guia-nginx-tls.md`](docs/guia-nginx-tls.md) — **HTTPS con nginx y rotación de certificados**
+- [`docs/ambientes.md`](docs/ambientes.md) — **ambientes** (dev/QA/preprod/prod) y TLS sin dominio
 - [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md) — **hoja de ruta de mejoras** (viabilidad y fases)
 
 ## Interfaz alternativa: Next.js + shadcn/ui
@@ -251,8 +262,8 @@ app/
 ├── templates/         # interfaz en español (Jinja2)
 └── static/            # CSS y JS compatibles con la CSP estricta
 tests/                 # suite completa de pruebas de seguridad y funcionalidad
-docs/                  # guía de implementación, cumplimiento CIS v8.1 / ISO 27000,
-                       # informe de verificación y modelo de datos
+docs/                  # documentación indexada en docs/README.md: arquitectura, manuales de
+                       # uso, despliegue, referencias (config/CLI/API), cumplimiento y verificación
 ```
 
 ## Adiciones aprobadas e incorporadas
