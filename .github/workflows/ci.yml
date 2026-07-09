@@ -35,3 +35,38 @@ jobs:
 
       - name: Pruebas (pytest)
         run: pytest
+
+  frontend:
+    name: Frontend (lint, tipos, build y auditoría)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm (versión de packageManager)
+        uses: pnpm/action-setup@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Instalar dependencias (lockfile congelado)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (eslint)
+        run: pnpm lint
+
+      - name: Tipos (tsc --noEmit)
+        run: pnpm typecheck
+
+      - name: Compilación (next build)
+        run: pnpm build
+
+      - name: Vulnerabilidades en dependencias (pnpm audit, OWASP A06)
+        run: pnpm audit --prod --audit-level critical

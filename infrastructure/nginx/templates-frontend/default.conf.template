@@ -40,14 +40,14 @@ server {
     resolver 127.0.0.11 valid=300s;
     resolver_timeout 5s;
 
-    # HSTS la emite nginx (único emisor). El resto de cabeceras de seguridad de
-    # las rutas /api las pone el backend y se reenvían tal cual.
+    # HSTS la emite nginx (ÚNICO emisor: oculta la del upstream y fija la suya,
+    # cubriendo también las páginas de error del propio nginx). El resto de
+    # cabeceras de seguridad las emite cada upstream sin duplicarse: el backend
+    # FastAPI para /api/* y Next (headers() en next.config.ts: CSP,
+    # Permissions-Policy, nosniff, X-Frame-Options, Referrer-Policy) para las
+    # páginas del frontend.
     proxy_hide_header Strict-Transport-Security;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    # Endurecido también para las respuestas del frontend.
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "DENY" always;
-    add_header Referrer-Policy "no-referrer" always;
 
     client_max_body_size 4m;
 
