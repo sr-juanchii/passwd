@@ -8,6 +8,7 @@ directorio de datos con permisos 0600 (CIS 3.11 — cifrado de datos en reposo).
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 
 _PREFIX = "PASSWD_"
+
+logger = logging.getLogger(__name__)
 
 
 def _env(nombre: str, por_defecto: str) -> str:
@@ -72,6 +75,12 @@ class Settings:
     # Tamaño máximo del cuerpo de una petición (OWASP API4)
     max_request_bytes: int = field(default_factory=lambda: _env_int("MAX_REQUEST_BYTES", 65536))
 
+    # Proxies de confianza (CSV de IPs, o "*"). Si se define, la app confía en
+    # X-Forwarded-For/-Proto SOLO cuando la conexión llega desde estas IPs, de
+    # modo que la auditoría y el límite de tasa usan la IP real del cliente y
+    # no la del proxy TLS (nginx). Vacío = desactivado (sin proxy delante).
+    trusted_proxies: str = field(default_factory=lambda: _env("TRUSTED_PROXIES", ""))
+
     # Auditoría (CIS 8.10 — retención mínima de 90 días; por defecto 365)
     audit_retention_days: int = field(default_factory=lambda: _env_int("AUDIT_RETENTION_DAYS", 365))
 
@@ -110,10 +119,35 @@ class Settings:
             self.data_dir.mkdir(parents=True, exist_ok=True)
             self.database_url = f"sqlite:///{self.data_dir / 'passwd.db'}"
 
-        self.secret_key = os.environ.get(f"{_PREFIX}SECRET_KEY") or _leer_o_generar_secreto(
+        # Modo estricto (producción): exige que las claves criptográficas
+        # lleguen por entorno (gestor de secretos) y prohíbe autogenerarlas en
+        # el directorio de datos, donde conviven con la base de datos — un
+        # compromiso del volumen expondría datos y clave a la vez (ISO A.8.24).
+        requiere_env = _env_bool("REQUIRE_ENV_KEYS", False)
+        secret_env = os.environ.get(f"{_PREFIX}SECRET_KEY")
+        encryption_env = os.environ.get(f"{_PREFIX}ENCRYPTION_KEY")
+        if requiere_env and not (secret_env and encryption_env):
+            faltan = [
+                f"{_PREFIX}{nombre}"
+                for nombre, valor in (("SECRET_KEY", secret_env), ("ENCRYPTION_KEY", encryption_env))
+                if not valor
+            ]
+            raise RuntimeError(
+                f"{_PREFIX}REQUIRE_ENV_KEYS=true exige definir por entorno: {', '.join(faltan)}. "
+                "Genere las claves (ver .env.produccion.example) y provéalas mediante su "
+                "gestor de secretos; no se autogenerarán en el directorio de datos."
+            )
+        if not (secret_env and encryption_env):
+            logger.warning(
+                "Claves criptográficas autogeneradas en %s (modo solo-desarrollo): en producción "
+                "defina %sSECRET_KEY y %sENCRYPTION_KEY por entorno y active %sREQUIRE_ENV_KEYS=true.",
+                self.data_dir, _PREFIX, _PREFIX, _PREFIX,
+            )
+
+        self.secret_key = secret_env or _leer_o_generar_secreto(
             self.data_dir / ".secret_key", lambda: secrets.token_urlsafe(48)
         )
-        self.encryption_key = os.environ.get(f"{_PREFIX}ENCRYPTION_KEY") or _leer_o_generar_secreto(
+        self.encryption_key = encryption_env or _leer_o_generar_secreto(
             self.data_dir / ".encryption_key", lambda: Fernet.generate_key().decode("ascii")
         )
         self.smtp_password = os.environ.get(f"{_PREFIX}SMTP_PASSWORD", "")

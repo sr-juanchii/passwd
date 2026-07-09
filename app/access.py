@@ -105,6 +105,28 @@ def puede_revelar_credencial(db: Session, usuario: Usuario, credencial: Credenci
     return puede_revelar_en_activo(db, usuario, tipo, activo_id)
 
 
+def ids_activos_concedidos(db: Session, usuario: Usuario, tipo: str) -> list[int] | None:
+    """IDs de activos del tipo que el usuario puede ver, o ``None`` si ve todos.
+
+    Pensado para filtrar consultas EN SQL antes de aplicar un ``LIMIT`` (p. ej.
+    la búsqueda global): ``None`` significa «sin filtro» (rol con acceso
+    total); una lista —posiblemente vacía— restringe a las concesiones
+    vigentes del analista.
+    """
+    if usuario.rol in ROLES_ACCESO_TOTAL:
+        return None
+    if usuario.rol != ROL_ANALISTA:
+        return []
+    columna = _columna_activo(tipo)
+    concesiones = db.scalars(
+        select(ConcesionAcceso).where(
+            ConcesionAcceso.usuario_id == usuario.id,
+            columna.is_not(None),
+        )
+    ).all()
+    return [getattr(c, columna.key) for c in concesiones if c.esta_vigente()]
+
+
 def concesiones_vigentes_de_usuario(db: Session, usuario_id: int) -> list[ConcesionAcceso]:
     """Concesiones no expiradas de un usuario (para su panel)."""
     concesiones = db.scalars(

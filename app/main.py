@@ -6,6 +6,7 @@ Ejecutar en producción:   detrás de un proxy TLS (ver docker-compose.yml)
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -37,6 +38,8 @@ from app.routes import (
 )
 from app.security.passwords import hashear_password
 from app.security.sessions import purgar_sesiones_expiradas
+
+logger = logging.getLogger(__name__)
 
 
 class CabecerasSeguridadMiddleware(BaseHTTPMiddleware):
@@ -183,6 +186,23 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+    # IP real tras el proxy TLS: si hay proxies de confianza declarados, se
+    # confía en X-Forwarded-For/-Proto SOLO cuando la conexión procede de esas
+    # IPs (anti-spoofing). Así la auditoría y el límite de tasa por IP operan
+    # sobre el cliente real y no sobre nginx (hallazgo H-2 de la verificación).
+    if settings.trusted_proxies.strip():
+        from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+        confiables = [p.strip() for p in settings.trusted_proxies.split(",") if p.strip()]
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=confiables)
+
+    if settings.rate_limit_backend != "bd":
+        logger.warning(
+            "PASSWD_RATE_LIMIT_BACKEND=%s: el límite de tasa vive en la memoria de CADA proceso. "
+            "Con varios workers o réplicas use \"bd\" para compartir el presupuesto.",
+            settings.rate_limit_backend,
+        )
+
     # El orden importa: el último en añadirse queda como capa MÁS EXTERNA. Se
     # pone CabecerasSeguridad de último para que decore TODAS las respuestas,
     # incluidas las cortocircuitadas por el límite de tamaño (p. ej. un 413).

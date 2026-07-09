@@ -310,7 +310,7 @@ def historial_revelar(
     settings = get_settings()
     if not ratelimit.permitir_intento(
         f"revelar:{usuario.id}", limite=settings.reveal_rate_limit,
-        ventana_minutos=settings.reveal_rate_window_minutes,
+        ventana_minutos=settings.reveal_rate_window_minutes, db=db,
     ):
         audit.registrar(db, audit.REVELADO_TASA_EXCEDIDA, request=request, usuario=usuario,
                         objeto_tipo="historial_credencial", objeto_id=historial_id, exito=False)
