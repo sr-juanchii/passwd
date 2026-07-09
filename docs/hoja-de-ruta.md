@@ -11,7 +11,7 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
   `create_all`, añade las **columnas nuevas** que falten (`ALTER TABLE ADD COLUMN`, SQLite/MySQL)
   para que las bases existentes adopten versiones nuevas sin recrearse. Cubre todos los cambios
   **aditivos** de la Fase 2 (tablas y columnas). Para cambios **no aditivos** (eliminar/renombrar
-  columnas, cambiar tipos o CHECK) se recomienda adoptar **Alembic** en su momento.
+  columnas, cambiar tipos o CHECK) el proyecto ya incorpora **Alembic** (Fase 5).
 
 ## Fase 1 — Cumplimiento y visibilidad ✅ (entregada)
 
@@ -57,6 +57,32 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
   (aprovisionamiento, roles, break-glass, MFA del IdP) más una revisión de seguridad dedicada.
   Queda como candidata futura; cuando se priorice se retomará el diseño y se implementará con esos
   datos.
+
+## Fase 5 — Endurecimiento (Olas 1+2 del [análisis de mejoras](analisis-mejoras.md)) ✅ (entregada)
+
+- ✅ **IP real tras el proxy** (`PASSWD_TRUSTED_PROXIES`): auditoría y límites de tasa con la IP
+  del cliente, no la de nginx (cierra el hallazgo H-2 de la verificación). [SEC-3]
+- ✅ **Presupuesto anti-exfiltración compartido**: los revelados de notas e historial (web y JSON)
+  usan también el backend en BD; prod/preprod pasan a `PASSWD_RATE_LIMIT_BACKEND=bd` y la app
+  avisa al arrancar en modo memoria. [SEC-4/SEC-5]
+- ✅ **Revocación persistente en la vía JSON** para usuarios desactivados. [SEC-6]
+- ✅ **Búsqueda corregida para el analista**: el filtro por concesiones se aplica en SQL **antes**
+  del límite (web y JSON). [ESC-2]
+- ✅ **CI de frontend** (eslint, `tsc`, `next build`, `pnpm audit`) y **CSP + Permissions-Policy**
+  en las páginas de Next (nginx queda como único emisor de HSTS, sin cabeceras duplicadas).
+  [OPS-1/OPS-4]
+- ✅ **Modo estricto de claves** (`PASSWD_REQUIRE_ENV_KEYS`): en producción las claves llegan por
+  entorno o la app no arranca. [SEC-1]
+- ✅ **Rotación de la clave de cifrado**: `PASSWD_ENCRYPTION_KEY` multi-clave (MultiFernet) +
+  comando `recifrar` — rotación sin restaurar respaldos. [SEC-2]
+- ✅ **Blocklist amplia** de 10 000 contraseñas comunes empaquetada. [SEC-7]
+- ✅ **Respaldo v2**: scrypt `n=2^17` con parámetros declarados en el archivo (v1 restaurable),
+  frase mínima 16. [SEC-8]
+- ✅ **Alembic**: migraciones versionadas con línea base del esquema completo. [ESC-1]
+
+Las mejoras restantes del análisis (olas 3 y 4: paginación, N+1, pool, TTL/alcance de tokens,
+capa de servicios, observabilidad, secretos en Docker, etc.) quedan como candidatas siguientes;
+ver [`analisis-mejoras.md`](analisis-mejoras.md).
 
 ## Extras de bajo coste
 

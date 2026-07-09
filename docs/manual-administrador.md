@@ -151,7 +151,7 @@ Operación de **CLI** (no desde la web). Referencia completa en
 [`guia-implementacion.md`](guia-implementacion.md) §4.7.
 
 ```bash
-# Crear un respaldo cifrado (pide una frase de mín. 12 caracteres)
+# Crear un respaldo cifrado (pide una frase de mín. 16 caracteres)
 python -m app.cli respaldo --salida copia.passwd
 
 # Restaurar (sobre una instancia, posiblemente con claves distintas)

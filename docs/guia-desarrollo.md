@@ -106,7 +106,11 @@ Mapa detallado del backend en [`arquitectura.md`](arquitectura.md) §3; del fron
   cambios de contrato en [`../frontend/API_CONTRACT.md`](../frontend/API_CONTRACT.md).
 - **Migraciones:** los cambios de esquema **aditivos** (columnas/tablas nuevas) los aplica
   `app/schema_sync.py` al arrancar. Los **no aditivos** (eliminar/renombrar columnas, cambiar tipos
-  o `CHECK`) requieren un plan aparte (Alembic, pendiente — ver [`hoja-de-ruta.md`](hoja-de-ruta.md)).
+  o `CHECK`) se entregan como **revisiones de Alembic** (`alembic.ini` + `migrations/`, ligadas a
+  la configuración real de la app): `alembic revision --autogenerate -m "descripcion"` para crear
+  la migración, `alembic upgrade head` para aplicarla y `alembic stamp head` para marcar una base
+  existente como al día. La revisión `0001` es la línea base del esquema completo, y una prueba
+  (`tests/test_migraciones_alembic.py`) verifica que reproduce exactamente `Base.metadata`.
 - **Pruebas:** acompañe cada cambio funcional o de seguridad con su prueba en `tests/`.
 - **Política del proyecto:** **ninguna funcionalidad extra se incorpora sin consultarla antes**
   (ver README y [`hoja-de-ruta.md`](hoja-de-ruta.md)).

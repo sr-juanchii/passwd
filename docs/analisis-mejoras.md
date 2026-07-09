@@ -38,6 +38,8 @@ Cada mejora lleva un **identificador** por área (`SEC-`, `ESC-`, `CAL-`, `OPS-`
 
 ## Resumen ejecutivo
 
+> **Estado (09/07/2026):** las **Olas 1 y 2** están **implementadas** (SEC-1…SEC-8, ESC-1, ESC-2, OPS-1, OPS-4 — ver [`hoja-de-ruta.md`](hoja-de-ruta.md) Fase 5). Los ítems marcados ✅ se conservan aquí como registro del análisis; las olas 3 y 4 siguen pendientes.
+
 Mejoras de mayor retorno, agrupadas por área:
 
 | ID | Mejora | Área | Prioridad | Esfuerzo |
@@ -70,7 +72,7 @@ Mejoras de mayor retorno, agrupadas por área:
 
 ## Área A — Seguridad y criptografía
 
-### SEC-1 · Clave de cifrado almacenada junto a los datos — 🔴 Alta · M
+### SEC-1 · Clave de cifrado almacenada junto a los datos — ✅ implementada (Fase 5)
 - **Evidencia:** `app/config.py:111,116-118`. Si no se define `PASSWD_ENCRYPTION_KEY`, la clave se
   autogenera en `data_dir/.encryption_key`, **el mismo directorio** donde vive `passwd.db`
   (línea 111).
@@ -83,7 +85,7 @@ Mejoras de mayor retorno, agrupadas por área:
   sobre-envolvente (envelope) con una clave maestra en KMS/HSM que envuelva la clave de datos.
 - **Cumplimiento:** CIS 3.11 · ISO A.8.24.
 
-### SEC-2 · Sin rotación de la clave de cifrado de datos — 🔴 Alta · M
+### SEC-2 · Sin rotación de la clave de cifrado de datos — ✅ implementada (Fase 5)
 - **Evidencia:** `app/security/crypto.py` (un único `Fernet`, sin `MultiFernet`).
 - **Problema:** cambiar `PASSWD_ENCRYPTION_KEY` deja **todo el material cifrado existente
   indescifrable** (contraseñas de activos, semillas TOTP, notas). Hoy la rotación exige el ciclo
@@ -93,7 +95,7 @@ Mejoras de mayor retorno, agrupadas por área:
   material con la clave vigente. Permite rotación sin ventana de indisponibilidad ni restauración.
 - **Cumplimiento:** ISO A.8.24.
 
-### SEC-3 · El proxy inverso no se reconoce: IP real perdida — 🔴 Alta · S
+### SEC-3 · El proxy inverso no se reconoce: IP real perdida — ✅ implementada (Fase 5)
 - **Evidencia:** `app/audit.py:83`, `app/routes/auth.py:120` (la IP se toma de
   `request.client.host`). En despliegue con nginx, la plantilla reenvía la IP real en
   `X-Forwarded-For`/`X-Real-IP` (`infrastructure/nginx/templates-frontend/default.conf.template:63-64`),
@@ -102,11 +104,13 @@ Mejoras de mayor retorno, agrupadas por área:
   IP" se vuelve global (un solo cliente abusivo bloquea a todos, o al revés) y la auditoría registra
   una IP falsa. Ya anotado como hallazgo **H-2** en la verificación de cumplimiento.
 - **Mejora:** ejecutar uvicorn con `--proxy-headers --forwarded-allow-ips=<red del proxy>` o parsear
-  `X-Forwarded-For` confiando **solo** en una lista de proxies conocidos. Documentarlo como paso
-  obligatorio del despliegue tras proxy.
+  `X-Forwarded-For` confiando **solo** en una lista de proxies conocidos. *(Precisión posterior:
+  los overlays de compose con nginx ya pasaban esas banderas a uvicorn; el hueco real era el
+  despliegue sin overlay. La implementación añade `PASSWD_TRUSTED_PROXIES` en la propia app,
+  que cubre ambos casos y es idempotente en combinación con las banderas.)*
 - **Cumplimiento:** CIS 8.x (calidad del registro) · OWASP (efectividad del anti-brute-force).
 
-### SEC-4 · Rate-limit en memoria por defecto — 🔴 Alta · S
+### SEC-4 · Rate-limit en memoria por defecto — ✅ implementada (Fase 5)
 - **Evidencia:** `app/config.py:97` (`rate_limit_backend` por defecto `"memoria"`).
 - **Problema:** el backend en memoria es **por proceso**. Con varios workers de uvicorn o varias
   instancias (escenario multi-instancia que la propia documentación contempla), el límite de login y
@@ -116,7 +120,7 @@ Mejoras de mayor retorno, agrupadas por área:
   prominente y un chequeo de arranque que advierta si hay >1 worker con backend en memoria).
 - **Cumplimiento:** CIS 16.10 · OWASP API4.
 
-### SEC-5 · Presupuesto anti-exfiltración no compartido en historial y notas — 🔴 Alta · S
+### SEC-5 · Presupuesto anti-exfiltración no compartido en historial y notas — ✅ implementada (Fase 5)
 - **Evidencia:** `app/routes/credentials.py:332` (`historial_revelar`),
   `app/api_web/credentials.py:311` y `app/routes/notes.py:113` (`notas_revelar`): llaman
   `ratelimit.permitir_intento(...)` **sin** pasar `db=`.
@@ -127,7 +131,7 @@ Mejoras de mayor retorno, agrupadas por área:
 - **Mejora:** pasar `db=db` en esas llamadas para unificar el conteo con el resto del sistema.
 - **Cumplimiento:** consistencia del control anti-exfiltración (OWASP API4).
 
-### SEC-6 · Revocación de sesión perdida por rollback en la vía JSON — 🟠 Media · S
+### SEC-6 · Revocación de sesión perdida por rollback en la vía JSON — ✅ implementada (Fase 5)
 - **Evidencia:** `app/api_web/deps.py:36` asigna `sesion.revocada_en` y a continuación lanza
   `HTTPException`; `app/database.py:78-79` hace `rollback` ante cualquier excepción que **no** sea
   `RedirigirLogin`, así que ese cambio no se persiste. La vía web sí lo persiste (usa
@@ -137,7 +141,7 @@ Mejoras de mayor retorno, agrupadas por área:
 - **Mejora:** unificar la persistencia de la revocación (p. ej. `db.commit()` explícito antes de
   lanzar, o un tipo de excepción tratado como `RedirigirLogin` en `get_db`).
 
-### SEC-7 · Lista de contraseñas prohibidas mínima — 🟠 Media · S
+### SEC-7 · Lista de contraseñas prohibidas mínima — ✅ implementada (Fase 5)
 - **Evidencia:** `app/security/passwords.py:19-22` (blocklist de ~8 entradas); política en
   `validar_politica` (`app/security/passwords.py:40-54`).
 - **Problema:** la política (mín. 12, ≥4 distintos, sin username, sin espacios extremos) es correcta,
@@ -146,7 +150,7 @@ Mejoras de mayor retorno, agrupadas por área:
   **k-anonymity contra HIBP** (sin enviar la contraseña, solo un prefijo del hash).
 - **Cumplimiento:** CIS 5.2 · ISO A.8.5.
 
-### SEC-8 · Parámetros del respaldo cifrado por debajo de lo recomendado — 🟠 Media · S
+### SEC-8 · Parámetros del respaldo cifrado por debajo de lo recomendado — ✅ implementada (Fase 5)
 - **Evidencia:** `app/backup.py:47` (scrypt `n=2**14`), `app/backup.py:39` (frase mínima 12);
   el respaldo se arma como JSON con **todos los secretos en claro** en memoria antes de cifrar.
 - **Problema:** el factor de coste de scrypt está por debajo de las recomendaciones actuales
@@ -198,7 +202,7 @@ Mejoras de mayor retorno, agrupadas por área:
 
 ## Área B — Escalabilidad y alta disponibilidad
 
-### ESC-1 · Migraciones limitadas a cambios aditivos (adoptar Alembic) — 🔴 Alta · M
+### ESC-1 · Migraciones limitadas a cambios aditivos (adoptar Alembic) — ✅ implementada (Fase 5)
 - **Evidencia:** `app/schema_sync.py:77-100` (solo `ALTER TABLE ADD COLUMN`, e `inspect`+`ALTER` en
   **cada arranque**). Pendiente reconocido en `hoja-de-ruta.md` (Fase 0), `arquitectura.md §6`,
   `guia-desarrollo.md §7` y `control-acceso.md:70`.
@@ -209,7 +213,7 @@ Mejoras de mayor retorno, agrupadas por área:
   un paso de despliegue). Mantener `schema_sync` solo como red de seguridad o retirarlo.
 - **Impacto:** desbloquea la evolución del esquema en producción sin pérdida de datos.
 
-### ESC-2 · La búsqueda trunca antes de filtrar por acceso — 🔴 Alta · S
+### ESC-2 · La búsqueda trunca antes de filtrar por acceso — ✅ implementada (Fase 5)
 - **Evidencia:** `app/routes/search.py:64,72,80,86` aplican `.limit(LIMITE_POR_TIPO)` en SQL, y solo
   **después** se filtra por acceso con `visibles()` (`app/routes/search.py:90-96`).
 - **Problema (correctitud):** para un **analista**, el `LIMIT` recorta antes de aplicar sus
@@ -346,7 +350,7 @@ Mejoras de mayor retorno, agrupadas por área:
 
 ## Área D — DevSecOps y operación
 
-### OPS-1 · El frontend no pasa por CI — 🔴 Alta · S
+### OPS-1 · El frontend no pasa por CI — ✅ implementada (Fase 5)
 - **Evidencia:** `.github/workflows/ci.yml` tiene un único job **solo de Python** (ruff, bandit,
   pip-audit, pytest). No hay `eslint`, `tsc --noEmit`, `next build`, pruebas ni `pnpm audit`;
   `frontend/package.json` no define script `typecheck`.
@@ -371,7 +375,7 @@ Mejoras de mayor retorno, agrupadas por área:
   Custodiar la clave de cifrado fuera del volumen de datos.
 - **Cumplimiento:** ISO A.8.24 · OWASP A02.
 
-### OPS-4 · Sin CSP ni Permissions-Policy en las páginas del frontend — 🔴 Alta · S
+### OPS-4 · Sin CSP ni Permissions-Policy en las páginas del frontend — ✅ implementada (Fase 5)
 - **Evidencia:** la CSP estricta del backend (`app/main.py:47-51`) solo cubre respuestas de `/api`.
   Las páginas HTML las sirve Next.js; `next.config.ts` **no** define `headers()`, y la plantilla
   nginx del frontend (`infrastructure/nginx/templates-frontend/default.conf.template:43-50`) añade

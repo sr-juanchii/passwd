@@ -29,7 +29,7 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 |---|---|
 | Autenticación | Contraseña (hash **Argon2id**) + **MFA TOTP obligatorio** (RFC 6238) con QR de enrolamiento generado localmente; anti-replay del último código usado; **códigos de recuperación de un solo uso** (8 por usuario, solo hashes en BD) por si se pierde el dispositivo |
 | Sesiones | Gestionadas en servidor (revocables), token rotado al elevar privilegios, cookie `HttpOnly` + `Secure` + `SameSite=Strict`, expiración por inactividad (15 min) y absoluta (8 h) |
-| Cuentas | Bloqueo tras 5 intentos fallidos, límite de tasa por IP, contraseñas temporales de un solo uso con cambio forzado, política de contraseñas (mín. 12, lista de comunes prohibidas), desactivación con revocación inmediata |
+| Cuentas | Bloqueo tras 5 intentos fallidos, límite de tasa por IP, contraseñas temporales de un solo uso con cambio forzado, política de contraseñas (mín. 12, lista empaquetada de 10 000 comunes prohibidas), desactivación con revocación inmediata |
 | Autorización | RBAC con cuatro roles (**admin**, **operador**, **auditor**, **analista**) más **control de acceso por objeto**: el analista solo ve y usa los activos que un administrador le concede (con nivel y caducidad) — matriz en [`app/rbac.py`](app/rbac.py), concesiones en [`app/access.py`](app/access.py) |
 | Datos | Contraseñas de activos y semillas TOTP **cifradas con Fernet (AES)** antes de tocar la base de datos; claves criptográficas fuera del repositorio; **generador de contraseñas robustas** (CSPRNG, 20 caracteres) en el formulario |
 | Exposición mínima | Botón **«Copiar» sin visualización**: la contraseña va directo al portapapeles sin mostrarse en pantalla y se limpia a los 30 s; «Revelar» se re-oculta solo; **límite anti-exfiltración** por usuario (20 accesos/5 min configurables) compartido entre ambas vías |
@@ -204,7 +204,7 @@ También puede crearse un administrador por CLI: `python -m app.cli crear-admin 
 ### Respaldo y restauración
 
 ```bash
-python -m app.cli respaldo --salida copia.passwd          # pide una frase de cifrado (mín. 12)
+python -m app.cli respaldo --salida copia.passwd          # pide una frase de cifrado (mín. 16)
 python -m app.cli restaurar --entrada copia.passwd --sobrescribir
 ```
 
