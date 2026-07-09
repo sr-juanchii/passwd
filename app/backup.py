@@ -35,16 +35,29 @@ from app.models import (
 from app.security.crypto import cifrar, descifrar
 
 FORMATO = "respaldo-passwd"
-VERSION = 1
-LARGO_MINIMO_FRASE = 12
+VERSION = 2
+LARGO_MINIMO_FRASE = 16
+
+# Parámetros del KDF (scrypt). Los vigentes se escriben en el archivo (v2) y
+# se leen de vuelta al restaurar, con topes de cordura para que un archivo
+# manipulado no fuerce un consumo de memoria arbitrario. Los respaldos v1 se
+# crearon con n=2**14 fijo y siguen siendo restaurables.
+_SCRYPT_N = 2**17
+_SCRYPT_R = 8
+_SCRYPT_P = 1
+_SCRYPT_N_V1 = 2**14
+_SCRYPT_N_MAX = 2**22
+_SCRYPT_R_MAX = 32
+_SCRYPT_P_MAX = 16
 
 
 class ErrorRespaldo(Exception):
     pass
 
 
-def _clave_desde_frase(frase: str, salt: bytes) -> bytes:
-    kdf = Scrypt(salt=salt, length=32, n=2**14, r=8, p=1)
+def _clave_desde_frase(frase: str, salt: bytes,
+                       n: int = _SCRYPT_N, r: int = _SCRYPT_R, p: int = _SCRYPT_P) -> bytes:
+    kdf = Scrypt(salt=salt, length=32, n=n, r=r, p=p)
     return base64.urlsafe_b64encode(kdf.derive(frase.encode("utf-8")))
 
 
@@ -130,7 +143,7 @@ def exportar(db: Session, frase: str) -> bytes:
     contenedor = {
         "formato": FORMATO,
         "version": VERSION,
-        "kdf": "scrypt-n16384-r8-p1",
+        "kdf": {"algoritmo": "scrypt", "n": _SCRYPT_N, "r": _SCRYPT_R, "p": _SCRYPT_P},
         "salt": base64.b64encode(salt).decode("ascii"),
         "datos": token.decode("ascii"),
     }
@@ -140,16 +153,37 @@ def exportar(db: Session, frase: str) -> bytes:
     return json.dumps(contenedor, indent=2).encode("utf-8")
 
 
+def _parametros_kdf(contenedor: dict) -> tuple[int, int, int]:
+    """Parámetros scrypt del contenedor, validados contra topes de cordura."""
+    if contenedor.get("version") == 1:
+        return _SCRYPT_N_V1, _SCRYPT_R, _SCRYPT_P  # v1: parámetros fijos históricos
+    kdf = contenedor.get("kdf") or {}
+    if not isinstance(kdf, dict) or kdf.get("algoritmo") != "scrypt":
+        raise ErrorRespaldo("El archivo no declara un cifrado de respaldo compatible.")
+    try:
+        n, r, p = int(kdf["n"]), int(kdf["r"]), int(kdf["p"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ErrorRespaldo("Parámetros de cifrado del respaldo ilegibles.") from exc
+    # Cordura anti-DoS: n potencia de dos acotada; r y p en rangos razonables.
+    if not (2**10 <= n <= _SCRYPT_N_MAX and n & (n - 1) == 0
+            and 1 <= r <= _SCRYPT_R_MAX and 1 <= p <= _SCRYPT_P_MAX):
+        raise ErrorRespaldo("Parámetros de cifrado del respaldo fuera de rango.")
+    return n, r, p
+
+
 def _abrir(datos: bytes, frase: str) -> dict:
     try:
         contenedor = json.loads(datos)
     except json.JSONDecodeError as exc:
         raise ErrorRespaldo("El archivo no tiene el formato de respaldo esperado.") from exc
-    if contenedor.get("formato") != FORMATO or contenedor.get("version") != VERSION:
+    if contenedor.get("formato") != FORMATO or contenedor.get("version") not in (1, VERSION):
         raise ErrorRespaldo("El archivo no es un respaldo válido de este sistema.")
+    n, r, p = _parametros_kdf(contenedor)
     salt = base64.b64decode(contenedor["salt"])
     try:
-        carga = Fernet(_clave_desde_frase(frase, salt)).decrypt(contenedor["datos"].encode("ascii"))
+        carga = Fernet(_clave_desde_frase(frase, salt, n=n, r=r, p=p)).decrypt(
+            contenedor["datos"].encode("ascii")
+        )
     except InvalidToken as exc:
         raise ErrorRespaldo("Frase de respaldo incorrecta o archivo dañado.") from exc
     return json.loads(carga)

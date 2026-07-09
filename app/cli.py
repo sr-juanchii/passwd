@@ -5,6 +5,7 @@ Uso:
     python -m app.cli crear-admin --username admin --email admin@ejemplo.com
     python -m app.cli respaldo --salida respaldo.passwd
     python -m app.cli restaurar --entrada respaldo.passwd [--sobrescribir]
+    python -m app.cli recifrar    # rotación de la clave de cifrado (ver docs)
 """
 
 from __future__ import annotations
@@ -60,7 +61,9 @@ def _cmd_crear_admin(args: argparse.Namespace) -> int:
 
 
 def _pedir_frase(confirmar: bool) -> str:
-    frase = getpass.getpass("Frase de cifrado del respaldo (mínimo 12 caracteres): ")
+    from app.backup import LARGO_MINIMO_FRASE
+
+    frase = getpass.getpass(f"Frase de cifrado del respaldo (mínimo {LARGO_MINIMO_FRASE} caracteres): ")
     if confirmar and getpass.getpass("Confirme la frase: ") != frase:
         raise SystemExit("Las frases no coinciden.")
     return frase
@@ -143,6 +146,58 @@ def _cmd_restaurar(args: argparse.Namespace) -> int:
         db.close()
 
 
+def _cmd_recifrar(_args: argparse.Namespace) -> int:
+    """Recifra todo el material con la clave primaria (rotación de clave).
+
+    Procedimiento: fijar ``PASSWD_ENCRYPTION_KEY=nueva,antigua`` (la primera
+    cifra, todas descifran), ejecutar este comando y, al terminar, dejar solo
+    la clave nueva. Ver ``docs/referencia-cli.md``.
+    """
+    from app.models import (
+        Credencial,
+        Hipervisor,
+        HistorialCredencial,
+        MaquinaVirtual,
+        ServidorFisico,
+        Usuario,
+    )
+    from app.security import crypto
+
+    init_db()
+    db = next(get_db())
+    try:
+        objetivos = [
+            (Usuario, "totp_secret_cifrado"),
+            (Credencial, "password_cifrada"),
+            (HistorialCredencial, "password_cifrada"),
+            (ServidorFisico, "notas_cifradas"),
+            (Hipervisor, "notas_cifradas"),
+            (MaquinaVirtual, "notas_cifradas"),
+        ]
+        total = 0
+        print("Recifrando con la clave primaria:")
+        for modelo, columna in objetivos:
+            procesadas = 0
+            for fila in db.scalars(select(modelo)).all():
+                blob = getattr(fila, columna)
+                if blob is None:
+                    continue
+                setattr(fila, columna, crypto.recifrar(blob))
+                procesadas += 1
+            print(f"  - {modelo.__tablename__}.{columna}: {procesadas}")
+            total += procesadas
+        db.commit()
+        print(f"Recifrado completado: {total} valores usan ahora la clave primaria.")
+        print("Ya puede retirar las claves antiguas de PASSWD_ENCRYPTION_KEY.")
+        return 0
+    except ValueError as exc:
+        db.rollback()
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description="Utilidades administrativas.")
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -169,6 +224,10 @@ def main(argv: list[str] | None = None) -> int:
     p_restaurar.add_argument("--sobrescribir", action="store_true",
                              help="Reemplaza los datos existentes (obligatorio si la BD no está vacía).")
 
+    sub.add_parser("recifrar",
+                   help="Recifra todos los secretos con la clave primaria de PASSWD_ENCRYPTION_KEY "
+                        "(rotación de clave: fijar 'nueva,antigua', recifrar y dejar solo 'nueva').")
+
     args = parser.parse_args(argv)
     if args.comando == "init-db":
         return _cmd_init_db(args)
@@ -178,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_respaldo(args)
     if args.comando == "restaurar":
         return _cmd_restaurar(args)
+    if args.comando == "recifrar":
+        return _cmd_recifrar(args)
     return 1
 
 

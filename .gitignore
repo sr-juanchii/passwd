@@ -1,5 +1,5 @@
 # Datos locales: base de datos y claves generadas (¡nunca versionar!)
-data/
+/data/
 *.db
 *.sqlite3
 .secret_key
