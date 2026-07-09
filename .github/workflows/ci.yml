@@ -25,7 +25,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Lint (ruff)
-        run: ruff check app tests
+        run: ruff check app tests migrations
 
       - name: Análisis estático de seguridad (bandit)
         run: bandit -r app --severity-level medium -q
