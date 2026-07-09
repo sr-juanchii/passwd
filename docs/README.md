@@ -54,6 +54,7 @@ corresponda a su rol.
 | Documento | Para qué |
 |---|---|
 | [`hoja-de-ruta.md`](hoja-de-ruta.md) | Estado de las mejoras y plan de evolución por fases. |
+| [`analisis-mejoras.md`](analisis-mejoras.md) | **Análisis integral de mejoras** (seguridad, escalabilidad, calidad y DevSecOps), priorizado y con evidencia. |
 
 ---
 
