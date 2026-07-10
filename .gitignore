@@ -31,3 +31,7 @@ infrastructure/nginx/ca/
 .DS_Store
 .idea/
 .vscode/
+
+# Cobertura de pruebas
+.coverage
+htmlcov/

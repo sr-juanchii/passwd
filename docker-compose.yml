@@ -23,6 +23,15 @@ services:
       - datos-passwd:/srv/passwd/data
     networks:
       - red-passwd
+    # Rotación de logs (evita que crezcan sin límite) y techo de recursos.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
 
 volumes:
   datos-passwd:

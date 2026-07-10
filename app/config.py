@@ -34,6 +34,23 @@ def _env_bool(nombre: str, por_defecto: bool) -> bool:
     return valor in {"1", "true", "yes", "si", "sí", "on"}
 
 
+def _secreto_entorno(nombre: str) -> str | None:
+    """Lee un secreto del entorno con soporte de **Docker secrets**.
+
+    Prioriza ``PASSWD_<NOMBRE>_FILE`` (ruta a un fichero montado por el gestor
+    de secretos, p. ej. ``/run/secrets/...``) sobre ``PASSWD_<NOMBRE>``. Así el
+    secreto no aparece en la tabla de procesos ni en ``docker inspect``.
+    Devuelve ``None`` si no está definido por ninguna vía.
+    """
+    ruta = os.environ.get(f"{_PREFIX}{nombre}_FILE")
+    if ruta:
+        contenido = Path(ruta).read_text(encoding="utf-8").strip()
+        if contenido:
+            return contenido
+    valor = os.environ.get(f"{_PREFIX}{nombre}")
+    return valor or None
+
+
 def _leer_o_generar_secreto(ruta: Path, generador) -> str:
     """Lee un secreto persistido o lo genera con permisos restrictivos."""
     if ruta.exists():
@@ -135,8 +152,8 @@ class Settings:
         # el directorio de datos, donde conviven con la base de datos — un
         # compromiso del volumen expondría datos y clave a la vez (ISO A.8.24).
         requiere_env = _env_bool("REQUIRE_ENV_KEYS", False)
-        secret_env = os.environ.get(f"{_PREFIX}SECRET_KEY")
-        encryption_env = os.environ.get(f"{_PREFIX}ENCRYPTION_KEY")
+        secret_env = _secreto_entorno("SECRET_KEY")
+        encryption_env = _secreto_entorno("ENCRYPTION_KEY")
         if requiere_env and not (secret_env and encryption_env):
             faltan = [
                 f"{_PREFIX}{nombre}"
@@ -161,7 +178,7 @@ class Settings:
         self.encryption_key = encryption_env or _leer_o_generar_secreto(
             self.data_dir / ".encryption_key", lambda: Fernet.generate_key().decode("ascii")
         )
-        self.smtp_password = os.environ.get(f"{_PREFIX}SMTP_PASSWORD", "")
+        self.smtp_password = _secreto_entorno("SMTP_PASSWORD") or ""
 
 
 _settings: Settings | None = None

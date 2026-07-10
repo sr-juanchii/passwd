@@ -128,3 +128,29 @@ def test_cli_verificar_auditoria(client):
 
     autenticar_admin(client)
     assert cli_main(["verificar-auditoria"]) == 0  # cadena íntegra tras el login
+
+
+# ---------------------------------------------------------------------------
+# OPS-3 — Docker secrets: lectura de claves desde ficheros *_FILE
+# ---------------------------------------------------------------------------
+
+
+def test_claves_desde_fichero_secreto(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from app.config import Settings, reset_settings
+
+    clave = Fernet.generate_key().decode("ascii")
+    fichero = tmp_path / "enc_key"
+    fichero.write_text(clave, encoding="utf-8")
+
+    monkeypatch.setenv("PASSWD_DATA_DIR", str(tmp_path / "datos"))
+    monkeypatch.delenv("PASSWD_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("PASSWD_ENCRYPTION_KEY_FILE", str(fichero))  # variante Docker secret
+    monkeypatch.setenv("PASSWD_SECRET_KEY", "x" * 40)
+    reset_settings()
+    try:
+        settings = Settings()
+        assert settings.encryption_key == clave  # leída del fichero, no de la BD
+    finally:
+        reset_settings()

@@ -7,6 +7,19 @@
 
 server_tokens off;
 
+# ── Rate limiting y compresión (contexto http; los .conf de conf.d viven ahí) ─
+# Defensa en profundidad ANTES de llegar a la app (que ya limita login/revelado).
+limit_req_zone $binary_remote_addr zone=passwd_req:10m rate=20r/s;
+limit_req_zone $binary_remote_addr zone=passwd_login:10m rate=2r/s;
+limit_conn_zone $binary_remote_addr zone=passwd_conn:10m;
+
+gzip on;
+gzip_comp_level 5;
+gzip_min_length 1024;
+gzip_proxied any;
+gzip_types text/plain text/css application/json application/javascript
+           application/x-javascript text/xml application/xml image/svg+xml;
+
 # ── HTTP (80): desafío ACME y redirección a HTTPS ────────────────────────────
 server {
     listen 80 default_server;
@@ -50,14 +63,24 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     client_max_body_size 4m;
+    limit_conn passwd_conn 30;
 
     # ── nginx detrás de OTRO proxy (opcional, ver guía-nginx-tls.md §realip) ──
     #set_real_ip_from 10.0.0.0/8;
     #real_ip_header X-Forwarded-For;
     #real_ip_recursive on;
 
+    # Estáticos inmutables de Next (hash en el nombre): caché larga en el cliente.
+    location /_next/static/ {
+        proxy_pass http://frontend:3000;
+        proxy_set_header Host $host;
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
     # API JSON y de tokens + healthcheck -> backend FastAPI.
     location ~ ^/(api/|healthz) {
+        limit_req zone=passwd_req burst=40 nodelay;
         proxy_pass http://app:8000;
         proxy_http_version 1.1;
         proxy_set_header X-Forwarded-For $remote_addr;     # anti-spoofing del registro
@@ -68,8 +91,20 @@ server {
         proxy_read_timeout 60s;
     }
 
+    # Endpoints de login/MFA: límite de borde más estricto (anti fuerza bruta).
+    location ~ ^/(login|mfa|password) {
+        limit_req zone=passwd_login burst=10 nodelay;
+        proxy_pass http://frontend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+    }
+
     # Todo lo demás -> frontend Next.js.
     location / {
+        limit_req zone=passwd_req burst=40 nodelay;
         proxy_pass http://frontend:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;

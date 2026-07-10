@@ -20,7 +20,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 os.environ["PASSWD_DATA_DIR"] = tempfile.mkdtemp()
-os.environ["PASSWD_DATABASE_URL"] = f"sqlite:///{os.environ['PASSWD_DATA_DIR']}/v.db"
+# Respeta una URL ya definida (p. ej. MySQL en CI) para verificar cross-engine;
+# si no, usa un SQLite temporal.
+os.environ.setdefault("PASSWD_DATABASE_URL", f"sqlite:///{os.environ['PASSWD_DATA_DIR']}/v.db")
 os.environ["PASSWD_ADMIN_USERNAME"] = "admin"
 os.environ["PASSWD_ADMIN_EMAIL"] = "admin@example.com"
 os.environ["PASSWD_ADMIN_PASSWORD"] = "ClaveInicialRobusta!9"
@@ -186,6 +188,18 @@ t = db.scalar(select(TokenApi)); tid = t.id; db.close()
 r = admin.post(f"/api/web/tokens/{tid}/revocar", headers=H); check("revocar token", r.status_code == 200)
 r = admin.get("/api/v1/inventario", headers={"Authorization": f"Bearer {token_valor}"})
 check("token revocado -> 401", r.status_code == 401)
+
+# Alcance (scope): un token 'auditoria' NO puede leer inventario y viceversa.
+r = admin.post("/api/web/tokens", headers=H, json={"nombre":"solo-aud","alcance":"auditoria","dias_validez":0})
+t_aud = r.json()["token"]
+check("token auditoria: ve auditoría", admin.get("/api/v1/auditoria", headers={"Authorization": f"Bearer {t_aud}"}).status_code == 200)
+check("token auditoria: 403 en inventario", admin.get("/api/v1/inventario", headers={"Authorization": f"Bearer {t_aud}"}).status_code == 403)
+
+# === 9 bis. Integridad de la cadena de auditoría ===
+db = next(get_db())
+from app import audit as _audit
+res_cadena = _audit.verificar_cadena(db); db.close()
+check("cadena de auditoría íntegra", res_cadena["ok"] is True and res_cadena["verificados"] > 0)
 
 # === 10. Auditoría: listar, filtrar y exportar CSV ===
 r = admin.get("/api/web/auditoria?pagina=1"); aj = r.json()
