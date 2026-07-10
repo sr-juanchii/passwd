@@ -9,9 +9,11 @@ export type Etapa = "cambio_password" | "mfa_enrolamiento" | "mfa_pendiente" | "
 export type Permiso =
   | "inventario.ver"
   | "inventario.gestionar"
+  | "inventario.exportar"
   | "credenciales.ver_lista"
   | "credenciales.revelar"
   | "credenciales.gestionar"
+  | "vault.usar"
   | "usuarios.gestionar"
   | "auditoria.ver"
   | "metricas.ver"
@@ -182,6 +184,9 @@ export interface VmInput {
   sistema_operativo: string;
   ip: string;
   descripcion: string;
+  ram: string;
+  cpu: string;
+  almacenamiento: string;
   estado: EstadoActivo;
   etiquetas: string;
 }
@@ -277,4 +282,27 @@ export interface ResultadoImportacion {
   creados: { servidor: number; hipervisor: number; vm: number; credencial: number };
   errores: string[];
   total: number;
+}
+
+// Vault personal (privado de cada usuario).
+export type CategoriaVault = "servicio" | "aplicacion" | "cuenta" | "otro";
+
+export interface VaultEntrada {
+  id: number;
+  titulo: string;
+  usuario_acceso: string;
+  url: string;
+  categoria: CategoriaVault;
+  notas: string;
+  dias_sin_rotar: number;
+  rotacion_vencida: boolean;
+}
+
+export interface VaultInput {
+  titulo: string;
+  usuario_acceso: string;
+  password: string;
+  url: string;
+  categoria: CategoriaVault;
+  notas: string;
 }

@@ -13,9 +13,9 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const FORMATO: { tipo: string; columnas: string }[] = [
-  { tipo: "servidor", columnas: "nombre, tipo_servidor, sistema_operativo, ip, descripcion, estado, etiquetas" },
-  { tipo: "hipervisor", columnas: "nombre, padre, plataforma, version, ip, descripcion, estado, etiquetas" },
-  { tipo: "vm", columnas: "nombre, padre, sistema_operativo, ip, descripcion, estado, etiquetas" },
+  { tipo: "servidor", columnas: "nombre, sistema_operativo, ip, descripcion, estado, etiquetas, ram, cpu, almacenamiento, marca_modelo, ubicacion, numero_serie, garantia_hasta, proveedor" },
+  { tipo: "hipervisor", columnas: "nombre, plataforma, version, ip, descripcion, estado, etiquetas, ram, cpu, almacenamiento, marca_modelo, ubicacion, numero_serie, garantia_hasta, proveedor" },
+  { tipo: "vm", columnas: "nombre, padre, sistema_operativo, ip, descripcion, estado, etiquetas, ram, cpu, almacenamiento" },
   { tipo: "credencial", columnas: "activo_tipo, padre, usuario_acceso, password, servicio, puerto, descripcion" },
 ];
 
@@ -32,6 +32,8 @@ export default function ImportarPage() {
     setResultado(null);
   }
 
+  const [exportando, setExportando] = useState(false);
+
   async function importar() {
     if (!archivo) return;
     setImportando(true);
@@ -44,6 +46,25 @@ export default function ImportarPage() {
       toast.error(err instanceof ApiError ? err.message : "No se pudo importar el archivo.");
     } finally {
       setImportando(false);
+    }
+  }
+
+  async function exportar() {
+    if (!window.confirm("El CSV incluirá las contraseñas EN CLARO. ¿Descargar?")) return;
+    setExportando(true);
+    try {
+      const blob = await api.exportarInventario();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "inventario-passwd.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Inventario exportado. Custódielo y destrúyalo tras la migración.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "No se pudo exportar.");
+    } finally {
+      setExportando(false);
     }
   }
 
@@ -188,9 +209,31 @@ export default function ImportarPage() {
           </div>
         </div>
 
-        <Button variant="outline" className="self-start" disabled>
-          <Download /> Descargar plantilla CSV
+        <Button asChild variant="outline" className="self-start">
+          <a href={api.plantillaUrl()} download>
+            <Download /> Descargar plantilla CSV
+          </a>
         </Button>
+
+        {puede("inventario.exportar") && (
+          <div className="overflow-hidden rounded-[14px] border bg-card">
+            <div className="flex items-center gap-2.5 border-b px-4 py-3.5">
+              <Download className="size-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Exportar para migración</span>
+            </div>
+            <div className="flex flex-col gap-3 p-4">
+              <p className="text-[13px] text-muted-foreground">
+                Descarga todo el inventario (servidores, hipervisores, VMs y credenciales) como CSV{" "}
+                <strong>con las contraseñas en claro</strong>, en este mismo formato: edítalo y vuelve
+                a importarlo al migrar entre versiones. Los vaults personales no se incluyen. La
+                descarga queda registrada en auditoría; custodia y destruye el archivo tras la migración.
+              </p>
+              <Button onClick={exportar} disabled={exportando} className="self-start">
+                {exportando ? <Loader2 className="animate-spin" /> : <Download />} Exportar inventario en claro (CSV)
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
