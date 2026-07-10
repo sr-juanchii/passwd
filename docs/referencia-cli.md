@@ -27,6 +27,7 @@ web. Llama a `init_db()` antes de operar, de modo que crea/concilia el esquema s
 | `restaurar` | Restaurar un respaldo cifrado. |
 | `recifrar` | Recifrar todos los secretos con la clave primaria (rotación de la clave de cifrado). |
 | `exportar-csv` | Exportar el inventario **en claro** a CSV para migración (formato del importador). |
+| `verificar-auditoria` | Verificar la integridad (encadenamiento por hash) de la bitácora de auditoría. |
 
 Todos devuelven **código de salida 0** si tienen éxito y **1** ante un error (con el motivo en
 `stderr`).
@@ -186,6 +187,23 @@ python -m app.cli exportar-csv --salida inventario.csv
 - El archivo **contiene contraseñas en claro**: custódielo por un canal seguro y **destrúyalo** tras
   la migración. Desde la interfaz web equivale al botón «Exportar inventario en claro» de *Importar*
   (permiso `inventario.exportar`); la plantilla vacía está en `GET /plantilla.csv`.
+
+---
+
+## `verificar-auditoria`
+
+Recorre la bitácora y verifica su **encadenamiento por hash**: cada registro incluye el hash del
+anterior, de modo que alterar el contenido de una fila o eliminar/reordenar filas rompe la cadena.
+
+```bash
+python -m app.cli verificar-auditoria
+```
+
+- Código de salida **0** si la cadena está íntegra; **1** e indica el `id` del primer registro roto y
+  el motivo (contenido alterado o eslabón roto) si detecta manipulación.
+- Los registros anteriores a esta función o restaurados desde un respaldo (sin hash) se omiten.
+- Complementa el reenvío a un SIEM (`/api/v1/auditoria`): la cadena da evidencia local de que la
+  bitácora no se ha manipulado en la propia base de datos.
 
 ---
 

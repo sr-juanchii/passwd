@@ -38,7 +38,11 @@ Cada mejora lleva un **identificador** por área (`SEC-`, `ESC-`, `CAL-`, `OPS-`
 
 ## Resumen ejecutivo
 
-> **Estado (09/07/2026):** las **Olas 1 y 2** están **implementadas** (SEC-1…SEC-8, ESC-1, ESC-2, OPS-1, OPS-4 — ver [`hoja-de-ruta.md`](hoja-de-ruta.md) Fase 5). Los ítems marcados ✅ se conservan aquí como registro del análisis; las olas 3 y 4 siguen pendientes.
+> **Estado (10/07/2026):** las **Olas 1–4** están **implementadas** salvo cinco ítems diferidos por
+> requerir infraestructura o decisión externa. Olas 1–2 en [`hoja-de-ruta.md`](hoja-de-ruta.md) Fase 5;
+> Olas 3–4 en la **Fase 7** (ESC-3/4/5/7/9/10, OPS-2/3/5/6/7/9, SEC-9/10, CAL-3/4/5). **Diferidos:**
+> SEC-11 (WebAuthn), SEC-12 (HIBP), ESC-8 (HA multi-nodo), OPS-2 (firma cosign/SLSA) y CAL-1 (capa de
+> servicios `routes/`↔`api_web/`), cada uno con su motivo. Los ítems se conservan aquí como registro.
 
 Mejoras de mayor retorno, agrupadas por área:
 

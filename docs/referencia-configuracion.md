@@ -39,6 +39,11 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 | `PASSWD_ENCRYPTION_KEY` | autogenerada | Clave **Fernet** para el cifrado en reposo (contraseñas, semillas TOTP, notas). Genérela con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Admite **varias claves separadas por comas** para la rotación: la **primera** cifra y todas descifran (ver [`referencia-cli.md`](referencia-cli.md), comando `recifrar`). |
 | `PASSWD_REQUIRE_ENV_KEYS` | `false` | **Modo estricto de producción**: con `true`, la aplicación **no arranca** si las dos claves no llegan por variable de entorno y nunca las autogenera en el directorio de datos. |
 
+> **Docker secrets:** cualquiera de estos secretos (`SECRET_KEY`, `ENCRYPTION_KEY`, `SMTP_PASSWORD`)
+> puede proveerse por fichero con la variante **`PASSWD_<NOMBRE>_FILE`** (ruta a un fichero montado,
+> p. ej. `/run/secrets/...`), que tiene prioridad sobre la variable en claro. Ver
+> [`docker-compose.secrets.yml`](../docker-compose.secrets.yml).
+
 > ⚠️ **Perder `PASSWD_ENCRYPTION_KEY` = perder todas las contraseñas guardadas** (salvo que tenga un
 > respaldo cifrado con frase). Si autogenera las claves en MySQL y el volumen de datos se pierde,
 > lo cifrado queda ilegible.
@@ -57,6 +62,10 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 | `PASSWD_APP_NAME` | `Gestor de Contraseñas de Servidores` | Nombre mostrado en la interfaz. |
 | `PASSWD_DATA_DIR` | `./data` (en Docker, `/srv/passwd/data`) | Directorio de datos: BD SQLite y archivos de claves. |
 | `PASSWD_DATABASE_URL` | SQLite en `PASSWD_DATA_DIR` | URL SQLAlchemy. Para MySQL: `mysql+pymysql://usuario:clave@host:3306/passwd`. |
+| `PASSWD_DB_POOL_SIZE` | `5` | Tamaño del pool de conexiones (solo motores cliente/servidor como MySQL). |
+| `PASSWD_DB_MAX_OVERFLOW` | `10` | Conexiones adicionales por encima del pool bajo carga. |
+| `PASSWD_DB_POOL_RECYCLE_SECONDS` | `1800` | Recicla conexiones antes del `wait_timeout` del servidor. |
+| `PASSWD_ACTIVITY_THROTTLE_SECONDS` | `60` | Amortigua las escrituras de «última actividad» de sesión y «último uso» de token (no se reescriben en cada petición). |
 
 ---
 

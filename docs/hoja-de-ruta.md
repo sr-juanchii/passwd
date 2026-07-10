@@ -100,6 +100,36 @@ ver [`analisis-mejoras.md`](analisis-mejoras.md).
 - ✅ **Plantilla CSV descargable** (`/plantilla.csv`) e importador alineado con toda la estructura
   (incluidas las specs de VM).
 
+## Fase 7 — Escala, operación y calidad (Olas 3+4 del [análisis](analisis-mejoras.md)) ✅ (entregada)
+
+Escala y operación:
+- ✅ **Pool de conexiones afinado** (`PASSWD_DB_POOL_SIZE/MAX_OVERFLOW/POOL_RECYCLE`) [ESC-3];
+  **eager-load** de concesiones del analista (sin N+1) [ESC-4]; **paginación** (`limit`/`offset`) y
+  specs de VM en `/api/v1/inventario` [ESC-5]; **amortiguación de escrituras** de actividad de sesión
+  y token [ESC-7]; **índice compuesto** `(accion, fecha)` en auditoría [ESC-10].
+- ✅ **Respaldos programados** (overlay `docker-compose.backup.yml`, retención + aviso de fallo) [ESC-9].
+- ✅ **nginx endurecido**: `limit_req`/`limit_conn`, `gzip`, caché de `/_next/static` y recarga
+  automática cada 6 h para adoptar el certificado renovado [OPS-5/OPS-6].
+- ✅ **Compose endurecido**: `depends_on: service_healthy`, healthcheck de nginx, límites de recursos
+  y rotación de logs [OPS-7].
+- ✅ **Secretos externalizables**: variantes `PASSWD_*_FILE` (Docker secrets) y overlay
+  `docker-compose.secrets.yml` [OPS-3]; **Dockerfile multi-stage** del backend [OPS-9].
+- ✅ **Observabilidad**: aviso de arranque y (Fase 5) IP real; readiness de la app cubierto por el
+  healthcheck de contenedor.
+
+Seguridad y calidad:
+- ✅ **Tokens de API con alcance y caducidad** (`todo`/`auditoria`/`inventario`, `expira_en`) [SEC-10].
+- ✅ **Auditoría encadenada por hash** con evidencia de manipulación + CLI `verificar-auditoria` [SEC-9].
+- ✅ **CI ampliado**: cobertura (umbral 70 %), **smoke sobre MySQL**, job de frontend con **Vitest**,
+  y escaneo de **secretos (gitleaks)** e **imagen/config (Trivy)** [CAL-3/CAL-4/OPS-2].
+- ✅ **Guard de rutas en el borde** (`proxy.ts`) y `global-error.tsx` en el frontend [CAL-5].
+
+Deferidas por requerir infraestructura o decisión externa (documentadas en `analisis-mejoras.md`):
+**WebAuthn/FIDO2** (SEC-11: requiere librería + hardware), **HIBP** (SEC-12: llamada externa +
+política de privacidad), **HA multi-nodo con MySQL replicado** (ESC-8: orquestador/BD gestionada),
+**firma de imágenes cosign/SLSA** (OPS-2: registry + claves), y la **capa de servicios** que unifique
+`routes/`↔`api_web/` (CAL-1: refactor transversal, mejor en su propia entrega).
+
 ## Extras de bajo coste
 
 - ✅ **Modo oscuro** (atributo `data-tema` en `<html>` + `localStorage`, sin código embebido,
