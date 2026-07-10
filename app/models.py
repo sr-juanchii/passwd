@@ -24,6 +24,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -468,26 +469,55 @@ class CodigoRecuperacionMFA(Base):
     usuario: Mapped[Usuario] = relationship()
 
 
+TOKEN_ALCANCE_TODO = "todo"  # noqa: S105 — nombre de alcance, no es un secreto
+TOKEN_ALCANCE_AUDITORIA = "auditoria"  # noqa: S105 — nombre de alcance, no es un secreto
+TOKEN_ALCANCE_INVENTARIO = "inventario"  # noqa: S105 — nombre de alcance, no es un secreto
+TOKEN_ALCANCES = (TOKEN_ALCANCE_TODO, TOKEN_ALCANCE_AUDITORIA, TOKEN_ALCANCE_INVENTARIO)
+ETIQUETAS_TOKEN_ALCANCE = {
+    TOKEN_ALCANCE_TODO: "Auditoría e inventario",
+    TOKEN_ALCANCE_AUDITORIA: "Solo auditoría",
+    TOKEN_ALCANCE_INVENTARIO: "Solo inventario",
+}
+
+
 class TokenApi(Base):
     """Token de API de solo lectura (para SIEM/automatización).
 
     Solo se persiste el hash SHA-256; el valor se muestra una única vez al
     crearlo. El alcance es de lectura: aun filtrado, no permite modificar nada.
+    Admite **caducidad** (``expira_en``) y **alcance** (``alcance``) para aplicar
+    mínimo privilegio: un token puede limitarse a auditoría o a inventario.
     """
 
     __tablename__ = "tokens_api"
+    __table_args__ = (
+        CheckConstraint(
+            "alcance IN ('todo', 'auditoria', 'inventario')", name="ck_tokens_alcance"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    alcance: Mapped[str] = mapped_column(
+        String(40), nullable=False, default=TOKEN_ALCANCE_TODO, server_default=TOKEN_ALCANCE_TODO
+    )
     creado_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
     )
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    expira_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ultimo_uso: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     creado_por: Mapped[Usuario | None] = relationship()
+
+    def esta_vigente(self) -> bool:
+        return self.activo and (self.expira_en is None or self.expira_en > ahora_utc())
+
+    @property
+    def caducado(self) -> bool:
+        return self.expira_en is not None and self.expira_en <= ahora_utc()
 
 
 CATEGORIA_VAULT_SERVICIO = "servicio"
@@ -573,9 +603,18 @@ class EventoTasa(Base):
 
 
 class RegistroAuditoria(Base):
-    """Bitácora inmutable de eventos de seguridad y acceso a credenciales."""
+    """Bitácora de eventos de seguridad y acceso a credenciales.
+
+    Encadenada por hash (``hash_anterior`` → ``hash_registro``) para dar
+    evidencia de manipulación: alterar o borrar una fila rompe la cadena, lo
+    que el comando ``python -m app.cli verificar-auditoria`` detecta.
+    """
 
     __tablename__ = "registros_auditoria"
+    __table_args__ = (
+        # Consultas de métricas y del SIEM filtran por acción y rango de fechas.
+        Index("ix_auditoria_accion_fecha", "accion", "fecha"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     fecha: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, index=True)
@@ -588,3 +627,7 @@ class RegistroAuditoria(Base):
     direccion_ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     agente_usuario: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     exito: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Encadenamiento por hash (evidencia de manipulación). Nullable/"" por
+    # compatibilidad con filas anteriores a la Fase 7; las nuevas siempre lo fijan.
+    hash_anterior: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    hash_registro: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="", index=True)

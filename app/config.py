@@ -54,6 +54,12 @@ class Settings:
     data_dir: Path = field(default_factory=lambda: Path(_env("DATA_DIR", "./data")))
     database_url: str = field(default_factory=lambda: _env("DATABASE_URL", ""))
 
+    # Pool de conexiones (solo motores cliente/servidor como MySQL; SQLite lo ignora).
+    # pool_recycle recicla conexiones antes del wait_timeout del servidor.
+    db_pool_size: int = field(default_factory=lambda: _env_int("DB_POOL_SIZE", 5))
+    db_max_overflow: int = field(default_factory=lambda: _env_int("DB_MAX_OVERFLOW", 10))
+    db_pool_recycle: int = field(default_factory=lambda: _env_int("DB_POOL_RECYCLE_SECONDS", 1800))
+
     # Sesiones (CIS 4.3 — bloqueo automático por inactividad)
     session_idle_minutes: int = field(default_factory=lambda: _env_int("SESSION_IDLE_MINUTES", 15))
     session_max_hours: int = field(default_factory=lambda: _env_int("SESSION_MAX_HOURS", 8))
@@ -71,6 +77,11 @@ class Settings:
     # Anti-exfiltración: máximo de revelados/copiados de contraseñas por usuario
     reveal_rate_limit: int = field(default_factory=lambda: _env_int("REVEAL_RATE_LIMIT", 20))
     reveal_rate_window_minutes: int = field(default_factory=lambda: _env_int("REVEAL_RATE_WINDOW_MINUTES", 5))
+
+    # Amortiguación de escrituras de "última actividad" de sesión y "último uso"
+    # de token: solo se persisten si pasó al menos este intervalo, para no escribir
+    # en cada petición (reduce presión de escritura/bloqueos en la BD).
+    activity_throttle_seconds: int = field(default_factory=lambda: _env_int("ACTIVITY_THROTTLE_SECONDS", 60))
 
     # Tamaño máximo del cuerpo de una petición (OWASP API4)
     max_request_bytes: int = field(default_factory=lambda: _env_int("MAX_REQUEST_BYTES", 65536))

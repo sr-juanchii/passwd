@@ -7,6 +7,7 @@ Uso:
     python -m app.cli restaurar --entrada respaldo.passwd [--sobrescribir]
     python -m app.cli recifrar    # rotación de la clave de cifrado (ver docs)
     python -m app.cli exportar-csv --salida inventario.csv  # export EN CLARO (migración)
+    python -m app.cli verificar-auditoria    # integridad de la cadena de auditoría
 """
 
 from __future__ import annotations
@@ -226,6 +227,23 @@ def _cmd_export_csv(args: argparse.Namespace) -> int:
         db.close()
 
 
+def _cmd_verificar_auditoria(_args: argparse.Namespace) -> int:
+    """Verifica el encadenamiento por hash de la bitácora (tamper-evidence)."""
+    from app import audit
+
+    init_db()
+    db = next(get_db())
+    try:
+        resultado = audit.verificar_cadena(db)
+        if resultado["ok"]:
+            print(f"Cadena de auditoría íntegra: {resultado['verificados']} registro(s) verificado(s).")
+            return 0
+        print(f"CADENA ROTA en el registro {resultado['id_roto']}: {resultado['motivo']}.", file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description="Utilidades administrativas.")
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -261,6 +279,9 @@ def main(argv: list[str] | None = None) -> int:
                                    "(mismo formato que el importador; contiene contraseñas).")
     p_export.add_argument("--salida", required=True, help="Ruta del CSV a crear (se escribe con permisos 0600).")
 
+    sub.add_parser("verificar-auditoria",
+                   help="Verifica la integridad (encadenamiento por hash) de la bitácora de auditoría.")
+
     args = parser.parse_args(argv)
     if args.comando == "init-db":
         return _cmd_init_db(args)
@@ -274,6 +295,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_recifrar(args)
     if args.comando == "exportar-csv":
         return _cmd_export_csv(args)
+    if args.comando == "verificar-auditoria":
+        return _cmd_verificar_auditoria(args)
     return 1
 
 

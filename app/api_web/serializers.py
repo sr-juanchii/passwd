@@ -106,7 +106,10 @@ def serializar_token(token: TokenApi) -> dict:
     return {
         "id": token.id,
         "nombre": token.nombre,
+        "alcance": token.alcance,
         "creado_en": _iso(token.creado_en),
+        "expira_en": _iso(token.expira_en),
+        "caducado": token.caducado,
         "ultimo_uso": _iso(token.ultimo_uso),
         "activo": token.activo,
         "creado_por": token.creado_por.username if token.creado_por else None,

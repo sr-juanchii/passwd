@@ -18,6 +18,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import (
+    TOKEN_ALCANCE_AUDITORIA,
+    TOKEN_ALCANCE_INVENTARIO,
+    TOKEN_ALCANCE_TODO,
     Hipervisor,
     MaquinaVirtual,
     RegistroAuditoria,
@@ -33,7 +36,7 @@ MAX_LIMIT = 500
 
 
 def token_api(request: Request, db: Annotated[Session, Depends(get_db)]) -> TokenApi:
-    """Autentica por Bearer token. 401 si falta o es inválido; limita por token."""
+    """Autentica por Bearer token. 401 si falta, es inválido o está caducado."""
     cabecera = request.headers.get("authorization", "")
     if not cabecera.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token de API requerido.",
@@ -44,17 +47,29 @@ def token_api(request: Request, db: Annotated[Session, Depends(get_db)]) -> Toke
     if token is None:
         raise HTTPException(status_code=401, detail="Token inválido o revocado.",
                             headers={"WWW-Authenticate": "Bearer"})
+    if token.caducado:
+        raise HTTPException(status_code=401, detail="Token caducado.",
+                            headers={"WWW-Authenticate": "Bearer"})
     settings = get_settings()
     if not ratelimit.permitir_intento(
         f"api:{token.id}", limite=settings.login_rate_limit * 4,
         ventana_minutos=settings.login_rate_window_minutes, db=db,
     ):
         raise HTTPException(status_code=429, detail="Límite de peticiones de API alcanzado.")
-    token.ultimo_uso = ahora_utc()
+    # Amortiguar la escritura de "último uso": no reescribir en cada petición.
+    ahora = ahora_utc()
+    if token.ultimo_uso is None or (ahora - token.ultimo_uso).total_seconds() >= settings.activity_throttle_seconds:
+        token.ultimo_uso = ahora
     return token
 
 
 TOKEN = Depends(token_api)
+
+
+def _exigir_alcance(token: TokenApi, requerido: str) -> None:
+    """403 si el token no cubre el alcance requerido (``todo`` cubre todos)."""
+    if token.alcance not in (TOKEN_ALCANCE_TODO, requerido):
+        raise HTTPException(status_code=403, detail=f"El token no tiene alcance «{requerido}».")
 
 
 @router.get("/auditoria")
@@ -69,6 +84,7 @@ def api_auditoria(
 
     Usar `desde_id` (mayor id ya ingerido) para paginar de forma incremental.
     """
+    _exigir_alcance(token, TOKEN_ALCANCE_AUDITORIA)
     limit = max(1, min(limit, MAX_LIMIT))
     consulta = select(RegistroAuditoria).where(RegistroAuditoria.id > desde_id)
     if accion.strip():
@@ -91,11 +107,25 @@ def api_auditoria(
 def api_inventario(
     db: Annotated[Session, Depends(get_db)],
     token: Annotated[TokenApi, TOKEN],
+    limit: int = 0,
+    offset: int = 0,
 ):
-    """Inventario en JSON (sin credenciales ni notas: nunca expone secretos)."""
-    servidores = db.scalars(select(ServidorFisico).order_by(ServidorFisico.nombre)).all()
-    hipervisores = db.scalars(select(Hipervisor).order_by(Hipervisor.nombre)).all()
-    vms = db.scalars(select(MaquinaVirtual).order_by(MaquinaVirtual.nombre)).all()
+    """Inventario en JSON (sin credenciales ni notas: nunca expone secretos).
+
+    Por defecto devuelve todo el inventario. Para conjuntos grandes, `limit`
+    (>0, tope ``MAX_LIMIT``) y `offset` paginan cada colección por separado.
+    """
+    _exigir_alcance(token, TOKEN_ALCANCE_INVENTARIO)
+    offset = max(0, offset)
+
+    def _pag(consulta):
+        if limit > 0:
+            consulta = consulta.limit(min(limit, MAX_LIMIT)).offset(offset)
+        return consulta
+
+    servidores = db.scalars(_pag(select(ServidorFisico).order_by(ServidorFisico.nombre))).all()
+    hipervisores = db.scalars(_pag(select(Hipervisor).order_by(Hipervisor.nombre))).all()
+    vms = db.scalars(_pag(select(MaquinaVirtual).order_by(MaquinaVirtual.nombre))).all()
 
     def _srv(s: ServidorFisico) -> dict:
         return {"id": s.id, "nombre": s.nombre, "estado": s.estado,
@@ -115,5 +145,6 @@ def api_inventario(
         "hipervisores": [_hv(h) for h in hipervisores],
         "maquinas_virtuales": [{"id": v.id, "nombre": v.nombre, "estado": v.estado,
                                 "sistema_operativo": v.sistema_operativo, "ip": v.ip,
+                                "ram": v.ram, "cpu": v.cpu, "almacenamiento": v.almacenamiento,
                                 "hipervisor_id": v.hipervisor_id} for v in vms],
     }
