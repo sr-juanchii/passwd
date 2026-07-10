@@ -84,6 +84,22 @@ Las mejoras restantes del análisis (olas 3 y 4: paginación, N+1, pool, TTL/alc
 capa de servicios, observabilidad, secretos en Docker, etc.) quedan como candidatas siguientes;
 ver [`analisis-mejoras.md`](analisis-mejoras.md).
 
+## Fase 6 — Versatilidad y migración (feedback de preproducción) ✅ (entregada)
+
+- ✅ **Vault personal por usuario** (`EntradaVault`): cada usuario guarda contraseñas de
+  servicios, aplicaciones o cuentas propias, **privadas** (solo el dueño las ve/revela; ni el
+  admin accede). Permiso `vault.usar` (todos los roles), contraseña cifrada (Fernet), revelado y
+  copiado auditados y limitados. Web (`/vault`) y JSON (`/api/web/vault`); se incluye en el
+  respaldo cifrado, nunca en el export en claro.
+- ✅ **Especificaciones de la VM**: RAM, CPU (vCPU/núcleos) y almacenamiento asignados, coherentes
+  con el hardware de servidor/hipervisor, en formularios, ficha, API, respaldo y CSV.
+- ✅ **Export en claro para migración** (`inventario.exportar`, admin/operador): CSV con las
+  contraseñas en claro en el **mismo formato del importador** (round-trip), para editar y migrar
+  entre versiones. Web (`POST /exportar`), JSON (`/api/web/exportar`) y CLI (`exportar-csv`);
+  auditado y con `Cache-Control: no-store`. Excluye los vaults personales.
+- ✅ **Plantilla CSV descargable** (`/plantilla.csv`) e importador alineado con toda la estructura
+  (incluidas las specs de VM).
+
 ## Extras de bajo coste
 
 - ✅ **Modo oscuro** (atributo `data-tema` en `<html>` + `localStorage`, sin código embebido,

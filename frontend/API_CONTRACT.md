@@ -67,7 +67,8 @@ proveedor, estado('activo'|'mantenimiento'|'retirado'), etiquetas }`.
 
 `HipervisorInput`: `{ nombre, plataforma, version, ip_gestion, descripcion, estado, etiquetas }`.
 
-`VmInput`: `{ nombre, sistema_operativo, ip, descripcion, estado, etiquetas }`.
+`VmInput`: `{ nombre, sistema_operativo, ip, descripcion, ram, cpu, almacenamiento, estado, etiquetas }`
+(`ram`/`cpu`/`almacenamiento` = recursos asignados a la VM). `VmDetalle` los incluye.
 
 `Credencial` (serializada, **nunca** la contraseña): `{ id, usuario_acceso, servicio, puerto,
 descripcion, dias_sin_rotar, rotacion_vencida, puede_revelar, tipo_activo, activo_id }`.
@@ -141,6 +142,26 @@ nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`.
 
 | GET | `/metricas` | metricas.ver | `{ rotacion_vencida:[], logins_fallidos_24h, logins_fallidos_7d, bloqueados:[], sin_mfa:[], top_accesos:[], concesiones_por_caducar:[] }` (mismos datos que `metricas.html`) |
 
-## Importación CSV
+## Vault personal (privado del usuario)
 
+| Método | Path | Permiso | Notas |
+|---|---|---|---|
+| GET | `/vault` | vault.usar | `{ entradas: VaultEntrada[] }` (solo las del usuario; sin password) |
+| GET | `/vault/{id}` | vault.usar | `VaultEntrada` (404 si es de otro usuario) |
+| POST | `/vault` | vault.usar | `VaultInput` → `{ id }` |
+| PUT | `/vault/{id}` | vault.usar | `VaultInput` (`password ''`=conservar) → `{ id }` |
+| DELETE | `/vault/{id}` | vault.usar | `{ ok }` |
+| POST | `/vault/{id}/revelar` | vault.usar | `{ usuario, password }` (auditado, rate-limited, `no-store`) |
+| POST | `/vault/{id}/copiar` | vault.usar | `{ usuario, password }` (auditado, rate-limited, `no-store`) |
+
+`VaultInput`: `{ titulo, usuario_acceso, password, url, categoria('servicio'|'aplicacion'|'cuenta'|'otro'), notas }`.
+`VaultEntrada` (sin password): `{ id, titulo, usuario_acceso, url, categoria, notas, dias_sin_rotar, rotacion_vencida }`.
+Cada entrada es **privada del dueño**: una ajena responde 404, ni el admin la ve.
+
+## Importación / exportación CSV
+
+| Método | Path | Permiso | Notas |
+|---|---|---|---|
 | POST | `/importar` | inventario.gestionar | multipart `archivo` (CSV) → `{ creados:{servidor,hipervisor,vm,credencial}, errores: string[], total }` |
+| POST | `/exportar` | inventario.exportar | descarga CSV **en claro** del inventario (round-trip con `/importar`), auditado, `no-store`; excluye vaults |
+| GET | `/plantilla.csv` | inventario.gestionar | plantilla CSV de ejemplo (sin secretos) |

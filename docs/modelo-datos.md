@@ -17,6 +17,7 @@ erDiagram
     USUARIO ||--o{ REGISTRO_AUDITORIA : "genera"
     USUARIO ||--o{ CODIGO_RECUPERACION_MFA : "posee"
     USUARIO ||--o{ CONCESION_ACCESO : "recibe (analista)"
+    USUARIO ||--o{ ENTRADA_VAULT : "posee (vault personal)"
     SERVIDOR_FISICO ||--o{ CONCESION_ACCESO : "concedido"
     HIPERVISOR ||--o{ CONCESION_ACCESO : "concedido"
     MAQUINA_VIRTUAL ||--o{ CONCESION_ACCESO : "concedido"
@@ -47,6 +48,9 @@ erDiagram
         string sistema_operativo
         string ip
         text descripcion "sistema que corre"
+        string ram "RAM asignada"
+        string cpu "vCPU/nucleos asignados"
+        string almacenamiento "disco asignado"
     }
     CREDENCIAL {
         int id PK
@@ -66,6 +70,17 @@ erDiagram
         int usuario_id FK
         string codigo_hash UK "SHA-256, un solo uso"
         datetime usado_en
+    }
+    ENTRADA_VAULT {
+        int id PK
+        int usuario_id FK "dueño (privado)"
+        string titulo
+        string usuario_acceso
+        bytes password_cifrada "Fernet AES"
+        string url
+        string categoria "servicio | aplicacion | cuenta | otro"
+        text notas
+        datetime password_rotada_en
     }
     USUARIO {
         int id PK
@@ -129,3 +144,9 @@ erDiagram
    ver_credenciales}`. `ON DELETE CASCADE` desde el usuario y desde el activo: al eliminar
    cualquiera, sus concesiones desaparecen. No hay herencia entre niveles del inventario.
    Detalle del modelo de acceso en [`control-acceso.md`](control-acceso.md).
+8. **Vault personal** (`ENTRADA_VAULT`): pertenece a **un** usuario (`usuario_id`,
+   `ON DELETE CASCADE`) y es **privado** —solo el dueño la ve, edita y revela; ni el
+   administrador accede a su contenido—. `password_cifrada` (Fernet) nunca en claro;
+   `categoria ∈ {servicio, aplicacion, cuenta, otro}`. Es independiente del inventario:
+   sirve para contraseñas de servicios, aplicaciones o cuentas propias. Se incluye en el
+   respaldo cifrado, pero **nunca** en el export en claro de migración.

@@ -26,6 +26,7 @@ web. Llama a `init_db()` antes de operar, de modo que crea/concilia el esquema s
 | `respaldo` | Exportar un respaldo cifrado de todo el sistema. |
 | `restaurar` | Restaurar un respaldo cifrado. |
 | `recifrar` | Recifrar todos los secretos con la clave primaria (rotación de la clave de cifrado). |
+| `exportar-csv` | Exportar el inventario **en claro** a CSV para migración (formato del importador). |
 
 Todos devuelven **código de salida 0** si tienen éxito y **1** ante un error (con el motivo en
 `stderr`).
@@ -163,6 +164,28 @@ python -m app.cli recifrar
 
 Imprime cuántos valores recifró por tabla y termina con código 0. Si ninguna clave configurada
 puede descifrar algún valor, falla **sin escribir cambios** (todo o nada).
+
+---
+
+## `exportar-csv`
+
+Exporta **todo el inventario** (servidores, hipervisores, VMs y credenciales) a un CSV con las
+contraseñas **en claro**, en el **mismo formato que acepta `importar`**: pensado para editar la
+información y migrarla entre versiones (round-trip). **No** incluye los vaults personales (privados
+de cada usuario).
+
+```bash
+python -m app.cli exportar-csv --salida inventario.csv
+```
+
+| Opción | Obligatoria | Descripción |
+|---|:-:|---|
+| `--salida` | sí | Ruta del CSV a crear (se escribe con permisos `0600`). |
+
+- La operación queda **auditada** (`inventario_exportado`).
+- El archivo **contiene contraseñas en claro**: custódielo por un canal seguro y **destrúyalo** tras
+  la migración. Desde la interfaz web equivale al botón «Exportar inventario en claro» de *Importar*
+  (permiso `inventario.exportar`); la plantilla vacía está en `GET /plantilla.csv`.
 
 ---
 

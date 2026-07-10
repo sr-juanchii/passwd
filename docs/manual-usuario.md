@@ -199,6 +199,24 @@ que revelar credenciales.
 
 ---
 
+## 6 bis. Mi vault personal
+
+Además del inventario de servidores, **cada usuario** dispone de un **vault personal** (menú
+**«Mi vault»**) para guardar contraseñas de **servicios, aplicaciones o cuentas propias**. Es
+**privado**: solo tú ves y revelas su contenido; ni el administrador accede a él.
+
+- **Añadir:** «Nueva entrada» → título, usuario/cuenta, contraseña (puedes **generarla**),
+  categoría (servicio/aplicación/cuenta/otro), URL y notas opcionales.
+- **Usar:** «Copiar» pasa la contraseña al portapapeles sin mostrarla (se limpia a los 30 s) y
+  «Revelar» la muestra y se re-oculta sola. Ambas quedan registradas en tu auditoría y están
+  limitadas para frenar extracciones masivas.
+- **Editar/eliminar:** desde cada entrada. Al editar, deja la contraseña en blanco para conservarla.
+
+La contraseña se cifra antes de guardarse y el vault se incluye en el respaldo cifrado del sistema,
+pero **nunca** en la exportación en claro de migración.
+
+---
+
 ## 7. Tema claro / oscuro
 
 Use el botón de **tema** (sol/luna) para alternar entre modo claro y oscuro. La preferencia se
