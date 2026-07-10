@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar' if entrada else 'Nueva' }} entrada — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="/vault">← Volver a mi vault</a></p>
+<div class="tarjeta tarjeta-formulario">
+  <h1>{{ 'Editar entrada' if entrada else 'Nueva entrada del vault' }}</h1>
+  <form method="post"
+        action="{{ '/vault/' ~ entrada.id ~ '/editar' if entrada else '/vault/nueva' }}"
+        class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label for="titulo">Título *</label>
+    <input id="titulo" name="titulo" type="text" required maxlength="120"
+           value="{{ entrada.titulo if entrada else '' }}" placeholder="Ej.: Correo personal, Panel del banco…">
+
+    <label for="usuario_acceso">Usuario / cuenta</label>
+    <input id="usuario_acceso" name="usuario_acceso" type="text" maxlength="120" autocomplete="off"
+           value="{{ entrada.usuario_acceso if entrada else '' }}" placeholder="Ej.: usuario@correo.com">
+
+    <label for="password">Contraseña {{ '' if entrada else '*' }}</label>
+    <div class="campo-con-boton">
+      <input id="password" name="password" type="password" maxlength="500"
+             autocomplete="new-password" {{ '' if entrada else 'required' }}>
+      <button type="button" class="boton" data-generar="password" title="Generar contraseña aleatoria robusta">🎲 Generar</button>
+    </div>
+    {% if entrada %}<p class="texto-suave">Déjela en blanco para conservar la contraseña actual.</p>{% endif %}
+
+    <label for="categoria">Categoría</label>
+    <select id="categoria" name="categoria">
+      {% for c in categorias %}
+      <option value="{{ c }}" {{ 'selected' if entrada and entrada.categoria == c else '' }}>{{ etiquetas_categoria.get(c, c) }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="url">URL (opcional)</label>
+    <input id="url" name="url" type="text" maxlength="255"
+           value="{{ entrada.url if entrada else '' }}" placeholder="https://…">
+
+    <label for="notas">Notas (opcional)</label>
+    <textarea id="notas" name="notas" rows="3" maxlength="2000"
+      placeholder="Información adicional (no pongas aquí la contraseña).">{{ entrada.notas if entrada else '' }}</textarea>
+
+    <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if entrada else 'Añadir al vault' }}</button>
+  </form>
+  <p class="texto-suave">La contraseña se cifra antes de guardarse; solo tú puedes revelarla y cada
+     acceso queda registrado en la bitácora de auditoría.</p>
+</div>
+{% endblock %}

@@ -480,6 +480,9 @@ def vm_crear(
     sistema_operativo: Annotated[str, Form()] = "",
     ip: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    ram: Annotated[str, Form()] = "",
+    cpu: Annotated[str, Form()] = "",
+    almacenamiento: Annotated[str, Form()] = "",
     estado: Annotated[str, Form()] = ESTADO_ACTIVO,
     etiquetas: Annotated[str, Form()] = "",
 ):
@@ -492,6 +495,7 @@ def vm_crear(
     vm = MaquinaVirtual(
         hipervisor_id=hipervisor.id, nombre=nombre,
         sistema_operativo=sistema_operativo.strip(), ip=ip.strip(), descripcion=descripcion.strip(),
+        ram=ram.strip(), cpu=cpu.strip(), almacenamiento=almacenamiento.strip(),
         estado=_estado_valido(estado), etiquetas=normalizar_etiquetas(etiquetas),
     )
     db.add(vm)
@@ -543,6 +547,9 @@ def vm_editar(
     sistema_operativo: Annotated[str, Form()] = "",
     ip: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    ram: Annotated[str, Form()] = "",
+    cpu: Annotated[str, Form()] = "",
+    almacenamiento: Annotated[str, Form()] = "",
     estado: Annotated[str, Form()] = ESTADO_ACTIVO,
     etiquetas: Annotated[str, Form()] = "",
 ):
@@ -556,6 +563,9 @@ def vm_editar(
     vm.sistema_operativo = sistema_operativo.strip()
     vm.ip = ip.strip()
     vm.descripcion = descripcion.strip()
+    vm.ram = ram.strip()
+    vm.cpu = cpu.strip()
+    vm.almacenamiento = almacenamiento.strip()
     vm.estado = _estado_valido(estado)
     vm.etiquetas = normalizar_etiquetas(etiquetas)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,

@@ -235,6 +235,11 @@ class MaquinaVirtual(Base):
     sistema_operativo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Recursos asignados a la VM (texto libre para admitir unidades: "8 GB",
+    # "4 vCPU", "120 GB SSD"), coherente con el hardware de servidor/hipervisor.
+    ram: Mapped[str] = mapped_column(String(60), nullable=False, default="", server_default="")
+    cpu: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    almacenamiento: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
@@ -483,6 +488,68 @@ class TokenApi(Base):
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     creado_por: Mapped[Usuario | None] = relationship()
+
+
+CATEGORIA_VAULT_SERVICIO = "servicio"
+CATEGORIA_VAULT_APLICACION = "aplicacion"
+CATEGORIA_VAULT_CUENTA = "cuenta"
+CATEGORIA_VAULT_OTRO = "otro"
+CATEGORIAS_VAULT = (
+    CATEGORIA_VAULT_SERVICIO,
+    CATEGORIA_VAULT_APLICACION,
+    CATEGORIA_VAULT_CUENTA,
+    CATEGORIA_VAULT_OTRO,
+)
+ETIQUETAS_CATEGORIA_VAULT = {
+    CATEGORIA_VAULT_SERVICIO: "Servicio",
+    CATEGORIA_VAULT_APLICACION: "Aplicación",
+    CATEGORIA_VAULT_CUENTA: "Cuenta propia",
+    CATEGORIA_VAULT_OTRO: "Otro",
+}
+
+
+class EntradaVault(Base):
+    """Entrada del vault PERSONAL de un usuario (privado, no del inventario).
+
+    A diferencia de ``Credencial`` (credenciales de la infraestructura, sujetas
+    a RBAC y acceso por objeto), una entrada de vault pertenece a UN usuario y
+    solo él la ve, la edita y la revela: ni el administrador accede a su
+    contenido. Sirve para contraseñas de servicios, aplicaciones o cuentas
+    propias, dando versatilidad más allá de los servidores. La contraseña se
+    cifra en reposo (Fernet/AES) igual que el resto de secretos del sistema; se
+    incluye en los respaldos cifrados, pero nunca en el export en claro.
+    """
+
+    __tablename__ = "entradas_vault"
+    __table_args__ = (
+        CheckConstraint(
+            "categoria IN ('servicio', 'aplicacion', 'cuenta', 'otro')",
+            name="ck_entradas_vault_categoria",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    titulo: Mapped[str] = mapped_column(String(120), nullable=False)
+    usuario_acceso: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    password_cifrada: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    url: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    categoria: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=CATEGORIA_VAULT_CUENTA, server_default=CATEGORIA_VAULT_CUENTA
+    )
+    notas: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+    password_rotada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+
+    usuario: Mapped[Usuario] = relationship()
+
+    @property
+    def dias_sin_rotar(self) -> int:
+        return max((ahora_utc() - self.password_rotada_en).days, 0)
 
 
 class EventoTasa(Base):

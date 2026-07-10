@@ -15,6 +15,7 @@ from app.api_web import (
     audit,
     auth,
     credentials,
+    exporter,
     importer,
     inventory,
     metrics,
@@ -22,6 +23,7 @@ from app.api_web import (
     search,
     tokens,
     users,
+    vault,
 )
 
 router = APIRouter(prefix="/api/web", tags=["web"])
@@ -38,6 +40,8 @@ for _modulo in (
     audit,
     metrics,
     importer,
+    exporter,
+    vault,
 ):
     router.include_router(_modulo.router)
 

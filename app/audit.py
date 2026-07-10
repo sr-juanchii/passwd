@@ -64,6 +64,15 @@ TOKEN_REVOCADO = "token_api_revocado"  # noqa: S105 — nombre de acción, no es
 RESPALDO_CREADO = "respaldo_creado"
 RESPALDO_RESTAURADO = "respaldo_restaurado"
 
+IMPORTACION_REALIZADA = "importacion_realizada"
+INVENTARIO_EXPORTADO = "inventario_exportado"
+
+VAULT_CREADA = "vault_entrada_creada"
+VAULT_ACTUALIZADA = "vault_entrada_actualizada"
+VAULT_ELIMINADA = "vault_entrada_eliminada"
+VAULT_REVELADA = "vault_entrada_revelada"
+VAULT_COPIADA = "vault_entrada_copiada"
+
 
 def registrar(
     db: Session,

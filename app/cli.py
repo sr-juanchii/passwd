@@ -6,6 +6,7 @@ Uso:
     python -m app.cli respaldo --salida respaldo.passwd
     python -m app.cli restaurar --entrada respaldo.passwd [--sobrescribir]
     python -m app.cli recifrar    # rotación de la clave de cifrado (ver docs)
+    python -m app.cli exportar-csv --salida inventario.csv  # export EN CLARO (migración)
 """
 
 from __future__ import annotations
@@ -198,6 +199,33 @@ def _cmd_recifrar(_args: argparse.Namespace) -> int:
         db.close()
 
 
+def _cmd_export_csv(args: argparse.Namespace) -> int:
+    """Exporta el inventario EN CLARO a CSV (migración; contiene contraseñas).
+
+    Mismo formato que acepta el importador, para editarlo y volver a importarlo.
+    No incluye los vaults personales (privados). El archivo se escribe con
+    permisos 0600; destrúyalo tras la migración.
+    """
+    from app import audit
+    from app.exporter import exportar_csv
+
+    init_db()
+    db = next(get_db())
+    try:
+        texto = exportar_csv(db)
+        ruta = Path(args.salida)
+        ruta.touch(mode=0o600, exist_ok=True)
+        ruta.write_text(texto, encoding="utf-8")
+        audit.registrar(db, audit.INVENTARIO_EXPORTADO, username="cli",
+                        detalle=f"Export en claro a {ruta} ({len(texto)} bytes).")
+        db.commit()
+        print(f"Inventario exportado en claro a {ruta} ({len(texto)} bytes).")
+        print("Contiene contraseñas en claro: custódielo y destrúyalo tras la migración.")
+        return 0
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description="Utilidades administrativas.")
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -228,6 +256,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="Recifra todos los secretos con la clave primaria de PASSWD_ENCRYPTION_KEY "
                         "(rotación de clave: fijar 'nueva,antigua', recifrar y dejar solo 'nueva').")
 
+    p_export = sub.add_parser("exportar-csv",
+                              help="Exporta el inventario EN CLARO a CSV para migración "
+                                   "(mismo formato que el importador; contiene contraseñas).")
+    p_export.add_argument("--salida", required=True, help="Ruta del CSV a crear (se escribe con permisos 0600).")
+
     args = parser.parse_args(argv)
     if args.comando == "init-db":
         return _cmd_init_db(args)
@@ -239,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_restaurar(args)
     if args.comando == "recifrar":
         return _cmd_recifrar(args)
+    if args.comando == "exportar-csv":
+        return _cmd_export_csv(args)
     return 1
 
 

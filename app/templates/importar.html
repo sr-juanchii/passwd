@@ -25,20 +25,39 @@
     <input id="archivo" name="archivo" type="file" accept=".csv,text/csv" required>
     <button type="submit" class="boton boton-primario">Importar</button>
   </form>
+  <p class="texto-suave"><a class="enlace-suave" href="/plantilla.csv">⬇ Descargar plantilla CSV</a>
+     (cabecera + una fila de ejemplo por tipo, sin secretos).</p>
 </div>
+
+{% if puede('inventario.exportar') %}
+<div class="tarjeta">
+  <h2>Exportar para migración</h2>
+  <p class="texto-suave">Descarga <strong>todo el inventario</strong> (servidores, hipervisores, VMs y
+     credenciales) como CSV <strong>con las contraseñas en claro</strong>, en este mismo formato: edítalo
+     y vuelve a importarlo (round-trip) al migrar entre versiones. Los vaults personales no se incluyen
+     (son privados). La descarga queda registrada en auditoría; custodia y destruye el archivo tras la
+     migración.</p>
+  <form method="post" action="/exportar" class="formulario"
+        data-confirmar="El CSV incluirá las contraseñas EN CLARO. ¿Descargar?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="boton boton-primario">⬇ Exportar inventario en claro (CSV)</button>
+  </form>
+</div>
+{% endif %}
 
 <div class="tarjeta">
   <h2>Formato</h2>
   <p class="texto-suave">Cabecera con columnas; la columna <code>tipo</code> indica qué se crea. Se
      procesan por orden de dependencia (servidores → hipervisores → VMs → credenciales).</p>
-  <pre class="bloque-notas">tipo,nombre,padre,activo_tipo,plataforma,version,sistema_operativo,ip,descripcion,estado,etiquetas,usuario_acceso,password,servicio,puerto
-servidor,srv-bd,,,,,Debian 12,10.0.0.5,BD de nómina,activo,"producción,crítico",,,,
-hipervisor,pve-01,,,Proxmox VE,8.2,,10.0.0.7,Nodo de virtualización,activo,,,,,
-vm,vm-correo,pve-01,,,,Ubuntu 24.04,10.0.1.10,Correo,activo,correo,,,,
-credencial,,srv-bd,servidor,,,,,Acceso root,,,root,S3cret!,SSH,22</pre>
+  <pre class="bloque-notas">tipo,nombre,padre,activo_tipo,plataforma,version,sistema_operativo,ip,descripcion,estado,etiquetas,marca_modelo,ubicacion,ram,cpu,almacenamiento,numero_serie,garantia_hasta,proveedor,usuario_acceso,password,servicio,puerto
+servidor,srv-bd,,,,,Debian 12,10.0.0.5,BD de nómina,activo,"producción,crítico",Dell R750,Sala 1,64 GB,2x Xeon,2x960 GB SSD,,,,,,,
+hipervisor,pve-01,,,Proxmox VE,8.2,,10.0.0.7,Nodo,activo,,Dell R650,Sala 1,256 GB,2x EPYC,4x1.92 TB,,,,,,,
+vm,vm-correo,pve-01,,,,Ubuntu 24.04,10.0.1.10,Correo,activo,correo,,,8 GB,4 vCPU,120 GB,,,,,,,
+credencial,,srv-bd,servidor,,,,,Acceso root,,,,,,,,,,,root,S3cret!,SSH,22</pre>
   <p class="texto-suave">El hipervisor es un activo de nivel superior (no requiere
      <code>padre</code>); las VMs usan <code>padre</code> = nombre del hipervisor. Las columnas de
-     hardware (<code>marca_modelo, ubicacion, ram, cpu, almacenamiento, numero_serie, garantia_hasta, proveedor</code>)
-     son opcionales para servidores e hipervisores.</p>
+     hardware (<code>marca_modelo, ubicacion, numero_serie, garantia_hasta, proveedor</code>) son opcionales
+     para servidores e hipervisores; <code>ram, cpu, almacenamiento</code> aplican también a las VMs
+     (RAM/CPU/almacenamiento asignados).</p>
 </div>
 {% endblock %}

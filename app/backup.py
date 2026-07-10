@@ -24,6 +24,7 @@ from app.models import (
     ESTADO_ACTIVO,
     CodigoRecuperacionMFA,
     Credencial,
+    EntradaVault,
     Hipervisor,
     MaquinaVirtual,
     RegistroAuditoria,
@@ -115,7 +116,9 @@ def exportar(db: Session, frase: str) -> bytes:
         "maquinas_virtuales": [
             {"id": v.id, "hipervisor_id": v.hipervisor_id, "nombre": v.nombre,
              "sistema_operativo": v.sistema_operativo, "ip": v.ip,
-             "descripcion": v.descripcion, "creado_en": _fecha(v.creado_en)}
+             "descripcion": v.descripcion, "ram": v.ram, "cpu": v.cpu,
+             "almacenamiento": v.almacenamiento, "estado": v.estado, "etiquetas": v.etiquetas,
+             "creado_en": _fecha(v.creado_en)}
             for v in db.scalars(select(MaquinaVirtual)).all()
         ],
         "credenciales": [
@@ -126,6 +129,16 @@ def exportar(db: Session, frase: str) -> bytes:
              "creado_por_id": c.creado_por_id, "creado_en": _fecha(c.creado_en),
              "password_rotada_en": _fecha(c.password_rotada_en)}
             for c in db.scalars(select(Credencial)).all()
+        ],
+        # Vaults personales: privados por usuario, pero SÍ se respaldan (dato del
+        # sistema). La contraseña se guarda en claro dentro del JSON cifrado, como
+        # el resto de secretos del respaldo; nunca sale al export en claro.
+        "vaults": [
+            {"id": e.id, "usuario_id": e.usuario_id, "titulo": e.titulo,
+             "usuario_acceso": e.usuario_acceso, "password": descifrar(e.password_cifrada),
+             "url": e.url, "categoria": e.categoria, "notas": e.notas,
+             "creado_en": _fecha(e.creado_en), "password_rotada_en": _fecha(e.password_rotada_en)}
+            for e in db.scalars(select(EntradaVault)).all()
         ],
         "auditoria": [
             {"fecha": _fecha(r.fecha), "usuario_id": r.usuario_id, "username": r.username,
@@ -200,7 +213,7 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
         raise ErrorRespaldo("La base de datos ya contiene información; use --sobrescribir para reemplazarla.")
 
     # Limpieza total en orden inverso de dependencias
-    for modelo in (SesionWeb, CodigoRecuperacionMFA, RegistroAuditoria, Credencial,
+    for modelo in (SesionWeb, CodigoRecuperacionMFA, RegistroAuditoria, EntradaVault, Credencial,
                    MaquinaVirtual, Hipervisor, ServidorFisico, Usuario):
         for fila in db.scalars(select(modelo)).all():
             db.delete(fila)
@@ -253,6 +266,8 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
         db.add(MaquinaVirtual(
             id=v["id"], hipervisor_id=v["hipervisor_id"], nombre=v["nombre"],
             sistema_operativo=v["sistema_operativo"], ip=v["ip"], descripcion=v["descripcion"],
+            ram=v.get("ram", ""), cpu=v.get("cpu", ""), almacenamiento=v.get("almacenamiento", ""),
+            estado=v.get("estado", ESTADO_ACTIVO), etiquetas=v.get("etiquetas", ""),
             creado_en=_parse_fecha(v["creado_en"]) or ahora_utc(),
         ))
     db.flush()
@@ -265,6 +280,14 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             creado_por_id=c["creado_por_id"],
             creado_en=_parse_fecha(c["creado_en"]) or ahora_utc(),
             password_rotada_en=_parse_fecha(c.get("password_rotada_en")) or ahora_utc(),
+        ))
+    for e in carga.get("vaults", []):
+        db.add(EntradaVault(
+            id=e["id"], usuario_id=e["usuario_id"], titulo=e["titulo"],
+            usuario_acceso=e.get("usuario_acceso", ""), password_cifrada=cifrar(e["password"]),
+            url=e.get("url", ""), categoria=e.get("categoria", "cuenta"), notas=e.get("notas", ""),
+            creado_en=_parse_fecha(e.get("creado_en")) or ahora_utc(),
+            password_rotada_en=_parse_fecha(e.get("password_rotada_en")) or ahora_utc(),
         ))
     for r in carga.get("auditoria", []):
         db.add(RegistroAuditoria(
@@ -281,6 +304,7 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
         "hipervisores": len(carga["hipervisores"]),
         "maquinas_virtuales": len(carga["maquinas_virtuales"]),
         "credenciales": len(carga["credenciales"]),
+        "vaults": len(carga.get("vaults", [])),
         "auditoria": len(carga.get("auditoria", [])),
     }
     audit.registrar(db, audit.RESPALDO_RESTAURADO, username="cli",

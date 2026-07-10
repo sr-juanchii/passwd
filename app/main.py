@@ -35,6 +35,7 @@ from app.routes import (
     search,
     tokens,
     users,
+    vault,
 )
 from app.security.passwords import hashear_password
 from app.security.sessions import purgar_sesiones_expiradas
@@ -221,6 +222,7 @@ def create_app() -> FastAPI:
     app.include_router(credentials.router)
     app.include_router(accesos.router)
     app.include_router(notes.router)
+    app.include_router(vault.router)
     app.include_router(importer.router)
     app.include_router(users.router)
     app.include_router(metrics.router)

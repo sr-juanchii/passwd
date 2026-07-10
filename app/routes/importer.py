@@ -31,12 +31,14 @@ import io
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import audit
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
+from app.exporter import exportar_csv, plantilla_csv
 from app.models import (
     Credencial,
     Hipervisor,
@@ -50,13 +52,44 @@ from app.security.crypto import cifrar
 router = APIRouter()
 
 GESTIONAR = Depends(requiere_permiso("inventario.gestionar"))
+EXPORTAR = Depends(requiere_permiso("inventario.exportar"))
 IMPORTACION_REALIZADA = "importacion_realizada"
 _ORDEN = {"servidor": 0, "hipervisor": 1, "vm": 2, "credencial": 3}
+
+
+def _csv_descarga(texto: str, nombre: str) -> Response:
+    return Response(
+        content=texto,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nombre}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/importar")
 def importar_form(request: Request, usuario: Annotated[Usuario, GESTIONAR]):
     return render(request, "importar.html", {"usuario_actual": usuario})
+
+
+@router.get("/plantilla.csv")
+def plantilla_descargar(usuario: Annotated[Usuario, GESTIONAR]):
+    """Plantilla CSV de ejemplo (sin secretos) para arrancar una importación."""
+    return _csv_descarga(plantilla_csv(), "plantilla-passwd.csv")
+
+
+@router.post("/exportar", dependencies=[Depends(verificar_csrf)])
+def exportar(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, EXPORTAR],
+):
+    """Export EN CLARO del inventario para migración (CSV round-trip con importar)."""
+    texto = exportar_csv(db)
+    audit.registrar(db, audit.INVENTARIO_EXPORTADO, request=request, usuario=usuario,
+                    detalle="Export en claro del inventario (CSV de migración).")
+    return _csv_descarga(texto, "inventario-passwd.csv")
 
 
 def _estado(valor: str) -> str:
@@ -132,6 +165,9 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             descripcion=(fila.get("descripcion") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            ram=(fila.get("ram") or "").strip(),
+            cpu=(fila.get("cpu") or "").strip(),
+            almacenamiento=(fila.get("almacenamiento") or "").strip(),
         ))
         return f"VM «{nombre}» creada"
 

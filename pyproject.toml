@@ -20,5 +20,5 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106", "E501"]  # contraseñas de prueba y líneas de datos (CSV) largas
+"tests/*" = ["S105", "S106", "S107", "E501"]  # contraseñas de prueba y líneas de datos (CSV) largas
 "migrations/versions/*" = ["E501", "W291"]  # revisiones autogeneradas por Alembic

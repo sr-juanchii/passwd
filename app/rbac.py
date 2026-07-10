@@ -13,12 +13,19 @@ Matriz de permisos (a nivel de ruta):
     credenciales.ver_lista     ✔       ✔         ✔        ✔ (*)
     credenciales.revelar       ✔       ✔         ✘        ✔ (*)
     credenciales.gestionar     ✔       ✔         ✘        ✘
+    inventario.exportar        ✔       ✔         ✘        ✘
+    vault.usar                 ✔       ✔         ✔        ✔
     usuarios.gestionar         ✔       ✘         ✘        ✘
     auditoria.ver              ✔       ✘         ✔        ✘
     accesos.gestionar          ✔       ✘         ✘        ✘
 
 (*) El analista alcanza la ruta, pero ``app/access.py`` restringe la operación
     a los activos que tenga concedidos (default-deny: sin concesiones no ve nada).
+
+``vault.usar`` habilita el vault PERSONAL de cada usuario (todos los roles): no
+es un permiso sobre datos ajenos, cada quien solo accede al suyo (ver
+``app/routes/vault.py``). ``inventario.exportar`` permite el export en claro del
+inventario para migración (mismos roles de gestión que la importación).
 """
 
 from __future__ import annotations
@@ -31,6 +38,8 @@ PERMISOS: dict[str, frozenset[str]] = {
     "credenciales.ver_lista": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA}),
     "credenciales.revelar": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_ANALISTA}),
     "credenciales.gestionar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
+    "inventario.exportar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
+    "vault.usar": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA}),
     "usuarios.gestionar": frozenset({ROL_ADMIN}),
     "auditoria.ver": frozenset({ROL_ADMIN, ROL_AUDITOR}),
     "metricas.ver": frozenset({ROL_ADMIN, ROL_AUDITOR}),
