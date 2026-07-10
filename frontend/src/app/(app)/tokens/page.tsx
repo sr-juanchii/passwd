@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clipboard, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { TokenApi } from "@/lib/types";
+import type { TokenAlcance, TokenApi } from "@/lib/types";
+import { ETIQUETAS_TOKEN_ALCANCE, TOKEN_ALCANCES } from "@/lib/constants";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mono } from "@/components/ui/mono";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -42,6 +50,8 @@ export default function TokensPage() {
   const [tokens, setTokens] = useState<TokenApi[]>([]);
   const [cargando, setCargando] = useState(true);
   const [nombre, setNombre] = useState("");
+  const [alcance, setAlcance] = useState<TokenAlcance>("todo");
+  const [dias, setDias] = useState("0");
   const [creando, setCreando] = useState(false);
   const [tokenNuevo, setTokenNuevo] = useState<string | null>(null);
 
@@ -66,9 +76,11 @@ export default function TokensPage() {
     if (!nombre.trim()) return;
     setCreando(true);
     try {
-      const r = await api.crearToken(nombre.trim());
+      const r = await api.crearToken({ nombre: nombre.trim(), alcance, dias_validez: Number(dias) || 0 });
       setTokenNuevo(r.token);
       setNombre("");
+      setDias("0");
+      setAlcance("todo");
       toast.success("Token creado.");
       await cargar();
     } catch (err) {
@@ -151,6 +163,26 @@ export default function TokensPage() {
                 onChange={(e) => setNombre(e.target.value)}
               />
             </div>
+            <div className="min-w-48 space-y-2">
+              <Label>Alcance</Label>
+              <Select value={alcance} onValueChange={(v) => setAlcance(v as TokenAlcance)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TOKEN_ALCANCES.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {ETIQUETAS_TOKEN_ALCANCE[a]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-40 space-y-2">
+              <Label htmlFor="dias">Caducidad (días, 0=nunca)</Label>
+              <Input id="dias" type="number" min={0} max={3650} value={dias}
+                     onChange={(e) => setDias(e.target.value)} />
+            </div>
             <Button type="submit" disabled={creando || !nombre.trim()}>
               {creando ? <Loader2 className="animate-spin" /> : <Plus />}
               Crear
@@ -171,7 +203,9 @@ export default function TokensPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Alcance</TableHead>
                 <TableHead>Creado</TableHead>
+                <TableHead>Caduca</TableHead>
                 <TableHead>Último uso</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Creado por</TableHead>
@@ -182,13 +216,19 @@ export default function TokensPage() {
               {tokens.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.nombre}</TableCell>
+                  <TableCell className="text-muted-foreground">{ETIQUETAS_TOKEN_ALCANCE[t.alcance]}</TableCell>
                   <TableCell className="text-muted-foreground">{fecha(t.creado_en)}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t.expira_en ? new Date(t.expira_en).toLocaleDateString() : "—"}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{fecha(t.ultimo_uso)}</TableCell>
                   <TableCell>
-                    {t.activo ? (
-                      <Badge variant="default">Activo</Badge>
-                    ) : (
+                    {!t.activo ? (
                       <Badge variant="destructive">Revocado</Badge>
+                    ) : t.caducado ? (
+                      <Badge variant="secondary">Caducado</Badge>
+                    ) : (
+                      <Badge variant="default">Activo</Badge>
                     )}
                   </TableCell>
                   <TableCell>

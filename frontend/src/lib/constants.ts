@@ -35,6 +35,14 @@ export const ETIQUETAS_CATEGORIA_VAULT: Record<CategoriaVault, string> = {
 
 export const CATEGORIAS_VAULT: CategoriaVault[] = ["servicio", "aplicacion", "cuenta", "otro"];
 
+export const ETIQUETAS_TOKEN_ALCANCE: Record<import("./types").TokenAlcance, string> = {
+  todo: "Auditoría e inventario",
+  auditoria: "Solo auditoría",
+  inventario: "Solo inventario",
+};
+
+export const TOKEN_ALCANCES: import("./types").TokenAlcance[] = ["todo", "auditoria", "inventario"];
+
 export const ESTADOS: EstadoActivo[] = ["activo", "mantenimiento", "retirado"];
 
 export function rutaActivo(tipo: TipoActivo, id: number): string {

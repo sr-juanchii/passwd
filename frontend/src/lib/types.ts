@@ -237,10 +237,15 @@ export interface ResultadoBusqueda {
   credenciales: Credencial[];
 }
 
+export type TokenAlcance = "todo" | "auditoria" | "inventario";
+
 export interface TokenApi {
   id: number;
   nombre: string;
+  alcance: TokenAlcance;
   creado_en: string;
+  expira_en: string | null;
+  caducado: boolean;
   ultimo_uso: string | null;
   activo: boolean;
   creado_por: string;

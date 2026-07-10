@@ -243,8 +243,8 @@ export const api = {
 
   // --- Tokens API ---
   tokens: () => request<{ tokens: TokenApi[] }>("/tokens"),
-  crearToken: (nombre: string) =>
-    request<{ token: string }>("/tokens", { method: "POST", body: { nombre }, csrf: true }),
+  crearToken: (b: { nombre: string; alcance: string; dias_validez: number }) =>
+    request<{ token: string }>("/tokens", { method: "POST", body: b, csrf: true }),
   revocarToken: (id: number) => request<{ ok: boolean }>(`/tokens/${id}/revocar`, { method: "POST", csrf: true }),
 
   // --- Auditoría ---
