@@ -17,6 +17,12 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="nombre">Nombre del token</label>
     <input id="nombre" name="nombre" type="text" maxlength="120" required placeholder="Ej.: SIEM-corporativo">
+    <label for="alcance">Alcance</label>
+    <select id="alcance" name="alcance">
+      {% for a in alcances %}<option value="{{ a }}">{{ etiquetas_alcance[a] }}</option>{% endfor %}
+    </select>
+    <label for="dias_validez">Caducidad (días, 0 = sin caducidad)</label>
+    <input id="dias_validez" name="dias_validez" type="number" min="0" max="3650" value="0">
     <button type="submit" class="boton boton-primario">Crear token</button>
   </form>
 </div>
@@ -24,13 +30,15 @@
 <div class="tarjeta">
 {% if tokens %}
 <table class="tabla tabla-compacta">
-  <thead><tr><th>Nombre</th><th>Estado</th><th>Creado</th><th>Último uso</th><th>Por</th><th></th></tr></thead>
+  <thead><tr><th>Nombre</th><th>Alcance</th><th>Estado</th><th>Creado</th><th>Caduca</th><th>Último uso</th><th>Por</th><th></th></tr></thead>
   <tbody>
     {% for t in tokens %}
     <tr class="{{ '' if t.activo else 'fila-fallo' }}">
       <td>{{ t.nombre }}</td>
-      <td>{{ '🟢 activo' if t.activo else '🔴 revocado' }}</td>
+      <td>{{ etiquetas_alcance.get(t.alcance, t.alcance) }}</td>
+      <td>{{ '🔴 revocado' if not t.activo else ('🟠 caducado' if t.caducado else '🟢 activo') }}</td>
       <td>{{ t.creado_en.strftime('%d/%m/%Y %H:%M') }}</td>
+      <td>{{ t.expira_en.strftime('%d/%m/%Y') if t.expira_en else '—' }}</td>
       <td>{{ t.ultimo_uso.strftime('%d/%m/%Y %H:%M') ~ ' UTC' if t.ultimo_uso else 'Nunca' }}</td>
       <td class="texto-suave">{{ t.creado_por.username if t.creado_por else '—' }}</td>
       <td>

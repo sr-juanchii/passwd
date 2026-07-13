@@ -8,6 +8,7 @@ secretos en claro.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import timedelta
 
 from fastapi import Request
@@ -64,6 +65,40 @@ TOKEN_REVOCADO = "token_api_revocado"  # noqa: S105 — nombre de acción, no es
 RESPALDO_CREADO = "respaldo_creado"
 RESPALDO_RESTAURADO = "respaldo_restaurado"
 
+IMPORTACION_REALIZADA = "importacion_realizada"
+INVENTARIO_EXPORTADO = "inventario_exportado"
+
+VAULT_CREADA = "vault_entrada_creada"
+VAULT_ACTUALIZADA = "vault_entrada_actualizada"
+VAULT_ELIMINADA = "vault_entrada_eliminada"
+VAULT_REVELADA = "vault_entrada_revelada"
+VAULT_COPIADA = "vault_entrada_copiada"
+
+
+def _material(reg: RegistroAuditoria) -> str:
+    """Representación canónica y estable de un registro, para su hash.
+
+    La fecha se normaliza a segundos enteros: MySQL almacena ``DATETIME`` con
+    precisión de segundo (y redondea la parte fraccionaria al insertar), de modo
+    que incluir microsegundos rompería la verificación cross-engine al releer.
+    """
+    fecha = reg.fecha.replace(microsecond=0).isoformat()
+    return "|".join([
+        str(reg.id), fecha, str(reg.usuario_id or ""),
+        reg.username, reg.accion, reg.objeto_tipo, reg.objeto_id,
+        reg.detalle, reg.direccion_ip, reg.agente_usuario,
+        "1" if reg.exito else "0", reg.hash_anterior,
+    ])
+
+
+def _hash(reg: RegistroAuditoria) -> str:
+    return hashlib.sha256(_material(reg).encode("utf-8")).hexdigest()
+
+
+def _ultimo_hash(db: Session) -> str:
+    reg = db.scalar(select(RegistroAuditoria).order_by(RegistroAuditoria.id.desc()).limit(1))
+    return reg.hash_registro if reg else ""
+
 
 def registrar(
     db: Session,
@@ -82,20 +117,51 @@ def registrar(
     if request is not None:
         ip = request.client.host if request.client else ""
         agente = request.headers.get("user-agent", "")
-    db.add(
-        RegistroAuditoria(
-            usuario_id=usuario.id if usuario else None,
-            username=(usuario.username if usuario else username)[:64],
-            accion=accion,
-            objeto_tipo=objeto_tipo,
-            objeto_id=str(objeto_id),
-            detalle=detalle[:2000],
-            direccion_ip=ip[:45],
-            agente_usuario=agente[:255],
-            exito=exito,
-        )
+    reg = RegistroAuditoria(
+        # Segundos enteros: evita que MySQL redondee la parte fraccionaria al
+        # persistir y desincronice el hash respecto al valor releído.
+        fecha=ahora_utc().replace(microsecond=0),
+        usuario_id=usuario.id if usuario else None,
+        username=(usuario.username if usuario else username)[:64],
+        accion=accion,
+        objeto_tipo=objeto_tipo,
+        objeto_id=str(objeto_id),
+        detalle=detalle[:2000],
+        direccion_ip=ip[:45],
+        agente_usuario=agente[:255],
+        exito=exito,
+        hash_anterior=_ultimo_hash(db),
     )
+    db.add(reg)
+    db.flush()  # asigna el id, necesario para el hash
+    reg.hash_registro = _hash(reg)
     db.flush()
+
+
+def verificar_cadena(db: Session) -> dict:
+    """Recorre la bitácora y verifica el encadenamiento por hash.
+
+    Detecta alteración de contenido (el hash recomputado no coincide) y
+    eliminación/reordenación de filas (el ``hash_anterior`` no apunta al
+    ``hash_registro`` del registro encadenado previo). Las filas sin hash
+    (anteriores a la Fase 7 o restauradas de un respaldo) se omiten.
+
+    Devuelve ``{"ok": True, "verificados": N}`` o
+    ``{"ok": False, "id_roto": id, "motivo": ...}``.
+    """
+    registros = db.scalars(select(RegistroAuditoria).order_by(RegistroAuditoria.id)).all()
+    ultimo = None
+    verificados = 0
+    for reg in registros:
+        if not reg.hash_registro:
+            continue  # registro sin encadenar (legado/restaurado)
+        if _hash(reg) != reg.hash_registro:
+            return {"ok": False, "id_roto": reg.id, "motivo": "contenido alterado"}
+        if ultimo is not None and reg.hash_anterior != ultimo.hash_registro:
+            return {"ok": False, "id_roto": reg.id, "motivo": "eslabón roto (fila eliminada o reordenada)"}
+        ultimo = reg
+        verificados += 1
+    return {"ok": True, "verificados": verificados}
 
 
 def purgar_antiguos(db: Session, dias_retencion: int) -> int:

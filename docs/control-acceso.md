@@ -66,5 +66,6 @@ enlace al detalle de cada uno.
 La tabla `concesiones_acceso` se crea automáticamente al arrancar (`create_all`). El rol
 `analista` se añadió a la restricción `CHECK` de `usuarios.rol`: las bases creadas con una
 versión anterior deben **recrearse** (entorno de pruebas/preproducción, datos desechables) o
-migrarse antes de crear analistas. Para migraciones sobre bases con datos en producción se
-recomienda introducir Alembic (pendiente, ver el plan de evolución).
+migrarse antes de crear analistas. Para migraciones sobre bases con datos en producción el
+proyecto ya incorpora **Alembic** (ver [`guia-desarrollo.md`](guia-desarrollo.md) §7): los
+cambios no aditivos futuros se entregan como revisiones versionadas.

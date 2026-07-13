@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block titulo %}Mi vault — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="encabezado-seccion">
+  <h1>Mi vault personal</h1>
+  <a class="boton boton-primario" href="/vault/nueva">+ Nueva entrada</a>
+</div>
+<p class="texto-suave">Tus contraseñas de servicios, aplicaciones o cuentas propias, separadas del
+   inventario de servidores. <strong>Solo tú</strong> ves y revelas estas entradas: ni el administrador
+   accede a su contenido. La contraseña se cifra antes de guardarse; revelar y copiar quedan
+   registrados en tu auditoría y están limitados por usuario.</p>
+
+{% if entradas %}
+<table class="tabla">
+  <thead>
+    <tr>
+      <th>Título</th><th>Usuario</th><th>Categoría</th><th>URL</th><th>Rotación</th>
+      <th>Contraseña</th><th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entradas %}
+    <tr>
+      <td><strong>{{ e.titulo }}</strong>{% if e.notas %}<br><span class="texto-suave">{{ e.notas|truncate(80) }}</span>{% endif %}</td>
+      <td class="texto-mono">{{ e.usuario_acceso or '—' }}</td>
+      <td>{{ etiquetas_categoria.get(e.categoria, e.categoria) }}</td>
+      <td>{% if e.url %}<span class="texto-mono">{{ e.url|truncate(40) }}</span>{% else %}—{% endif %}</td>
+      <td>
+        {% if e.dias_sin_rotar > rotacion_max_dias %}
+        <span class="insignia insignia-alerta">⚠ {{ e.dias_sin_rotar }} días sin rotar</span>
+        {% else %}
+        <span class="texto-suave">hace {{ e.dias_sin_rotar }} día(s)</span>
+        {% endif %}
+      </td>
+      <td>
+        <span class="texto-mono campo-password" id="vault-{{ e.id }}">••••••••</span>
+        <button type="button" class="boton" data-copiar-vault="{{ e.id }}"
+                data-destino="vault-{{ e.id }}"
+                title="Copia la contraseña al portapapeles sin mostrarla">📋 Copiar</button>
+        <button type="button" class="boton boton-suave" data-revelar-vault="{{ e.id }}"
+                data-destino="vault-{{ e.id }}">Revelar</button>
+      </td>
+      <td class="celda-acciones">
+        <a class="boton boton-suave" href="/vault/{{ e.id }}/editar">Editar</a>
+        <form method="post" action="/vault/{{ e.id }}/eliminar" class="form-inline"
+              data-confirmar="¿Eliminar «{{ e.titulo }}» de tu vault? Esta acción no se puede deshacer.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="boton boton-peligro">Eliminar</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="texto-suave">Tu vault está vacío. Usa «Nueva entrada» para guardar tu primera contraseña personal.</p>
+{% endif %}
+{% endblock %}

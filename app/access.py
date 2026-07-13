@@ -21,7 +21,7 @@ acceso a sus hipervisores ni a sus máquinas virtuales (se conceden aparte).
 from __future__ import annotations
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
     ACTIVO_FISICO,
@@ -105,10 +105,43 @@ def puede_revelar_credencial(db: Session, usuario: Usuario, credencial: Credenci
     return puede_revelar_en_activo(db, usuario, tipo, activo_id)
 
 
-def concesiones_vigentes_de_usuario(db: Session, usuario_id: int) -> list[ConcesionAcceso]:
-    """Concesiones no expiradas de un usuario (para su panel)."""
+def ids_activos_concedidos(db: Session, usuario: Usuario, tipo: str) -> list[int] | None:
+    """IDs de activos del tipo que el usuario puede ver, o ``None`` si ve todos.
+
+    Pensado para filtrar consultas EN SQL antes de aplicar un ``LIMIT`` (p. ej.
+    la búsqueda global): ``None`` significa «sin filtro» (rol con acceso
+    total); una lista —posiblemente vacía— restringe a las concesiones
+    vigentes del analista.
+    """
+    if usuario.rol in ROLES_ACCESO_TOTAL:
+        return None
+    if usuario.rol != ROL_ANALISTA:
+        return []
+    columna = _columna_activo(tipo)
     concesiones = db.scalars(
-        select(ConcesionAcceso).where(ConcesionAcceso.usuario_id == usuario_id)
+        select(ConcesionAcceso).where(
+            ConcesionAcceso.usuario_id == usuario.id,
+            columna.is_not(None),
+        )
+    ).all()
+    return [getattr(c, columna.key) for c in concesiones if c.esta_vigente()]
+
+
+def concesiones_vigentes_de_usuario(db: Session, usuario_id: int) -> list[ConcesionAcceso]:
+    """Concesiones no expiradas de un usuario (para su panel).
+
+    Precarga los tres activos posibles (``selectinload``) para que leer
+    ``nombre_activo``/``tipo_activo`` por fila no dispare una consulta por
+    concesión (evita el N+1 en el panel del analista).
+    """
+    concesiones = db.scalars(
+        select(ConcesionAcceso)
+        .where(ConcesionAcceso.usuario_id == usuario_id)
+        .options(
+            selectinload(ConcesionAcceso.servidor_fisico),
+            selectinload(ConcesionAcceso.hipervisor),
+            selectinload(ConcesionAcceso.maquina_virtual),
+        )
     ).all()
     return [c for c in concesiones if c.esta_vigente()]
 

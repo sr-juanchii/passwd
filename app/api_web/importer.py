@@ -109,6 +109,9 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             descripcion=(fila.get("descripcion") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            ram=(fila.get("ram") or "").strip(),
+            cpu=(fila.get("cpu") or "").strip(),
+            almacenamiento=(fila.get("almacenamiento") or "").strip(),
         ))
         return "vm"
 

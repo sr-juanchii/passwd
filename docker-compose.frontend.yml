@@ -31,18 +31,29 @@ services:
         PASSWD_API_BASE: http://app:8000
     restart: unless-stopped
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     expose:
       - "3000"
     networks:
       - red-passwd
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
 
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on:
-      - app
-      - frontend
+      app:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -55,6 +66,26 @@ services:
       - certbot-webroot:/var/www/certbot:ro
     networks:
       - red-passwd
+    command:
+      - /bin/sh
+      - -c
+      - |
+        (while :; do sleep 6h; nginx -s reload 2>/dev/null || true; done) &
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/.well-known/acme-challenge/ >/dev/null 2>&1 || [ $? -eq 8 ]"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 128m
+    cpus: 1.0
+    pids_limit: 128
 
 volumes:
   certbot-webroot:

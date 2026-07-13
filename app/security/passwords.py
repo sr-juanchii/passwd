@@ -8,6 +8,9 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+from pathlib import Path
+
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
@@ -15,11 +18,29 @@ from app.config import get_settings
 
 _hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 
-# Lista corta de contraseñas prohibidas por ser de uso masivo.
+# Semilla mínima de contraseñas prohibidas (por si faltara el archivo de datos).
 _PROHIBIDAS = {
     "123456789012", "contraseña123", "password1234", "administrador",
     "admin1234567", "qwerty123456", "111111111111", "passwd123456",
 }
+
+# Lista amplia empaquetada con la aplicación: las 10 000 contraseñas más
+# comunes (SecLists, licencia MIT). La comparación es por igualdad exacta en
+# minúsculas — el mínimo de longitud ya descarta casi todas, pero la lista
+# cubre las variantes largas y protege si se configura un mínimo menor.
+_RUTA_COMUNES = Path(__file__).parent / "data" / "contrasenas-comunes.txt"
+
+
+@lru_cache(maxsize=1)
+def _contrasenas_comunes() -> frozenset[str]:
+    comunes = set(_PROHIBIDAS)
+    try:
+        with _RUTA_COMUNES.open(encoding="utf-8") as archivo:
+            comunes.update(linea.strip().lower() for linea in archivo if linea.strip())
+    except OSError:
+        # Sin el archivo (instalación parcial) se conserva la semilla mínima.
+        pass
+    return frozenset(comunes)
 
 
 def hashear_password(password: str) -> str:
@@ -43,7 +64,7 @@ def validar_politica(password: str, username: str = "") -> list[str]:
     errores: list[str] = []
     if len(password) < minimo:
         errores.append(f"Debe tener al menos {minimo} caracteres.")
-    if password.lower() in _PROHIBIDAS:
+    if password.lower() in _contrasenas_comunes():
         errores.append("Es una contraseña de uso común; elija otra.")
     if username and username.lower() in password.lower():
         errores.append("No debe contener el nombre de usuario.")

@@ -20,7 +20,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 os.environ["PASSWD_DATA_DIR"] = tempfile.mkdtemp()
-os.environ["PASSWD_DATABASE_URL"] = f"sqlite:///{os.environ['PASSWD_DATA_DIR']}/v.db"
+# Respeta una URL ya definida (p. ej. MySQL en CI) para verificar cross-engine;
+# si no, usa un SQLite temporal.
+os.environ.setdefault("PASSWD_DATABASE_URL", f"sqlite:///{os.environ['PASSWD_DATA_DIR']}/v.db")
 os.environ["PASSWD_ADMIN_USERNAME"] = "admin"
 os.environ["PASSWD_ADMIN_EMAIL"] = "admin@example.com"
 os.environ["PASSWD_ADMIN_PASSWORD"] = "ClaveInicialRobusta!9"
@@ -83,7 +85,7 @@ admin = TestClient(app)
 tok, recovery_admin = login_completo(admin, "admin", "ClaveInicialRobusta!9", nueva="Cl4veMaestra!Segura26")
 s = admin.get("/api/web/session").json()
 check("auth admin -> sesión activa", s["stage"] == "activa" and s["authenticated"])
-check("admin tiene 10 permisos", sum(1 for v in s["permisos"].values() if v) == 10)
+check("admin tiene 12 permisos", sum(1 for v in s["permisos"].values() if v) == 12)
 H = {"X-CSRF-Token": tok}
 
 # === 2. Inventario: servidor dedicado + hipervisor de nivel superior -> vm + credenciales ===
@@ -91,8 +93,10 @@ r = admin.post("/api/web/servidores", headers=H, json={"nombre":"srv-dedicado","
 host_id = r.json()["id"]; check("crear servidor dedicado", r.status_code == 200)
 r = admin.post("/api/web/hipervisores", headers=H, json={"nombre":"pve-01","plataforma":"Proxmox VE","version":"8.1","ip_gestion":"10.0.0.2","descripcion":"","marca_modelo":"HPE","ubicacion":"CPD","ram":"256GB","cpu":"2x Xeon","almacenamiento":"8TB","numero_serie":"SN2","garantia_hasta":"2028-01-01","proveedor":"HPE","estado":"activo","etiquetas":"virt"})
 hv_id = r.json()["id"]; check("crear hipervisor (nivel superior)", r.status_code == 200)
-r = admin.post(f"/api/web/hipervisores/{hv_id}/vms", headers=H, json={"nombre":"vm-web","sistema_operativo":"Ubuntu 24.04","ip":"10.0.1.5","descripcion":"web","estado":"activo","etiquetas":"web"})
+r = admin.post(f"/api/web/hipervisores/{hv_id}/vms", headers=H, json={"nombre":"vm-web","sistema_operativo":"Ubuntu 24.04","ip":"10.0.1.5","descripcion":"web","ram":"8 GB","cpu":"4 vCPU","almacenamiento":"120 GB","estado":"activo","etiquetas":"web"})
 vm_id = r.json()["id"]; check("crear VM", r.status_code == 200)
+r = admin.get(f"/api/web/vms/{vm_id}")
+check("VM expone specs ram/cpu/almacenamiento", r.status_code == 200 and r.json().get("ram")=="8 GB" and r.json().get("cpu")=="4 vCPU" and r.json().get("almacenamiento")=="120 GB")
 
 r = admin.post("/api/web/credenciales", headers=H, json={"activo":"hipervisor","activo_id":hv_id,"usuario_acceso":"root","password":"PwdHv!2026xyz","servicio":"SSH","puerto":22,"descripcion":"root pve"})
 cred_hv = r.json()["id"]; check("credencial en hipervisor", r.status_code == 200)
@@ -185,6 +189,18 @@ r = admin.post(f"/api/web/tokens/{tid}/revocar", headers=H); check("revocar toke
 r = admin.get("/api/v1/inventario", headers={"Authorization": f"Bearer {token_valor}"})
 check("token revocado -> 401", r.status_code == 401)
 
+# Alcance (scope): un token 'auditoria' NO puede leer inventario y viceversa.
+r = admin.post("/api/web/tokens", headers=H, json={"nombre":"solo-aud","alcance":"auditoria","dias_validez":0})
+t_aud = r.json()["token"]
+check("token auditoria: ve auditoría", admin.get("/api/v1/auditoria", headers={"Authorization": f"Bearer {t_aud}"}).status_code == 200)
+check("token auditoria: 403 en inventario", admin.get("/api/v1/inventario", headers={"Authorization": f"Bearer {t_aud}"}).status_code == 403)
+
+# === 9 bis. Integridad de la cadena de auditoría ===
+db = next(get_db())
+from app import audit as _audit
+res_cadena = _audit.verificar_cadena(db); db.close()
+check("cadena de auditoría íntegra", res_cadena["ok"] is True and res_cadena["verificados"] > 0)
+
 # === 10. Auditoría: listar, filtrar y exportar CSV ===
 r = admin.get("/api/web/auditoria?pagina=1"); aj = r.json()
 check("auditoría lista", r.status_code == 200 and len(aj["registros"])>0 and "acciones" in aj)
@@ -215,6 +231,28 @@ csv_data = (
 r = admin.post("/api/web/importar", headers=H, files={"archivo": ("inv.csv", csv_data, "text/csv")})
 imp = r.json()
 check("importación CSV", r.status_code == 200 and imp["creados"]["servidor"]==1 and imp["creados"]["hipervisor"]==1 and imp["creados"]["credencial"]==1, str(imp.get("errores")))
+
+# === 13 bis. Vault personal (privado del usuario) ===
+r = admin.post("/api/web/vault", headers=H, json={"titulo":"Correo admin","usuario_acceso":"admin@correo","password":"VaultPwd!2026x","url":"https://correo","categoria":"cuenta","notas":"principal"})
+vault_id = r.json()["id"]; check("crear entrada de vault", r.status_code == 200)
+r = admin.get("/api/web/vault"); vl = r.json()["entradas"]
+check("listar vault (sin password)", r.status_code == 200 and len(vl)==1 and all("password" not in e for e in vl))
+r = admin.post(f"/api/web/vault/{vault_id}/revelar", headers=H)
+check("revelar vault", r.status_code == 200 and r.json()["password"]=="VaultPwd!2026x" and r.headers.get("cache-control")=="no-store")
+# El vault es privado: el operador no ve la entrada del admin
+ope_c = TestClient(app)
+tok_ope, _ = login_completo(ope_c, "ope", ope_pwd, nueva="Op3r-Clave-Segura-26!")
+Ho = {"X-CSRF-Token": tok_ope}
+r = ope_c.get(f"/api/web/vault/{vault_id}"); check("vault ajeno -> 404 (privado)", r.status_code == 404)
+r = ope_c.get("/api/web/vault"); check("operador tiene su propio vault vacío", r.status_code == 200 and r.json()["entradas"]==[])
+
+# === 13 ter. Export en claro para migración + plantilla ===
+r = admin.post("/api/web/exportar", headers=H)
+check("export en claro (CSV)", r.status_code == 200 and "PwdHv!2026xyz" in r.text and "vm-web" in r.text and "8 GB" in r.text and r.headers.get("cache-control")=="no-store")
+r = admin.get("/api/web/plantilla.csv")
+check("plantilla CSV", r.status_code == 200 and all(c in r.text.splitlines()[0] for c in ("tipo","ram","cpu","almacenamiento","password")))
+# El operador (con gestión) puede exportar; el analista no
+r = ope_c.post("/api/web/exportar", headers=Ho); check("operador puede exportar", r.status_code == 200)
 
 # === 14. Eliminaciones en cascada ===
 r = admin.delete(f"/api/web/servidores/{host_id}", headers=H); check("eliminar servidor dedicado", r.status_code == 200)

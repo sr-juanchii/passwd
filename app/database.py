@@ -28,6 +28,11 @@ def get_engine() -> Engine:
         if settings.database_url.startswith("sqlite"):
             opciones["connect_args"] = {"check_same_thread": False}
         else:
+            # Pool afinado para motores cliente/servidor (MySQL/MariaDB): tamaño,
+            # desbordamiento y reciclado antes del wait_timeout del servidor.
+            opciones["pool_size"] = settings.db_pool_size
+            opciones["max_overflow"] = settings.db_max_overflow
+            opciones["pool_recycle"] = settings.db_pool_recycle
             # MySQL/MariaDB usan REPEATABLE READ por defecto: una sesión fija su
             # snapshot al primer SELECT y no ve los commits posteriores de otras
             # transacciones durante toda su vida. En el flujo multi-paso (login →

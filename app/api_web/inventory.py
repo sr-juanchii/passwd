@@ -95,6 +95,9 @@ class VmInput(BaseModel):
     sistema_operativo: str = ""
     ip: str = ""
     descripcion: str = ""
+    ram: str = ""
+    cpu: str = ""
+    almacenamiento: str = ""
     estado: str = ESTADO_ACTIVO
     etiquetas: str = ""
 
@@ -417,6 +420,7 @@ def vm_crear(
         hipervisor_id=hipervisor.id, nombre=nombre,
         sistema_operativo=cuerpo.sistema_operativo.strip(), ip=cuerpo.ip.strip(),
         descripcion=cuerpo.descripcion.strip(),
+        ram=cuerpo.ram.strip(), cpu=cuerpo.cpu.strip(), almacenamiento=cuerpo.almacenamiento.strip(),
         estado=_estado_valido(cuerpo.estado), etiquetas=normalizar_etiquetas(cuerpo.etiquetas),
     )
     db.add(vm)
@@ -461,6 +465,9 @@ def vm_editar(
     vm.sistema_operativo = cuerpo.sistema_operativo.strip()
     vm.ip = cuerpo.ip.strip()
     vm.descripcion = cuerpo.descripcion.strip()
+    vm.ram = cuerpo.ram.strip()
+    vm.cpu = cuerpo.cpu.strip()
+    vm.almacenamiento = cuerpo.almacenamiento.strip()
     vm.estado = _estado_valido(cuerpo.estado)
     vm.etiquetas = normalizar_etiquetas(cuerpo.etiquetas)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,

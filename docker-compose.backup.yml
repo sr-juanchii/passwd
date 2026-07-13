@@ -1,0 +1,50 @@
+# Respaldos cifrados PROGRAMADOS (CIS 11 / ISO A.8.13).
+#
+# Añade un servicio que ejecuta `python -m app.cli respaldo` de forma periódica
+# usando la misma imagen y BD que la app. El archivo se cifra con la frase
+# PASSWD_BACKUP_PASSPHRASE (defínela en .env o, mejor, como Docker secret) y se
+# poda con --retener. Un fallo de respaldo dispara una alerta por correo si las
+# notificaciones están activas.
+#
+# Uso (combinar con los overlays que uses):
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml \
+#                  -f docker-compose.backup.yml up -d
+#
+# Envío offsite: monta un destino externo en /srv/passwd/backups (NFS/SMB) o
+# añade un paso rsync/cliente S3 del entorno tras cada respaldo.
+
+services:
+  backup:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - app
+    volumes:
+      - datos-passwd:/srv/passwd/data
+      - respaldos-passwd:/srv/passwd/backups
+    networks:
+      - red-passwd
+    # Espera inicial y luego un respaldo diario, conservando los 30 más recientes.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Servicio de respaldo iniciado; primer respaldo en 5 min."
+        sleep 300
+        while :; do
+          python -m app.cli respaldo \
+            --salida /srv/passwd/backups/respaldo-$(date +%Y%m%d-%H%M%S).passwd \
+            --retener 30 || echo "Respaldo falló (ver alertas)."
+          sleep 24h
+        done
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 256m
+    cpus: 0.5
+
+volumes:
+  respaldos-passwd:

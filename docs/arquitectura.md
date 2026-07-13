@@ -184,8 +184,8 @@ estos endpoints dedicados.
   la hubo — salvo `RedirigirLogin`, para que persistan revocaciones de sesión.
 - **Arranque (`init_db()`):** migra el inventario de nivel superior si detecta el esquema antiguo,
   ejecuta `create_all()` y luego `reconciliar_esquema()` para añadir columnas nuevas que falten
-  (`ALTER TABLE ADD COLUMN`, aditivo). Para cambios **no aditivos** se recomienda adoptar Alembic
-  (ver [`hoja-de-ruta.md`](hoja-de-ruta.md)).
+  (`ALTER TABLE ADD COLUMN`, aditivo). Los cambios **no aditivos** se entregan como revisiones de
+  **Alembic** (`migrations/`, ver [`guia-desarrollo.md`](guia-desarrollo.md) §7).
 - **Inventario:** dos activos de nivel superior (servidor físico e hipervisor) y máquinas virtuales
   bajo el hipervisor; las credenciales cuelgan de exactamente uno de los tres (restricción CHECK).
   Esquema completo en [`modelo-datos.md`](modelo-datos.md).

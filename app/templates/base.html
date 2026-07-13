@@ -12,6 +12,7 @@
   {% if usuario_actual %}
   <nav class="navegacion">
     <a href="/">Inventario</a>
+    {% if puede('vault.usar') %}<a href="/vault">Mi vault</a>{% endif %}
     {% if puede('inventario.gestionar') %}<a href="/importar">Importar</a>{% endif %}
     {% if puede('metricas.ver') %}<a href="/metricas">Métricas</a>{% endif %}
     {% if puede('usuarios.gestionar') %}<a href="/usuarios">Usuarios</a>{% endif %}

@@ -25,6 +25,18 @@
     <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
       placeholder="Ej.: Servidor de correo institucional (Postfix + Dovecot)">{{ vm.descripcion if vm else '' }}</textarea>
 
+    <label for="ram">RAM asignada</label>
+    <input id="ram" name="ram" type="text" maxlength="60"
+           value="{{ vm.ram if vm else '' }}" placeholder="Ej.: 8 GB">
+
+    <label for="cpu">CPU asignada (núcleos/vCPU)</label>
+    <input id="cpu" name="cpu" type="text" maxlength="120"
+           value="{{ vm.cpu if vm else '' }}" placeholder="Ej.: 4 vCPU">
+
+    <label for="almacenamiento">Almacenamiento asignado</label>
+    <input id="almacenamiento" name="almacenamiento" type="text" maxlength="120"
+           value="{{ vm.almacenamiento if vm else '' }}" placeholder="Ej.: 120 GB SSD">
+
     <label for="estado">Estado</label>
     <select id="estado" name="estado">
       {% for e in estados %}

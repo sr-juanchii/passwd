@@ -58,11 +58,16 @@ def buscar_sesion_valida(db: Session, token: str) -> SesionWeb | None:
     if sesion is None or sesion.revocada_en is not None:
         return None
     ahora = ahora_utc()
-    inactividad_maxima = timedelta(minutes=get_settings().session_idle_minutes)
-    if sesion.expira_en <= ahora or (ahora - sesion.ultima_actividad) > inactividad_maxima:
+    settings = get_settings()
+    inactividad_maxima = timedelta(minutes=settings.session_idle_minutes)
+    inactiva = ahora - sesion.ultima_actividad
+    if sesion.expira_en <= ahora or inactiva > inactividad_maxima:
         sesion.revocada_en = ahora
         return None
-    sesion.ultima_actividad = ahora
+    # Amortiguar la escritura: solo actualizar la marca si pasó el umbral, para
+    # no escribir en la BD en cada petición (una por acción sería costoso).
+    if inactiva.total_seconds() >= settings.activity_throttle_seconds:
+        sesion.ultima_actividad = ahora
     return sesion
 
 

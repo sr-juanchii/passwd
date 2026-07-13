@@ -10,6 +10,18 @@
 
 server_tokens off;
 
+# ── Rate limiting y compresión (contexto http) — defensa en profundidad ──────
+limit_req_zone $binary_remote_addr zone=passwd_req:10m rate=20r/s;
+limit_req_zone $binary_remote_addr zone=passwd_login:10m rate=2r/s;
+limit_conn_zone $binary_remote_addr zone=passwd_conn:10m;
+
+gzip on;
+gzip_comp_level 5;
+gzip_min_length 1024;
+gzip_proxied any;
+gzip_types text/plain text/css application/json application/javascript
+           application/x-javascript text/xml application/xml image/svg+xml;
+
 # ── HTTP (80): solo desafío ACME y redirección permanente a HTTPS ────────────
 # Solo IPv4 por compatibilidad (muchos Docker traen IPv6 deshabilitado y un
 # `listen [::]` impediría arrancar). Para doble pila, añada las líneas
@@ -64,6 +76,7 @@ server {
 
     # La aplicación aplica su propio límite (64 KB); nginx corta abusos brutos.
     client_max_body_size 1m;
+    limit_conn passwd_conn 30;
 
     # ── nginx detrás de OTRO proxy/balanceador (opcional) ────────────────────
     # Por defecto, nginx es el borde y $remote_addr es la IP del cliente final.
@@ -77,7 +90,21 @@ server {
     #real_ip_header X-Forwarded-For;
     #real_ip_recursive on;
 
+    # Endpoints de login/MFA: límite de borde más estricto (anti fuerza bruta).
+    location ~ ^/(login|mfa|password) {
+        limit_req zone=passwd_login burst=10 nodelay;
+        proxy_pass http://app:8000;
+        proxy_http_version 1.1;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Host $host;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+    }
+
     location / {
+        limit_req zone=passwd_req burst=40 nodelay;
         proxy_pass http://app:8000;
         proxy_http_version 1.1;
 

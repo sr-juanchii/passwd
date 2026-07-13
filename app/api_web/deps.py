@@ -34,6 +34,9 @@ def sesion_activa_json(request: Request, db: Annotated[Session, Depends(get_db)]
     usuario = db.get(Usuario, sesion.usuario_id)
     if usuario is None or not usuario.activo:
         sesion.revocada_en = sesion.ultima_actividad
+        # Se confirma aquí: el rollback posterior del 401 no debe deshacer
+        # la revocación de la sesión de un usuario desactivado.
+        db.commit()
         raise HTTPException(status_code=401, detail="No autenticado")
     request.state.sesion = sesion
     return sesion

@@ -257,4 +257,70 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
   });
+
+  // Vault personal: revelar/copiar la contraseña de una entrada (auditado,
+  // limitado). Mismo comportamiento que las credenciales pero contra /vault.
+  function pedirPasswordVault(entradaId, accion) {
+    return fetch("/vault/" + entradaId + "/" + accion, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "csrf_token=" + encodeURIComponent(tokenCsrf()),
+      credentials: "same-origin",
+    }).then(function (r) {
+      if (r.status === 429) throw new Error("límite alcanzado; espere unos minutos");
+      if (!r.ok) throw new Error("error " + r.status);
+      return r.json();
+    });
+  }
+
+  document.querySelectorAll("button[data-revelar-vault]").forEach(function (boton) {
+    boton.addEventListener("click", function () {
+      var destino = document.getElementById(boton.dataset.destino);
+      if (!destino) return;
+      if (boton.dataset.visible === "1") {
+        destino.textContent = "••••••••";
+        boton.dataset.visible = "0";
+        boton.textContent = "Revelar";
+        return;
+      }
+      boton.disabled = true;
+      pedirPasswordVault(boton.dataset.revelarVault, "revelar")
+        .then(function (datos) {
+          destino.textContent = datos.password;
+          boton.dataset.visible = "1";
+          boton.textContent = "Ocultar";
+          window.setTimeout(function () {
+            if (boton.dataset.visible === "1") {
+              destino.textContent = "••••••••";
+              boton.dataset.visible = "0";
+              boton.textContent = "Revelar";
+            }
+          }, 30000);
+        })
+        .catch(function (e) { destino.textContent = "(" + e.message + ")"; })
+        .finally(function () { boton.disabled = false; });
+    });
+  });
+
+  document.querySelectorAll("button[data-copiar-vault]").forEach(function (boton) {
+    var etiquetaOriginal = boton.textContent;
+    boton.addEventListener("click", function () {
+      var destino = document.getElementById(boton.dataset.destino);
+      boton.disabled = true;
+      pedirPasswordVault(boton.dataset.copiarVault, "copiar")
+        .then(function (datos) { return escribirPortapapeles(datos.password); })
+        .then(function () {
+          boton.textContent = "✓ Copiada (30 s)";
+          window.setTimeout(function () {
+            escribirPortapapeles("").catch(function () {});
+            boton.textContent = etiquetaOriginal;
+          }, 30000);
+        })
+        .catch(function (error) {
+          if (destino) destino.textContent = "(" + error.message + ")";
+          boton.textContent = etiquetaOriginal;
+        })
+        .finally(function () { boton.disabled = false; });
+    });
+  });
 });

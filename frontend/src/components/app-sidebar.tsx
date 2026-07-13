@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Upload,
   Users,
+  Wallet,
 } from "lucide-react";
 import {
   Sidebar,
@@ -41,6 +42,7 @@ interface Item {
 
 const PRINCIPAL: Item[] = [
   { titulo: "Inventario", url: "/", icono: ServerCog, permiso: "inventario.ver" },
+  { titulo: "Mi vault", url: "/vault", icono: Wallet, permiso: "vault.usar" },
   { titulo: "Buscar", url: "/buscar", icono: Search, permiso: "inventario.ver" },
   { titulo: "Importar", url: "/importar", icono: Upload, permiso: "inventario.gestionar" },
 ];

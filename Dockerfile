@@ -1,3 +1,12 @@
+# ── Etapa de construcción: instala dependencias aisladas en un prefijo ───────
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+COPY requirements.txt ./
+# Instala en un prefijo copiable (no arrastra el toolchain a la imagen final).
+RUN pip install --no-cache-dir --prefix=/install --timeout 120 --retries 10 -r requirements.txt
+
+# ── Etapa de ejecución: imagen mínima con usuario sin privilegios ────────────
 FROM python:3.12-slim
 
 # Usuario sin privilegios (CIS 4.x — configuración segura)
@@ -5,11 +14,12 @@ RUN groupadd --gid 1001 passwd && useradd --uid 1001 --gid 1001 --create-home pa
 
 WORKDIR /srv/passwd
 
-COPY requirements.txt ./
-# Tolerante a redes lentas: más tiempo de lectura y reintentos por paquete
-RUN pip install --no-cache-dir --timeout 120 --retries 10 -r requirements.txt
+# Copia solo las dependencias ya instaladas desde la etapa de construcción.
+COPY --from=builder /install /usr/local
 
 COPY app ./app
+COPY migrations ./migrations
+COPY alembic.ini ./alembic.ini
 
 RUN mkdir -p /srv/passwd/data && chown -R passwd:passwd /srv/passwd
 USER passwd

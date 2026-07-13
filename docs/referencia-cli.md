@@ -25,6 +25,9 @@ web. Llama a `init_db()` antes de operar, de modo que crea/concilia el esquema s
 | `crear-admin` | Crear una cuenta de administrador. |
 | `respaldo` | Exportar un respaldo cifrado de todo el sistema. |
 | `restaurar` | Restaurar un respaldo cifrado. |
+| `recifrar` | Recifrar todos los secretos con la clave primaria (rotación de la clave de cifrado). |
+| `exportar-csv` | Exportar el inventario **en claro** a CSV para migración (formato del importador). |
+| `verificar-auditoria` | Verificar la integridad (encadenamiento por hash) de la bitácora de auditoría. |
 
 Todos devuelven **código de salida 0** si tienen éxito y **1** ante un error (con el motivo en
 `stderr`).
@@ -87,12 +90,15 @@ python -m app.cli respaldo --salida copia.passwd
 | `--retener N` | no | `0` (sin poda) | Conserva solo los **N** respaldos `*.passwd` más recientes del directorio de salida y elimina el resto. |
 
 **Resolución de la frase** (en este orden): `--passphrase` → variable `PASSWD_BACKUP_PASSPHRASE` →
-solicitud interactiva. La frase debe tener al menos 12 caracteres.
+solicitud interactiva. La frase debe tener al menos **16 caracteres**.
 
 - El respaldo es **portable**: puede restaurarse en otra instancia aunque tenga claves de cifrado
   distintas, siempre que se conozca la frase.
 - **Sin la frase, el archivo es irrecuperable.** Custódiela aparte del respaldo.
 - Si el respaldo falla y las notificaciones están activas, se envía una **alerta por correo**.
+- **Formato v2**: el archivo declara sus parámetros de derivación (scrypt `n=2^17`) y se validan
+  con topes de cordura al abrirlo. Los respaldos **v1** existentes (creados con versiones
+  anteriores, scrypt `n=2^14` y frase mínima de 12) **siguen siendo restaurables**.
 
 ### Ejemplo: respaldo desatendido por cron
 
@@ -123,16 +129,81 @@ python -m app.cli restaurar --entrada copia.passwd --sobrescribir
 - Al terminar, imprime un **resumen** con la cantidad restaurada de cada entidad (usuarios,
   servidores, hipervisores, VMs, credenciales, auditoría).
 
-### Rotación de la clave de cifrado (caso de uso)
+---
 
-Si sospecha que `PASSWD_ENCRYPTION_KEY` se ha comprometido:
+## `recifrar`
+
+Reescribe **todos los secretos cifrados** (contraseñas de credenciales, historial, semillas TOTP
+y notas de los tres tipos de activo) con la **clave primaria** de `PASSWD_ENCRYPTION_KEY`. Es el
+mecanismo de **rotación de la clave de cifrado sin restaurar respaldos**: la variable admite
+varias claves separadas por comas y la primera es la que cifra (las demás solo descifran).
 
 ```bash
-python -m app.cli respaldo --salida rotacion.passwd        # 1) respaldo con frase fuerte
-# 2) cambiar PASSWD_ENCRYPTION_KEY en .env y reiniciar la app
-python -m app.cli restaurar --entrada rotacion.passwd --sobrescribir   # 3) restaurar (re-cifra con la clave nueva)
-# 4) destruir rotacion.passwd de forma segura y registrar la operación
+python -m app.cli recifrar
 ```
+
+### Rotación de la clave de cifrado (procedimiento)
+
+Si sospecha que `PASSWD_ENCRYPTION_KEY` se ha comprometido (o toca rotarla por política):
+
+```bash
+# 0) respaldo previo, por prudencia
+python -m app.cli respaldo --salida previa-rotacion.passwd
+
+# 1) generar la clave nueva y anteponerla a la actual (la nueva CIFRA, la vieja aún DESCIFRA)
+#    .env:  PASSWD_ENCRYPTION_KEY=<nueva>,<antigua>
+#    reiniciar la app para que tome el cambio
+
+# 2) recifrar todo el material con la clave nueva
+python -m app.cli recifrar
+
+# 3) dejar SOLO la clave nueva y reiniciar
+#    .env:  PASSWD_ENCRYPTION_KEY=<nueva>
+
+# 4) destruir la clave antigua de forma segura y registrar la operación
+```
+
+Imprime cuántos valores recifró por tabla y termina con código 0. Si ninguna clave configurada
+puede descifrar algún valor, falla **sin escribir cambios** (todo o nada).
+
+---
+
+## `exportar-csv`
+
+Exporta **todo el inventario** (servidores, hipervisores, VMs y credenciales) a un CSV con las
+contraseñas **en claro**, en el **mismo formato que acepta `importar`**: pensado para editar la
+información y migrarla entre versiones (round-trip). **No** incluye los vaults personales (privados
+de cada usuario).
+
+```bash
+python -m app.cli exportar-csv --salida inventario.csv
+```
+
+| Opción | Obligatoria | Descripción |
+|---|:-:|---|
+| `--salida` | sí | Ruta del CSV a crear (se escribe con permisos `0600`). |
+
+- La operación queda **auditada** (`inventario_exportado`).
+- El archivo **contiene contraseñas en claro**: custódielo por un canal seguro y **destrúyalo** tras
+  la migración. Desde la interfaz web equivale al botón «Exportar inventario en claro» de *Importar*
+  (permiso `inventario.exportar`); la plantilla vacía está en `GET /plantilla.csv`.
+
+---
+
+## `verificar-auditoria`
+
+Recorre la bitácora y verifica su **encadenamiento por hash**: cada registro incluye el hash del
+anterior, de modo que alterar el contenido de una fila o eliminar/reordenar filas rompe la cadena.
+
+```bash
+python -m app.cli verificar-auditoria
+```
+
+- Código de salida **0** si la cadena está íntegra; **1** e indica el `id` del primer registro roto y
+  el motivo (contenido alterado o eslabón roto) si detecta manipulación.
+- Los registros anteriores a esta función o restaurados desde un respaldo (sin hash) se omiten.
+- Complementa el reenvío a un SIEM (`/api/v1/auditoria`): la cadena da evidencia local de que la
+  bitácora no se ha manipulado en la propia base de datos.
 
 ---
 

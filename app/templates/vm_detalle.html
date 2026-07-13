@@ -33,6 +33,9 @@
     <dt>Sistema / función</dt><dd>{{ vm.descripcion or '—' }}</dd>
     <dt>Sistema operativo</dt><dd>{{ vm.sistema_operativo or '—' }}</dd>
     <dt>Dirección IP</dt><dd class="texto-mono">{{ vm.ip or '—' }}</dd>
+    <dt>RAM asignada</dt><dd class="texto-mono">{{ vm.ram or '—' }}</dd>
+    <dt>CPU asignada</dt><dd class="texto-mono">{{ vm.cpu or '—' }}</dd>
+    <dt>Almacenamiento</dt><dd class="texto-mono">{{ vm.almacenamiento or '—' }}</dd>
     <dt>Etiquetas</dt><dd>
       {% for t in vm.lista_etiquetas %}<span class="insignia insignia-etiqueta">{{ t }}</span> {% else %}—{% endfor %}
     </dd>

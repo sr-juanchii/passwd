@@ -13,6 +13,9 @@ const VACIO: VmInput = {
   sistema_operativo: "",
   ip: "",
   descripcion: "",
+  ram: "",
+  cpu: "",
+  almacenamiento: "",
   estado: "activo",
   etiquetas: "",
 };
@@ -51,6 +54,9 @@ export function VmForm({
         <CampoTexto id="nombre" label="Nombre" required value={v.nombre} onChange={(x) => set("nombre", x)} />
         <CampoTexto id="so" label="Sistema operativo" value={v.sistema_operativo} onChange={(x) => set("sistema_operativo", x)} />
         <CampoTexto id="ip" label="Dirección IP" value={v.ip} onChange={(x) => set("ip", x)} />
+        <CampoTexto id="ram" label="RAM asignada" value={v.ram} onChange={(x) => set("ram", x)} />
+        <CampoTexto id="cpu" label="CPU asignada (núcleos/vCPU)" value={v.cpu} onChange={(x) => set("cpu", x)} />
+        <CampoTexto id="alm" label="Almacenamiento asignado" value={v.almacenamiento} onChange={(x) => set("almacenamiento", x)} />
         <CampoEstado value={v.estado} onChange={(x) => set("estado", x)} />
         <CampoTexto id="etq" label="Etiquetas (separadas por coma)" value={v.etiquetas} onChange={(x) => set("etiquetas", x)} />
         <CampoArea id="desc" label="Descripción" value={v.descripcion} onChange={(x) => set("descripcion", x)} />

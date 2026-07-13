@@ -1,4 +1,4 @@
-import type { EstadoActivo, NivelAcceso, Rol, TipoActivo } from "./types";
+import type { CategoriaVault, EstadoActivo, NivelAcceso, Rol, TipoActivo } from "./types";
 
 export const ETIQUETAS_ROL: Record<Rol, string> = {
   admin: "Administrador",
@@ -25,6 +25,23 @@ export const ETIQUETAS_TIPO_ACTIVO: Record<TipoActivo, string> = {
 };
 
 export const SERVICIOS = ["SSH", "RDP", "iLO/IPMI", "Web", "VNC", "WinRM", "Telnet", "Otro"];
+
+export const ETIQUETAS_CATEGORIA_VAULT: Record<CategoriaVault, string> = {
+  servicio: "Servicio",
+  aplicacion: "Aplicación",
+  cuenta: "Cuenta propia",
+  otro: "Otro",
+};
+
+export const CATEGORIAS_VAULT: CategoriaVault[] = ["servicio", "aplicacion", "cuenta", "otro"];
+
+export const ETIQUETAS_TOKEN_ALCANCE: Record<import("./types").TokenAlcance, string> = {
+  todo: "Auditoría e inventario",
+  auditoria: "Solo auditoría",
+  inventario: "Solo inventario",
+};
+
+export const TOKEN_ALCANCES: import("./types").TokenAlcance[] = ["todo", "auditoria", "inventario"];
 
 export const ESTADOS: EstadoActivo[] = ["activo", "mantenimiento", "retirado"];
 

@@ -168,7 +168,7 @@ def test_respaldo_con_frase_incorrecta_rechazado(client):
         db.commit()
         with pytest.raises(backup.ErrorRespaldo, match="incorrecta"):
             backup.restaurar(db, datos, "frase-equivocada-123", sobrescribir=True)
-        with pytest.raises(backup.ErrorRespaldo, match="12 caracteres"):
+        with pytest.raises(backup.ErrorRespaldo, match=f"{backup.LARGO_MINIMO_FRASE} caracteres"):
             backup.exportar(db, "corta")
         with pytest.raises(backup.ErrorRespaldo, match="sobrescribir"):
             backup.restaurar(db, datos, FRASE_RESPALDO, sobrescribir=False)

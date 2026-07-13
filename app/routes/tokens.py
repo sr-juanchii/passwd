@@ -15,7 +15,14 @@ from sqlalchemy.orm import Session
 from app import audit
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
-from app.models import TokenApi, Usuario
+from app.models import (
+    ETIQUETAS_TOKEN_ALCANCE,
+    TOKEN_ALCANCE_TODO,
+    TOKEN_ALCANCES,
+    TokenApi,
+    Usuario,
+    ahora_utc,
+)
 
 router = APIRouter()
 
@@ -33,6 +40,7 @@ def tokens_lista(
     tokens = db.scalars(select(TokenApi).order_by(TokenApi.creado_en.desc())).all()
     return render(request, "tokens.html", {
         "usuario_actual": usuario, "tokens": tokens, "nuevo_token": nuevo_token, "msg": msg,
+        "alcances": TOKEN_ALCANCES, "etiquetas_alcance": ETIQUETAS_TOKEN_ALCANCE,
     })
 
 
@@ -42,18 +50,27 @@ def token_crear(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, GESTIONAR],
     nombre: Annotated[str, Form()] = "",
+    alcance: Annotated[str, Form()] = TOKEN_ALCANCE_TODO,
+    dias_validez: Annotated[int, Form()] = 0,
 ):
+    from datetime import timedelta
+
     nombre = nombre.strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre del token es obligatorio.")
+    alcance = alcance if alcance in TOKEN_ALCANCES else TOKEN_ALCANCE_TODO
+    expira_en = ahora_utc() + timedelta(days=dias_validez) if dias_validez > 0 else None
     valor = secrets.token_urlsafe(32)  # se muestra una sola vez
     db.add(TokenApi(
         nombre=nombre,
         token_hash=hashlib.sha256(valor.encode("ascii")).hexdigest(),
+        alcance=alcance,
+        expira_en=expira_en,
         creado_por_id=usuario.id,
     ))
+    caduca = f", caduca en {dias_validez} día(s)" if expira_en else ", sin caducidad"
     audit.registrar(db, audit.TOKEN_CREADO, request=request, usuario=usuario,
-                    objeto_tipo="token_api", detalle=f"Token «{nombre}» creado (solo lectura)")
+                    objeto_tipo="token_api", detalle=f"Token «{nombre}» creado (alcance {alcance}{caduca})")
     # El valor en claro viaja una única vez en el redirect a la propia página.
     return RedirectResponse(f"/tokens?nuevo_token={quote(valor)}", status_code=303)
 

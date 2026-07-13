@@ -213,6 +213,16 @@ MFA + guardar códigos de recuperación. Crear el resto de usuarios con el menor
 
 ### 4.7 Respaldos programados
 
+**Opción A — overlay dedicado (recomendada):** el servicio de respaldo
+[`docker-compose.backup.yml`](../docker-compose.backup.yml) ejecuta un respaldo cifrado **diario**
+con retención dentro del propio stack (combínalo con los overlays que uses):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml -f docker-compose.backup.yml up -d
+```
+
+**Opción B — cron del anfitrión:**
+
 ```bash
 # /etc/cron.d/passwd-respaldo  (la frase viene del .env: PASSWD_BACKUP_PASSPHRASE)
 30 2 * * * root cd /srv/passwd && docker compose exec -T app \

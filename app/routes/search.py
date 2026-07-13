@@ -54,37 +54,61 @@ def buscar(
 
     patron = f"%{consulta.lower()}%"
 
+    # Restricción por acceso a nivel de objeto ANTES del LIMIT: si se
+    # truncara primero, un analista podría no ver coincidencias de activos
+    # que sí tiene concedidos más allá de las primeras filas.
+    ids_fisicos = access.ids_activos_concedidos(db, usuario, ACTIVO_FISICO)
+    ids_hipervisores = access.ids_activos_concedidos(db, usuario, ACTIVO_HIPERVISOR)
+    ids_vms = access.ids_activos_concedidos(db, usuario, ACTIVO_VM)
+
+    consulta_fisicos = select(ServidorFisico).where(or_(
+        _like(ServidorFisico.nombre, patron),
+        _like(ServidorFisico.ip_gestion, patron),
+        _like(ServidorFisico.ubicacion, patron),
+        _like(ServidorFisico.sistema_operativo, patron),
+        _like(ServidorFisico.etiquetas, patron),
+    ))
+    if ids_fisicos is not None:
+        consulta_fisicos = consulta_fisicos.where(ServidorFisico.id.in_(ids_fisicos))
     fisicos = db.scalars(
-        select(ServidorFisico).where(or_(
-            _like(ServidorFisico.nombre, patron),
-            _like(ServidorFisico.ip_gestion, patron),
-            _like(ServidorFisico.ubicacion, patron),
-            _like(ServidorFisico.sistema_operativo, patron),
-            _like(ServidorFisico.etiquetas, patron),
-        )).order_by(ServidorFisico.nombre).limit(LIMITE_POR_TIPO)
+        consulta_fisicos.order_by(ServidorFisico.nombre).limit(LIMITE_POR_TIPO)
     ).all()
+
+    consulta_hipervisores = select(Hipervisor).where(or_(
+        _like(Hipervisor.nombre, patron),
+        _like(Hipervisor.plataforma, patron),
+        _like(Hipervisor.ip_gestion, patron),
+        _like(Hipervisor.etiquetas, patron),
+    ))
+    if ids_hipervisores is not None:
+        consulta_hipervisores = consulta_hipervisores.where(Hipervisor.id.in_(ids_hipervisores))
     hipervisores = db.scalars(
-        select(Hipervisor).where(or_(
-            _like(Hipervisor.nombre, patron),
-            _like(Hipervisor.plataforma, patron),
-            _like(Hipervisor.ip_gestion, patron),
-            _like(Hipervisor.etiquetas, patron),
-        )).order_by(Hipervisor.nombre).limit(LIMITE_POR_TIPO)
+        consulta_hipervisores.order_by(Hipervisor.nombre).limit(LIMITE_POR_TIPO)
     ).all()
+
+    consulta_vms = select(MaquinaVirtual).where(or_(
+        _like(MaquinaVirtual.nombre, patron),
+        _like(MaquinaVirtual.ip, patron),
+        _like(MaquinaVirtual.sistema_operativo, patron),
+        _like(MaquinaVirtual.etiquetas, patron),
+    ))
+    if ids_vms is not None:
+        consulta_vms = consulta_vms.where(MaquinaVirtual.id.in_(ids_vms))
     vms = db.scalars(
-        select(MaquinaVirtual).where(or_(
-            _like(MaquinaVirtual.nombre, patron),
-            _like(MaquinaVirtual.ip, patron),
-            _like(MaquinaVirtual.sistema_operativo, patron),
-            _like(MaquinaVirtual.etiquetas, patron),
-        )).order_by(MaquinaVirtual.nombre).limit(LIMITE_POR_TIPO)
+        consulta_vms.order_by(MaquinaVirtual.nombre).limit(LIMITE_POR_TIPO)
     ).all()
-    credenciales = db.scalars(
-        select(Credencial).where(or_(
-            _like(Credencial.usuario_acceso, patron),
-            _like(Credencial.servicio, patron),
-        )).limit(LIMITE_POR_TIPO)
-    ).all()
+
+    consulta_credenciales = select(Credencial).where(or_(
+        _like(Credencial.usuario_acceso, patron),
+        _like(Credencial.servicio, patron),
+    ))
+    if ids_fisicos is not None:
+        consulta_credenciales = consulta_credenciales.where(or_(
+            Credencial.servidor_fisico_id.in_(ids_fisicos),
+            Credencial.hipervisor_id.in_(ids_hipervisores or []),
+            Credencial.maquina_virtual_id.in_(ids_vms or []),
+        ))
+    credenciales = db.scalars(consulta_credenciales.limit(LIMITE_POR_TIPO)).all()
 
     # Filtrado por acceso a nivel de objeto (clave para no filtrar el inventario).
     def visibles(items, tipo):

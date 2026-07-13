@@ -17,6 +17,11 @@ API **de solo lectura** autenticada por **token Bearer**, pensada para **SIEM y 
   defecto). Al superarlo responde **429**.
 - **Tokens revocables:** en la base de datos solo se guarda el **hash SHA-256** del token; un
   administrador puede revocarlo en cualquier momento (deja de funcionar de inmediato).
+- **Alcance (scope) por token (mínimo privilegio):** `todo` (auditoría e inventario), `auditoria`
+  (solo `/api/v1/auditoria`) o `inventario` (solo `/api/v1/inventario`). Usar el endpoint fuera del
+  alcance responde **403**.
+- **Caducidad opcional:** un token puede crearse con vencimiento; pasado, responde **401** («Token
+  caducado»).
 - **Úsese siempre sobre TLS.**
 
 ### Obtener un token
@@ -31,6 +36,8 @@ Un administrador lo crea en **Tokens** (web) o en `/api/web/tokens` (frontend). 
 |---|---|---|
 | Falta la cabecera o no empieza por `Bearer ` | `401` | `{"detail":"Token de API requerido."}` (+ `WWW-Authenticate: Bearer`) |
 | Token inexistente o revocado | `401` | `{"detail":"Token inválido o revocado."}` |
+| Token caducado | `401` | `{"detail":"Token caducado."}` |
+| Endpoint fuera del alcance del token | `403` | `{"detail":"El token no tiene alcance «...»."}` |
 | Límite de tasa superado | `429` | `{"detail":"Límite de peticiones de API alcanzado."}` |
 
 Cada petición válida actualiza el campo **«último uso»** del token (visible en la consola de admin).
@@ -83,7 +90,11 @@ curl -s https://passwd.su-organizacion.tld/api/v1/auditoria?desde_id=0&limit=200
 
 ## `GET /api/v1/inventario`
 
-Devuelve el inventario completo en JSON, **sin credenciales ni notas**.
+Devuelve el inventario completo en JSON, **sin credenciales ni notas**. Requiere alcance
+`inventario` o `todo`. Las máquinas virtuales incluyen `ram`, `cpu` y `almacenamiento` asignados.
+
+**Parámetros de paginación (opcionales):** `limit` (>0, tope **500**) y `offset` paginan cada
+colección por separado; omitidos, devuelve todo el inventario.
 
 **Respuesta:**
 

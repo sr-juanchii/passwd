@@ -29,7 +29,7 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 |---|---|
 | Autenticación | Contraseña (hash **Argon2id**) + **MFA TOTP obligatorio** (RFC 6238) con QR de enrolamiento generado localmente; anti-replay del último código usado; **códigos de recuperación de un solo uso** (8 por usuario, solo hashes en BD) por si se pierde el dispositivo |
 | Sesiones | Gestionadas en servidor (revocables), token rotado al elevar privilegios, cookie `HttpOnly` + `Secure` + `SameSite=Strict`, expiración por inactividad (15 min) y absoluta (8 h) |
-| Cuentas | Bloqueo tras 5 intentos fallidos, límite de tasa por IP, contraseñas temporales de un solo uso con cambio forzado, política de contraseñas (mín. 12, lista de comunes prohibidas), desactivación con revocación inmediata |
+| Cuentas | Bloqueo tras 5 intentos fallidos, límite de tasa por IP, contraseñas temporales de un solo uso con cambio forzado, política de contraseñas (mín. 12, lista empaquetada de 10 000 comunes prohibidas), desactivación con revocación inmediata |
 | Autorización | RBAC con cuatro roles (**admin**, **operador**, **auditor**, **analista**) más **control de acceso por objeto**: el analista solo ve y usa los activos que un administrador le concede (con nivel y caducidad) — matriz en [`app/rbac.py`](app/rbac.py), concesiones en [`app/access.py`](app/access.py) |
 | Datos | Contraseñas de activos y semillas TOTP **cifradas con Fernet (AES)** antes de tocar la base de datos; claves criptográficas fuera del repositorio; **generador de contraseñas robustas** (CSPRNG, 20 caracteres) en el formulario |
 | Exposición mínima | Botón **«Copiar» sin visualización**: la contraseña va directo al portapapeles sin mostrarse en pantalla y se limpia a los 30 s; «Revelar» se re-oculta solo; **límite anti-exfiltración** por usuario (20 accesos/5 min configurables) compartido entre ambas vías |
@@ -37,7 +37,9 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Respaldo | **Respaldo cifrado portátil** por CLI (`respaldo`/`restaurar`): todo el sistema en un archivo cifrado con frase (scrypt + Fernet), restaurable incluso en otra instancia con claves distintas |
 | Auditoría | Bitácora completa: logins (éxito/fallo), MFA, bloqueos, gestión de usuarios, CRUD del inventario, accesos denegados y **cada acceso a una contraseña** (revelado y copiado por separado, incluso los intentos bloqueados por exceso), con usuario, IP y agente; retención configurable (mínimo 90 días); **exportación a CSV** (filtrada, auditada, con mitigación de inyección de fórmulas) |
 | Visibilidad | **Dashboard de métricas** de seguridad (rotación pendiente, logins fallidos 24 h/7 d, cuentas sin MFA, top de accesos a credenciales, concesiones por caducar) y **búsqueda global** del inventario filtrada por el control de acceso por objeto |
-| Inventario ampliado | Campos de **hardware** (RAM/CPU/almacenamiento/serie/garantía/proveedor) y **estado** (activo/mantenimiento/retirado); **etiquetas** con búsqueda; **notas seguras cifradas** por activo (revelado auditado); **historial de contraseñas** anteriores; **importación masiva CSV** (en memoria, cifrando al guardar) |
+| Inventario ampliado | Campos de **hardware** (RAM/CPU/almacenamiento/serie/garantía/proveedor) y **estado** (activo/mantenimiento/retirado) —las **máquinas virtuales** llevan además RAM/CPU/almacenamiento **asignados**—; **etiquetas** con búsqueda; **notas seguras cifradas** por activo (revelado auditado); **historial de contraseñas** anteriores; **importación masiva CSV** (en memoria, cifrando al guardar) |
+| Vault personal | Cada usuario tiene un **vault privado** para contraseñas de **servicios, aplicaciones o cuentas propias**, separado del inventario: solo el dueño lo ve y revela (ni el admin), cifrado en reposo, revelado/copiado auditado y limitado, incluido en el respaldo cifrado |
+| Migración | **Export en claro a CSV** (admin/operador, auditado) en el **mismo formato del importador** para editar y migrar entre versiones (round-trip), más **plantilla CSV** descargable; los vaults personales quedan fuera |
 | Operación proactiva | **Alertas por correo** opt-in (cuenta bloqueada, posible exfiltración, alta de usuario, fallo de respaldo; sin secretos); **respaldos programados** con retención y aviso de fallo; **limitador de tasa** opcional en BD para despliegues multi-instancia |
 | Integración | **API REST de solo lectura** con tokens Bearer para SIEM/automatización (`/api/v1/auditoria`, `/api/v1/inventario`; nunca expone secretos); tokens gestionados y revocables |
 | Interfaz | Modo claro/oscuro persistente, compatible con la CSP estricta (sin código embebido) |
@@ -204,7 +206,7 @@ También puede crearse un administrador por CLI: `python -m app.cli crear-admin 
 ### Respaldo y restauración
 
 ```bash
-python -m app.cli respaldo --salida copia.passwd          # pide una frase de cifrado (mín. 12)
+python -m app.cli respaldo --salida copia.passwd          # pide una frase de cifrado (mín. 16)
 python -m app.cli restaurar --entrada copia.passwd --sobrescribir
 ```
 

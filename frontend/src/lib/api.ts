@@ -20,6 +20,8 @@ import type {
   TipoActivo,
   TokenApi,
   Usuario,
+  VaultEntrada,
+  VaultInput,
   VmDetalle,
   VmInput,
 } from "./types";
@@ -169,6 +171,42 @@ export const api = {
       csrf: true,
     }),
 
+  // --- Vault personal (privado del usuario) ---
+  vault: () => request<{ entradas: VaultEntrada[] }>("/vault"),
+  vaultEntrada: (id: number) => request<VaultEntrada>(`/vault/${id}`),
+  crearVault: (b: VaultInput) =>
+    request<{ id: number }>("/vault", { method: "POST", body: b, csrf: true }),
+  editarVault: (id: number, b: VaultInput) =>
+    request<{ id: number }>(`/vault/${id}`, { method: "PUT", body: b, csrf: true }),
+  eliminarVault: (id: number) =>
+    request<{ ok: boolean }>(`/vault/${id}`, { method: "DELETE", csrf: true }),
+  revelarVault: (id: number) =>
+    request<{ usuario: string; password: string }>(`/vault/${id}/revelar`, { method: "POST", csrf: true }),
+  copiarVault: (id: number) =>
+    request<{ usuario: string; password: string }>(`/vault/${id}/copiar`, { method: "POST", csrf: true }),
+
+  // --- Migración: export en claro (descarga blob) y plantilla ---
+  exportarInventario: async (): Promise<Blob> => {
+    const res = await fetch(`${BASE}/exportar`, {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      let detail = `Error ${res.status}`;
+      try {
+        const d = await res.json();
+        if (d?.detail) detail = d.detail;
+      } catch {
+        /* */
+      }
+      throw new ApiError(res.status, detail);
+    }
+    return res.blob();
+  },
+  plantillaUrl: () => `${BASE}/plantilla.csv`,
+
   // --- Búsqueda ---
   buscar: (q: string) => request<ResultadoBusqueda>(`/buscar?q=${encodeURIComponent(q)}`),
 
@@ -205,8 +243,8 @@ export const api = {
 
   // --- Tokens API ---
   tokens: () => request<{ tokens: TokenApi[] }>("/tokens"),
-  crearToken: (nombre: string) =>
-    request<{ token: string }>("/tokens", { method: "POST", body: { nombre }, csrf: true }),
+  crearToken: (b: { nombre: string; alcance: string; dias_validez: number }) =>
+    request<{ token: string }>("/tokens", { method: "POST", body: b, csrf: true }),
   revocarToken: (id: number) => request<{ ok: boolean }>(`/tokens/${id}/revocar`, { method: "POST", csrf: true }),
 
   // --- Auditoría ---

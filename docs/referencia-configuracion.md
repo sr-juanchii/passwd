@@ -36,11 +36,22 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 | Variable | Por defecto | Descripción |
 |---|---|---|
 | `PASSWD_SECRET_KEY` | autogenerada | Clave para firmar/derivar material de sesión. Genérela con `python -c "import secrets; print(secrets.token_urlsafe(48))"`. |
-| `PASSWD_ENCRYPTION_KEY` | autogenerada | Clave **Fernet** para el cifrado en reposo (contraseñas, semillas TOTP, notas). Genérela con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. |
+| `PASSWD_ENCRYPTION_KEY` | autogenerada | Clave **Fernet** para el cifrado en reposo (contraseñas, semillas TOTP, notas). Genérela con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Admite **varias claves separadas por comas** para la rotación: la **primera** cifra y todas descifran (ver [`referencia-cli.md`](referencia-cli.md), comando `recifrar`). |
+| `PASSWD_REQUIRE_ENV_KEYS` | `false` | **Modo estricto de producción**: con `true`, la aplicación **no arranca** si las dos claves no llegan por variable de entorno y nunca las autogenera en el directorio de datos. |
+
+> **Docker secrets:** cualquiera de estos secretos (`SECRET_KEY`, `ENCRYPTION_KEY`, `SMTP_PASSWORD`)
+> puede proveerse por fichero con la variante **`PASSWD_<NOMBRE>_FILE`** (ruta a un fichero montado,
+> p. ej. `/run/secrets/...`), que tiene prioridad sobre la variable en claro. Ver
+> [`docker-compose.secrets.yml`](../docker-compose.secrets.yml).
 
 > ⚠️ **Perder `PASSWD_ENCRYPTION_KEY` = perder todas las contraseñas guardadas** (salvo que tenga un
 > respaldo cifrado con frase). Si autogenera las claves en MySQL y el volumen de datos se pierde,
 > lo cifrado queda ilegible.
+>
+> La autogeneración a archivo es un modo **solo para desarrollo**: la clave queda en el mismo
+> directorio que la base de datos, y un compromiso del volumen (o de sus copias) expondría ambas.
+> En producción provea las claves por entorno desde su gestor de secretos y active
+> `PASSWD_REQUIRE_ENV_KEYS=true` (así vienen las plantillas de prod/preprod).
 
 ---
 
@@ -51,6 +62,10 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 | `PASSWD_APP_NAME` | `Gestor de Contraseñas de Servidores` | Nombre mostrado en la interfaz. |
 | `PASSWD_DATA_DIR` | `./data` (en Docker, `/srv/passwd/data`) | Directorio de datos: BD SQLite y archivos de claves. |
 | `PASSWD_DATABASE_URL` | SQLite en `PASSWD_DATA_DIR` | URL SQLAlchemy. Para MySQL: `mysql+pymysql://usuario:clave@host:3306/passwd`. |
+| `PASSWD_DB_POOL_SIZE` | `5` | Tamaño del pool de conexiones (solo motores cliente/servidor como MySQL). |
+| `PASSWD_DB_MAX_OVERFLOW` | `10` | Conexiones adicionales por encima del pool bajo carga. |
+| `PASSWD_DB_POOL_RECYCLE_SECONDS` | `1800` | Recicla conexiones antes del `wait_timeout` del servidor. |
+| `PASSWD_ACTIVITY_THROTTLE_SECONDS` | `60` | Amortigua las escrituras de «última actividad» de sesión y «último uso» de token (no se reescriben en cada petición). |
 
 ---
 
@@ -83,7 +98,8 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 | `PASSWD_REVEAL_RATE_LIMIT` | `20` | **Anti-exfiltración**: revelados/copiados de contraseñas por usuario en la ventana. |
 | `PASSWD_REVEAL_RATE_WINDOW_MINUTES` | `5` | Ventana del límite de revelados. |
 | `PASSWD_MAX_REQUEST_BYTES` | `65536` | Tamaño máximo del cuerpo de una petición (OWASP API4). |
-| `PASSWD_RATE_LIMIT_BACKEND` | `memoria` | `memoria` (un proceso) o `bd` (compartido entre varias instancias, sin Redis). |
+| `PASSWD_RATE_LIMIT_BACKEND` | `memoria` | `memoria` (un proceso) o `bd` (compartido entre varias instancias, sin Redis). Con `memoria` el presupuesto se **multiplica** por cada worker/réplica: en producción use `bd` (la app avisa al arrancar; las plantillas de prod/preprod ya lo traen). |
+| `PASSWD_TRUSTED_PROXIES` | *(vacío)* | Proxies de confianza para `X-Forwarded-For` (CSV de IPs o `*`). Si se define, la auditoría y el límite de tasa usan la **IP real del cliente** en lugar de la del proxy, confiando en la cabecera **solo** cuando la conexión procede de esas IPs. `*` es seguro cuando únicamente nginx puede alcanzar la app (red interna de compose). Equivale a `--proxy-headers --forwarded-allow-ips` de uvicorn (los overlays de nginx ya pasan esas banderas; esta variable cubre además los despliegues sin overlay). |
 
 ---
 

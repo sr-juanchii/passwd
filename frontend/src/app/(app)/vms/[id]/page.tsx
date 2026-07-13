@@ -102,6 +102,9 @@ export default function VmDetallePage() {
           items={[
             { etiqueta: "Sistema operativo", valor: d.sistema_operativo },
             { etiqueta: "Dirección IP", valor: d.ip, mono: true },
+            { etiqueta: "RAM asignada", valor: d.ram, mono: true },
+            { etiqueta: "CPU asignada", valor: d.cpu, mono: true },
+            { etiqueta: "Almacenamiento", valor: d.almacenamiento, mono: true },
             {
               etiqueta: "Hipervisor",
               valor: (

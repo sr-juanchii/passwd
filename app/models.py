@@ -24,6 +24,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -235,6 +236,11 @@ class MaquinaVirtual(Base):
     sistema_operativo: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Recursos asignados a la VM (texto libre para admitir unidades: "8 GB",
+    # "4 vCPU", "120 GB SSD"), coherente con el hardware de servidor/hipervisor.
+    ram: Mapped[str] = mapped_column(String(60), nullable=False, default="", server_default="")
+    cpu: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    almacenamiento: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
     notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
@@ -463,26 +469,120 @@ class CodigoRecuperacionMFA(Base):
     usuario: Mapped[Usuario] = relationship()
 
 
+TOKEN_ALCANCE_TODO = "todo"  # noqa: S105 — nombre de alcance, no es un secreto
+TOKEN_ALCANCE_AUDITORIA = "auditoria"  # noqa: S105 — nombre de alcance, no es un secreto
+TOKEN_ALCANCE_INVENTARIO = "inventario"  # noqa: S105 — nombre de alcance, no es un secreto
+TOKEN_ALCANCES = (TOKEN_ALCANCE_TODO, TOKEN_ALCANCE_AUDITORIA, TOKEN_ALCANCE_INVENTARIO)
+ETIQUETAS_TOKEN_ALCANCE = {
+    TOKEN_ALCANCE_TODO: "Auditoría e inventario",
+    TOKEN_ALCANCE_AUDITORIA: "Solo auditoría",
+    TOKEN_ALCANCE_INVENTARIO: "Solo inventario",
+}
+
+
 class TokenApi(Base):
     """Token de API de solo lectura (para SIEM/automatización).
 
     Solo se persiste el hash SHA-256; el valor se muestra una única vez al
     crearlo. El alcance es de lectura: aun filtrado, no permite modificar nada.
+    Admite **caducidad** (``expira_en``) y **alcance** (``alcance``) para aplicar
+    mínimo privilegio: un token puede limitarse a auditoría o a inventario.
     """
 
     __tablename__ = "tokens_api"
+    __table_args__ = (
+        CheckConstraint(
+            "alcance IN ('todo', 'auditoria', 'inventario')", name="ck_tokens_alcance"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    alcance: Mapped[str] = mapped_column(
+        String(40), nullable=False, default=TOKEN_ALCANCE_TODO, server_default=TOKEN_ALCANCE_TODO
+    )
     creado_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
     )
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    expira_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ultimo_uso: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     creado_por: Mapped[Usuario | None] = relationship()
+
+    def esta_vigente(self) -> bool:
+        return self.activo and (self.expira_en is None or self.expira_en > ahora_utc())
+
+    @property
+    def caducado(self) -> bool:
+        return self.expira_en is not None and self.expira_en <= ahora_utc()
+
+
+CATEGORIA_VAULT_SERVICIO = "servicio"
+CATEGORIA_VAULT_APLICACION = "aplicacion"
+CATEGORIA_VAULT_CUENTA = "cuenta"
+CATEGORIA_VAULT_OTRO = "otro"
+CATEGORIAS_VAULT = (
+    CATEGORIA_VAULT_SERVICIO,
+    CATEGORIA_VAULT_APLICACION,
+    CATEGORIA_VAULT_CUENTA,
+    CATEGORIA_VAULT_OTRO,
+)
+ETIQUETAS_CATEGORIA_VAULT = {
+    CATEGORIA_VAULT_SERVICIO: "Servicio",
+    CATEGORIA_VAULT_APLICACION: "Aplicación",
+    CATEGORIA_VAULT_CUENTA: "Cuenta propia",
+    CATEGORIA_VAULT_OTRO: "Otro",
+}
+
+
+class EntradaVault(Base):
+    """Entrada del vault PERSONAL de un usuario (privado, no del inventario).
+
+    A diferencia de ``Credencial`` (credenciales de la infraestructura, sujetas
+    a RBAC y acceso por objeto), una entrada de vault pertenece a UN usuario y
+    solo él la ve, la edita y la revela: ni el administrador accede a su
+    contenido. Sirve para contraseñas de servicios, aplicaciones o cuentas
+    propias, dando versatilidad más allá de los servidores. La contraseña se
+    cifra en reposo (Fernet/AES) igual que el resto de secretos del sistema; se
+    incluye en los respaldos cifrados, pero nunca en el export en claro.
+    """
+
+    __tablename__ = "entradas_vault"
+    __table_args__ = (
+        CheckConstraint(
+            "categoria IN ('servicio', 'aplicacion', 'cuenta', 'otro')",
+            name="ck_entradas_vault_categoria",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    titulo: Mapped[str] = mapped_column(String(120), nullable=False)
+    usuario_acceso: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    password_cifrada: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    url: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    categoria: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=CATEGORIA_VAULT_CUENTA, server_default=CATEGORIA_VAULT_CUENTA
+    )
+    # Sin server_default: MySQL prohíbe DEFAULT en columnas TEXT/BLOB (error 1101).
+    # La tabla se crea completa vía create_all, por lo que no la reconcilia schema_sync
+    # (que sí requeriría server_default para ALTER ADD COLUMN). El default Python basta.
+    notas: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+    password_rotada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+
+    usuario: Mapped[Usuario] = relationship()
+
+    @property
+    def dias_sin_rotar(self) -> int:
+        return max((ahora_utc() - self.password_rotada_en).days, 0)
 
 
 class EventoTasa(Base):
@@ -506,9 +606,18 @@ class EventoTasa(Base):
 
 
 class RegistroAuditoria(Base):
-    """Bitácora inmutable de eventos de seguridad y acceso a credenciales."""
+    """Bitácora de eventos de seguridad y acceso a credenciales.
+
+    Encadenada por hash (``hash_anterior`` → ``hash_registro``) para dar
+    evidencia de manipulación: alterar o borrar una fila rompe la cadena, lo
+    que el comando ``python -m app.cli verificar-auditoria`` detecta.
+    """
 
     __tablename__ = "registros_auditoria"
+    __table_args__ = (
+        # Consultas de métricas y del SIEM filtran por acción y rango de fechas.
+        Index("ix_auditoria_accion_fecha", "accion", "fecha"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     fecha: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, index=True)
@@ -521,3 +630,7 @@ class RegistroAuditoria(Base):
     direccion_ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
     agente_usuario: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     exito: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Encadenamiento por hash (evidencia de manipulación). Nullable/"" por
+    # compatibilidad con filas anteriores a la Fase 7; las nuevas siempre lo fijan.
+    hash_anterior: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    hash_registro: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="", index=True)
