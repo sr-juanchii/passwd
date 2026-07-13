@@ -154,3 +154,26 @@ def test_claves_desde_fichero_secreto(tmp_path, monkeypatch):
         assert settings.encryption_key == clave  # leída del fichero, no de la BD
     finally:
         reset_settings()
+
+
+# ---------------------------------------------------------------------------
+# Portabilidad cross-engine del esquema (regresión: MySQL rechaza DEFAULT en
+# columnas TEXT/BLOB, error 1101; SQLite lo tolera y ocultaba el fallo).
+# ---------------------------------------------------------------------------
+
+
+def test_ninguna_columna_text_o_blob_declara_default_en_mysql():
+    from sqlalchemy.dialects import mysql
+    from sqlalchemy.schema import CreateTable
+
+    import app.models  # noqa: F401 — registra todas las tablas en el metadata
+    from app.database import Base
+
+    ofensores = []
+    for tabla in Base.metadata.sorted_tables:
+        ddl = str(CreateTable(tabla).compile(dialect=mysql.dialect()))
+        for linea in ddl.splitlines():
+            texto = linea.strip().rstrip(",")
+            if (" TEXT" in texto or " BLOB" in texto) and "DEFAULT" in texto:
+                ofensores.append(f"{tabla.name}: {texto}")
+    assert not ofensores, "TEXT/BLOB con DEFAULT (MySQL error 1101): " + "; ".join(ofensores)

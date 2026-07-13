@@ -27,7 +27,7 @@ def upgrade() -> None:
     sa.Column('password_cifrada', sa.LargeBinary(), nullable=False),
     sa.Column('url', sa.String(length=255), server_default='', nullable=False),
     sa.Column('categoria', sa.String(length=20), server_default='cuenta', nullable=False),
-    sa.Column('notas', sa.Text(), server_default='', nullable=False),
+    sa.Column('notas', sa.Text(), nullable=False),
     sa.Column('creado_en', sa.DateTime(), nullable=False),
     sa.Column('actualizado_en', sa.DateTime(), nullable=False),
     sa.Column('password_rotada_en', sa.DateTime(), nullable=False),

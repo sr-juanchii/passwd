@@ -84,6 +84,10 @@ jobs:
 
       - name: Configurar pnpm (versión de packageManager)
         uses: pnpm/action-setup@v4
+        with:
+          # Los pasos `uses:` ignoran defaults.run.working-directory, así que hay
+          # que apuntar al package.json del frontend para leer «packageManager».
+          package_json_file: frontend/package.json
 
       - name: Configurar Node
         uses: actions/setup-node@v4
@@ -126,7 +130,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Escaneo de vulnerabilidades y config (Trivy, sistema de archivos)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .

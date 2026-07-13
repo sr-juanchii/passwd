@@ -569,7 +569,10 @@ class EntradaVault(Base):
     categoria: Mapped[str] = mapped_column(
         String(20), nullable=False, default=CATEGORIA_VAULT_CUENTA, server_default=CATEGORIA_VAULT_CUENTA
     )
-    notas: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    # Sin server_default: MySQL prohíbe DEFAULT en columnas TEXT/BLOB (error 1101).
+    # La tabla se crea completa vía create_all, por lo que no la reconcilia schema_sync
+    # (que sí requeriría server_default para ALTER ADD COLUMN). El default Python basta.
+    notas: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)

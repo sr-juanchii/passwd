@@ -58,8 +58,12 @@ export default function ImportarPage() {
       const a = document.createElement("a");
       a.href = url;
       a.download = "inventario-passwd.csv";
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
+      // Revocar en el siguiente tick: revocar de inmediato puede abortar la
+      // descarga antes de que el navegador la inicie.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
       toast.success("Inventario exportado. Custódielo y destrúyalo tras la migración.");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "No se pudo exportar.");

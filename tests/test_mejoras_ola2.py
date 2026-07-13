@@ -115,6 +115,46 @@ def test_rotacion_de_clave_con_multifernet_y_recifrado(client, monkeypatch):
     reset_settings()
 
 
+def test_recifrar_incluye_el_vault_personal(client, monkeypatch):
+    """El vault personal también se recifra: retirar la clave antigua no debe
+    dejar sus contraseñas ilegibles (regresión de una omisión en `recifrar`)."""
+    from app.cli import main as cli_main
+    from app.config import get_settings, reset_settings
+    from app.models import EntradaVault, Usuario
+    from app.security.crypto import cifrar, descifrar
+
+    autenticar_admin(client)
+
+    # Entrada de vault cifrada con la clave ACTUAL (antigua), directa en BD.
+    db = sesion_bd()
+    try:
+        admin = db.scalar(select(Usuario))
+        db.add(EntradaVault(
+            usuario_id=admin.id, titulo="correo", usuario_acceso="yo",
+            password_cifrada=cifrar("VaultSecreto-2026!"),
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    clave_antigua = get_settings().encryption_key
+    clave_nueva = Fernet.generate_key().decode("ascii")
+
+    monkeypatch.setenv("PASSWD_ENCRYPTION_KEY", f"{clave_nueva},{clave_antigua}")
+    reset_settings()
+    assert cli_main(["recifrar"]) == 0
+
+    # Solo la clave nueva: el material del vault sigue siendo legible.
+    monkeypatch.setenv("PASSWD_ENCRYPTION_KEY", clave_nueva)
+    reset_settings()
+    db = sesion_bd()
+    try:
+        entrada = db.scalar(select(EntradaVault))
+        assert descifrar(entrada.password_cifrada) == "VaultSecreto-2026!"
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # SEC-7 — lista amplia de contraseñas comunes
 # ---------------------------------------------------------------------------

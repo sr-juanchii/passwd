@@ -26,7 +26,7 @@
       <td>{{ etiquetas_categoria.get(e.categoria, e.categoria) }}</td>
       <td>{% if e.url %}<span class="texto-mono">{{ e.url|truncate(40) }}</span>{% else %}—{% endif %}</td>
       <td>
-        {% if e.dias_sin_rotar >= rotacion_max_dias %}
+        {% if e.dias_sin_rotar > rotacion_max_dias %}
         <span class="insignia insignia-alerta">⚠ {{ e.dias_sin_rotar }} días sin rotar</span>
         {% else %}
         <span class="texto-suave">hace {{ e.dias_sin_rotar }} día(s)</span>

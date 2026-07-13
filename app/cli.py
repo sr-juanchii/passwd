@@ -157,6 +157,7 @@ def _cmd_recifrar(_args: argparse.Namespace) -> int:
     """
     from app.models import (
         Credencial,
+        EntradaVault,
         Hipervisor,
         HistorialCredencial,
         MaquinaVirtual,
@@ -175,6 +176,7 @@ def _cmd_recifrar(_args: argparse.Namespace) -> int:
             (ServidorFisico, "notas_cifradas"),
             (Hipervisor, "notas_cifradas"),
             (MaquinaVirtual, "notas_cifradas"),
+            (EntradaVault, "password_cifrada"),
         ]
         total = 0
         print("Recifrando con la clave primaria:")
