@@ -177,3 +177,22 @@ def test_ninguna_columna_text_o_blob_declara_default_en_mysql():
             if (" TEXT" in texto or " BLOB" in texto) and "DEFAULT" in texto:
                 ofensores.append(f"{tabla.name}: {texto}")
     assert not ofensores, "TEXT/BLOB con DEFAULT (MySQL error 1101): " + "; ".join(ofensores)
+
+
+def test_hash_auditoria_ignora_microsegundos():
+    """El material del hash no depende de los microsegundos: MySQL almacena
+    DATETIME con precisión de segundo, así que incluirlos rompía la verificación
+    de la cadena al releer los registros (regresión cross-engine)."""
+    from datetime import datetime
+
+    from app import audit
+    from app.models import RegistroAuditoria
+
+    comun = dict(
+        id=1, usuario_id=None, username="admin", accion="login_correcto",
+        objeto_tipo="", objeto_id="", detalle="", direccion_ip="127.0.0.1",
+        agente_usuario="pytest", exito=True, hash_anterior="",
+    )
+    con_micros = RegistroAuditoria(fecha=datetime(2026, 7, 13, 14, 25, 17, 750000), **comun)
+    sin_micros = RegistroAuditoria(fecha=datetime(2026, 7, 13, 14, 25, 17, 0), **comun)
+    assert audit._hash(con_micros) == audit._hash(sin_micros)

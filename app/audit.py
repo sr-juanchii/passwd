@@ -76,9 +76,15 @@ VAULT_COPIADA = "vault_entrada_copiada"
 
 
 def _material(reg: RegistroAuditoria) -> str:
-    """Representación canónica y estable de un registro, para su hash."""
+    """Representación canónica y estable de un registro, para su hash.
+
+    La fecha se normaliza a segundos enteros: MySQL almacena ``DATETIME`` con
+    precisión de segundo (y redondea la parte fraccionaria al insertar), de modo
+    que incluir microsegundos rompería la verificación cross-engine al releer.
+    """
+    fecha = reg.fecha.replace(microsecond=0).isoformat()
     return "|".join([
-        str(reg.id), reg.fecha.isoformat(), str(reg.usuario_id or ""),
+        str(reg.id), fecha, str(reg.usuario_id or ""),
         reg.username, reg.accion, reg.objeto_tipo, reg.objeto_id,
         reg.detalle, reg.direccion_ip, reg.agente_usuario,
         "1" if reg.exito else "0", reg.hash_anterior,
@@ -112,6 +118,9 @@ def registrar(
         ip = request.client.host if request.client else ""
         agente = request.headers.get("user-agent", "")
     reg = RegistroAuditoria(
+        # Segundos enteros: evita que MySQL redondee la parte fraccionaria al
+        # persistir y desincronice el hash respecto al valor releído.
+        fecha=ahora_utc().replace(microsecond=0),
         usuario_id=usuario.id if usuario else None,
         username=(usuario.username if usuario else username)[:64],
         accion=accion,
