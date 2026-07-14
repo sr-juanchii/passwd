@@ -19,7 +19,7 @@ export function Chip({
   return (
     <span
       className={cn(
-        "inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-md border px-[7px] text-[11.5px] leading-none font-medium",
+        "inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-md border px-[7px] text-2xs leading-none font-medium",
         mono ? "font-mono tracking-[0.02em]" : "font-sans",
         TONOS[tono],
         className,

@@ -79,10 +79,16 @@ function Grupo({
               <SidebarMenuItem key={item.url}>
                 <SidebarMenuButton asChild isActive={activo} tooltip={item.titulo}>
                   <Link href={item.url}>
-                    <item.icono className="h-4 w-4" />
+                    <item.icono className="size-4" />
                     <span>{item.titulo}</span>
                   </Link>
                 </SidebarMenuButton>
+                {activo && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-sidebar-primary"
+                  />
+                )}
                 {conAlerta && (
                   <SidebarMenuBadge className="bg-destructive/10 font-mono text-destructive">
                     {vencidas}
@@ -134,7 +140,7 @@ export function AppSidebar() {
         <Grupo etiqueta="Administración" items={ADMINISTRACION} vencidas={vencidas} />
       </SidebarContent>
       <SidebarFooter>
-        <div className="flex items-center gap-2 px-1.5 py-1 text-[11px] leading-snug text-muted-foreground group-data-[collapsible=icon]:hidden">
+        <div className="flex items-center gap-2 border-t border-sidebar-border px-1.5 pt-2.5 pb-1 text-2xs leading-snug text-muted-foreground group-data-[collapsible=icon]:hidden">
           <Lock className="size-3.5 shrink-0" />
           <span>Cada acceso queda registrado.</span>
         </div>

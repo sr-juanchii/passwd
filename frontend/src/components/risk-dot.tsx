@@ -1,10 +1,11 @@
 import { cn } from "@/lib/utils";
 import type { NivelRiesgo } from "@/lib/riesgo";
 
-// El punto de riesgo: el único lugar donde el color "se filtra" en la interfaz.
-//   ok       → neutro tenue
-//   proxima  → rojo mezclado con neutro (advertencia)
-//   vencida  → rojo destructive, con halo suave
+// El punto de riesgo: el único lugar donde el color "se filtra" en la interfaz
+// (DESIGN.md §1 — tinta y estado; paleta validada en claro y oscuro).
+//   ok       → neutro tenue (la salud se comunica por ausencia de color)
+//   proxima  → ámbar --warning (por vencer)
+//   vencida  → rojo --destructive, con halo suave
 export function RiskDot({
   nivel,
   size = 8,
@@ -19,7 +20,7 @@ export function RiskDot({
       ? "color-mix(in oklch, var(--muted-foreground) 45%, transparent)"
       : nivel === "vencida"
         ? "var(--destructive)"
-        : "color-mix(in oklch, var(--destructive) 50%, var(--muted-foreground))";
+        : "var(--warning)";
 
   return (
     <span

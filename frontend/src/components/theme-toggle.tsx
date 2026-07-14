@@ -16,12 +16,12 @@ export function ThemeToggle() {
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size="icon-lg"
       onClick={alternar}
       aria-label="Cambiar tema claro/oscuro"
       title="Cambiar tema"
     >
-      {montado && actual === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+      {montado && actual === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
     </Button>
   );
 }

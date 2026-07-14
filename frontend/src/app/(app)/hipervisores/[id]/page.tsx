@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, MonitorSmartphone, Pencil, Plus } from "lucide-react";
+import { MonitorSmartphone, Pencil, Plus } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { HipervisorDetalle } from "@/lib/types";
 import { rutaActivo } from "@/lib/constants";
@@ -18,9 +18,12 @@ import { ErrorRecurso } from "@/components/error-recurso";
 import { TituloActivo } from "@/components/inventario/titulo-activo";
 import { RiskDot } from "@/components/risk-dot";
 import { Chip } from "@/components/ui/chip";
-import { Eyebrow, Mono } from "@/components/ui/mono";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Mono } from "@/components/ui/mono";
 import { Button } from "@/components/ui/button";
-import { nivelActivo } from "@/lib/riesgo";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { SectionHeader } from "@/components/ui/section-header";
+import { nivelActivo, type NivelRiesgo } from "@/lib/riesgo";
 import { toast } from "sonner";
 
 export default function HipervisorDetallePage() {
@@ -29,11 +32,27 @@ export default function HipervisorDetallePage() {
   const hid = Number(id);
   const [d, setD] = useState<HipervisorDetalle | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nivelesVm, setNivelesVm] = useState<Record<number, NivelRiesgo>>({});
 
   const cargar = useCallback(async () => {
     try {
       setError(null);
-      setD(await api.hipervisor(hid));
+      // El detalle no incluye las credenciales de cada VM; el árbol del
+      // dashboard sí. De ahí sale el nivel de riesgo real de cada fila
+      // (mismo criterio nivelActivo que el drawer del inventario). Si el
+      // árbol no está disponible (analista, error), la fila queda sin señal
+      // en lugar de fingir un "ok".
+      const [det, dash] = await Promise.all([
+        api.hipervisor(hid),
+        api.dashboard().catch(() => null),
+      ]);
+      setD(det);
+      if (dash && !dash.es_analista) {
+        const nodo = dash.hipervisores.find((h) => h.id === hid);
+        const niveles: Record<number, NivelRiesgo> = {};
+        for (const v of nodo?.vms ?? []) niveles[v.id] = nivelActivo(v);
+        setNivelesVm(niveles);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo cargar el hipervisor.");
     }
@@ -47,11 +66,7 @@ export default function HipervisorDetallePage() {
     return <ErrorRecurso titulo="Hipervisor no disponible" mensaje={error} />;
   }
   if (!d) {
-    return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageSkeleton variante="ficha" />;
   }
 
   async function eliminar() {
@@ -128,43 +143,67 @@ export default function HipervisorDetallePage() {
           ]}
         />
 
-        <section className="overflow-hidden rounded-[14px] border bg-card">
-          <div className="flex items-center justify-between border-b px-5 py-3.5">
-            <Eyebrow>Máquinas virtuales · {d.vms.length}</Eyebrow>
-            {d.puede_gestionar && (
-              <Button size="sm" asChild>
-                <Link href={`/hipervisores/${hid}/vms/nueva`}>
-                  <Plus /> Nueva VM
-                </Link>
-              </Button>
-            )}
+        <section className="overflow-hidden rounded-xl border bg-card">
+          <div className="border-b px-5 py-3.5">
+            <SectionHeader
+              icono={MonitorSmartphone}
+              titulo="Máquinas virtuales"
+              contador={d.vms.length}
+              accion={
+                d.puede_gestionar && d.vms.length > 0 ? (
+                  <Button size="sm" asChild>
+                    <Link href={`/hipervisores/${hid}/vms/nueva`}>
+                      <Plus /> Nueva VM
+                    </Link>
+                  </Button>
+                ) : undefined
+              }
+            />
           </div>
           <div className="p-5">
             {d.vms.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin máquinas virtuales registradas.</p>
+              <EmptyState
+                compacto
+                icono={MonitorSmartphone}
+                titulo="Sin máquinas virtuales"
+                descripcion="Este hipervisor aún no tiene máquinas virtuales registradas."
+                accion={
+                  d.puede_gestionar ? (
+                    <Button size="sm" asChild>
+                      <Link href={`/hipervisores/${hid}/vms/nueva`}>
+                        <Plus /> Nueva VM
+                      </Link>
+                    </Button>
+                  ) : undefined
+                }
+              />
             ) : (
               <div className="flex flex-col gap-1.5">
-                {d.vms.map((vm) => (
-                  <Link
-                    key={vm.id}
-                    href={rutaActivo("vm", vm.id)}
-                    className="flex items-center gap-2.5 rounded-[9px] border bg-background px-3 py-2.5 transition-colors hover:bg-muted"
-                  >
-                    <RiskDot nivel="ok" size={7} />
-                    <MonitorSmartphone className="size-[15px] text-muted-foreground" />
-                    <Mono className="text-[13px] font-medium">{vm.nombre}</Mono>
-                    {vm.sistema_operativo && (
-                      <span className="text-[11.5px] text-muted-foreground">
-                        {vm.sistema_operativo}
-                      </span>
-                    )}
-                    {vm.estado !== "activo" && (
-                      <span className="ml-auto">
-                        <EstadoBadge estado={vm.estado} />
-                      </span>
-                    )}
-                  </Link>
-                ))}
+                {d.vms.map((vm, i) => {
+                  const nivelVm = nivelesVm[vm.id] as NivelRiesgo | undefined;
+                  return (
+                    <Link
+                      key={vm.id}
+                      href={rutaActivo("vm", vm.id)}
+                      style={{ "--stagger": i } as React.CSSProperties}
+                      className="anim-rise flex items-center gap-2.5 rounded-md border bg-background px-3 py-2.5 transition-colors hover:bg-muted"
+                    >
+                      {nivelVm !== undefined && <RiskDot nivel={nivelVm} size={7} />}
+                      <MonitorSmartphone className="size-[15px] text-muted-foreground" />
+                      <Mono className="text-[13px] font-medium">{vm.nombre}</Mono>
+                      {vm.sistema_operativo && (
+                        <span className="text-[11.5px] text-muted-foreground">
+                          {vm.sistema_operativo}
+                        </span>
+                      )}
+                      {vm.estado !== "activo" && (
+                        <span className="ml-auto">
+                          <EstadoBadge estado={vm.estado} />
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>

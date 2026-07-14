@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { SearchX } from "lucide-react";
 import { api } from "@/lib/api";
 import type { VaultEntrada } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { VaultForm } from "@/components/forms/vault-form";
 
 export default function EditarEntradaVaultPage() {
@@ -22,17 +24,15 @@ export default function EditarEntradaVaultPage() {
     return (
       <div className="max-w-3xl">
         <PageHeader titulo="Entrada del vault" migas={[{ label: "Mi vault", href: "/vault" }]} />
-        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-          {error}
-        </p>
+        <EmptyState icono={SearchX} titulo="Entrada no disponible" descripcion={error} />
       </div>
     );
   }
 
   if (!entrada) {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <div className="max-w-3xl">
+        <PageSkeleton variante="formulario" />
       </div>
     );
   }

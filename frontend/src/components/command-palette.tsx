@@ -13,6 +13,7 @@ import {
   ServerCog,
   Upload,
   Users,
+  Wallet,
 } from "lucide-react";
 import {
   Command,
@@ -31,10 +32,12 @@ import type { Permiso, ResultadoBusqueda, TipoActivo } from "@/lib/types";
 
 const NAV: { titulo: string; url: string; icono: typeof Search; permiso: Permiso }[] = [
   { titulo: "Ir a Inventario", url: "/", icono: ServerCog, permiso: "inventario.ver" },
+  { titulo: "Ir a Mi vault", url: "/vault", icono: Wallet, permiso: "vault.usar" },
   { titulo: "Ir a Buscar", url: "/buscar", icono: Search, permiso: "inventario.ver" },
   { titulo: "Importar CSV", url: "/importar", icono: Upload, permiso: "inventario.gestionar" },
   { titulo: "Ir a Métricas", url: "/metricas", icono: Activity, permiso: "metricas.ver" },
   { titulo: "Ir a Usuarios", url: "/usuarios", icono: Users, permiso: "usuarios.gestionar" },
+  { titulo: "Ir a Tokens API", url: "/tokens", icono: KeyRound, permiso: "tokens.gestionar" },
   { titulo: "Ir a Auditoría", url: "/auditoria", icono: ScrollText, permiso: "auditoria.ver" },
 ];
 

@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  Loader2,
   Lock,
   ScrollText,
   Search,
@@ -18,8 +17,11 @@ import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Mono } from "@/components/ui/mono";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { SectionHeader } from "@/components/ui/section-header";
 import {
   Select,
   SelectContent,
@@ -49,16 +51,18 @@ function FilaAuditoria({ r }: { r: RegistroAuditoria }) {
   const hora = new Date(r.fecha).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const danger = !r.exito;
   return (
-    <div className="grid grid-cols-[64px_30px_1fr_auto] items-center gap-3.5 border-b px-4 py-3 last:border-b-0">
+    // En pantallas estrechas la rejilla se pliega: hora+icono arriba y el
+    // detalle ocupa toda la fila debajo (sin apretar el grid fijo).
+    <div className="grid grid-cols-[64px_30px_1fr] items-center gap-x-3.5 gap-y-1 border-b px-4 py-3 last:border-b-0 sm:grid-cols-[64px_30px_1fr_auto]">
       <Mono className="text-[12.5px] text-muted-foreground">{hora}</Mono>
       <div
-        className={`flex size-[30px] items-center justify-center rounded-lg ${
+        className={`flex size-8 items-center justify-center rounded-lg ${
           danger ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
         }`}
       >
-        {danger ? <TriangleAlert className="size-[15px]" /> : <ScrollText className="size-[15px]" />}
+        {danger ? <TriangleAlert className="size-4" /> : <ScrollText className="size-4" />}
       </div>
-      <div className="min-w-0">
+      <div className="col-span-3 min-w-0 sm:col-span-1">
         <div className="text-[13px]">
           <Mono className="font-semibold">{r.usuario || "—"}</Mono>{" "}
           <span className="font-normal text-muted-foreground">· {r.accion}</span>
@@ -73,12 +77,12 @@ function FilaAuditoria({ r }: { r: RegistroAuditoria }) {
           </Mono>
         )}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="col-start-3 flex items-center gap-3 sm:col-start-auto">
         <Mono className="hidden text-xs text-muted-foreground sm:inline">
           {r.direccion_ip || "—"}
         </Mono>
         {r.exito ? (
-          <Check className="size-[15px] text-muted-foreground" />
+          <Check className="size-4 text-muted-foreground" />
         ) : (
           <Badge variant="destructive">fallo</Badge>
         )}
@@ -140,9 +144,7 @@ export default function AuditoriaPage() {
     return (
       <>
         <PageHeader titulo="Auditoría" />
-        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No tiene permiso para ver la bitácora.
-        </p>
+        <EmptyState icono={Lock} titulo="Sin permiso" descripcion="No tiene permiso para ver la bitácora." />
       </>
     );
   }
@@ -163,10 +165,10 @@ export default function AuditoriaPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <form onSubmit={aplicarUsuario} className="relative max-w-sm min-w-52 flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-[15px] -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Filtrar por usuario…"
-            className="pl-8"
+            className="pl-9"
             value={textoUsuario}
             onChange={(e) => setTextoUsuario(e.target.value)}
           />
@@ -187,27 +189,27 @@ export default function AuditoriaPage() {
       </div>
 
       {cargando ? (
-        <div className="flex items-center justify-center p-10">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
+        <PageSkeleton variante="tabla" cabecera={false} />
       ) : !datos || datos.registros.length === 0 ? (
-        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No hay registros que coincidan con los filtros.
-        </p>
+        <EmptyState
+          icono={ScrollText}
+          titulo="Sin registros"
+          descripcion="No hay registros que coincidan con los filtros."
+        />
       ) : (
         <>
-          <div className="overflow-hidden rounded-[14px] border bg-card">
+          <div className="overflow-hidden rounded-xl border bg-card">
             {grupos.map(([fecha, items]) => (
               <div key={fecha}>
-                <div className="border-b bg-muted px-4 py-2.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
-                  {fecha}
+                <div className="border-b bg-muted px-4 py-2.5">
+                  <SectionHeader titulo={fecha} contador={items.length} />
                 </div>
                 {items.map((r) => (
                   <FilaAuditoria key={r.id} r={r} />
                 ))}
               </div>
             ))}
-            <div className="flex items-center gap-2 px-4 py-3 text-[11.5px] text-muted-foreground">
+            <div className="flex items-center gap-2 px-4 py-3 text-2xs text-muted-foreground">
               <Lock className="size-3.5" />
               La bitácora es de solo anexado: ningún registro puede modificarse ni eliminarse.
             </div>

@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FormPanel } from "@/components/forms/form-shell";
 import {
   Select,
   SelectContent,
@@ -76,7 +77,7 @@ export default function NuevoUsuarioPage() {
                 por un canal seguro; deberá cambiarla en su primer inicio de sesión.
               </span>
               <span className="flex w-full items-center gap-2">
-                <code className="flex-1 rounded bg-muted px-3 py-2 font-mono text-sm break-all">
+                <code className="flex-1 rounded-lg bg-muted px-3 py-2 font-mono text-sm break-all">
                   {creado.password_temporal}
                 </code>
                 <Button
@@ -85,26 +86,23 @@ export default function NuevoUsuarioPage() {
                   onClick={() => void copiar(creado.password_temporal)}
                   title="Copiar"
                 >
-                  <Clipboard className="h-4 w-4" />
+                  <Clipboard />
                 </Button>
               </span>
             </AlertDescription>
           </Alert>
           <Button asChild variant="outline">
             <Link href="/usuarios">
-              <ArrowLeft className="h-4 w-4" /> Volver a usuarios
+              <ArrowLeft /> Volver a usuarios
             </Link>
           </Button>
         </div>
       ) : (
         <form onSubmit={enviar}>
-          <div className="overflow-hidden rounded-[14px] border bg-card">
-            <div className="border-b px-5 py-3.5">
-              <span className="text-sm font-semibold">Datos del usuario</span>
-            </div>
-            <div className="flex flex-col gap-4 p-5">
+          <FormPanel titulo="Datos del usuario">
+            <div className="flex flex-col gap-4 sm:col-span-2">
               <div className="space-y-2">
-                <Label htmlFor="username">Usuario</Label>
+                <Label htmlFor="username">Usuario<span className="text-destructive"> *</span></Label>
                 <Input
                   id="username"
                   autoComplete="off"
@@ -115,7 +113,7 @@ export default function NuevoUsuarioPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Email<span className="text-destructive"> *</span></Label>
                 <Input
                   id="email"
                   type="email"
@@ -127,7 +125,7 @@ export default function NuevoUsuarioPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nombre">Nombre completo</Label>
+                <Label htmlFor="nombre">Nombre completo<span className="text-destructive"> *</span></Label>
                 <Input
                   id="nombre"
                   required
@@ -151,9 +149,9 @@ export default function NuevoUsuarioPage() {
                 </Select>
               </div>
             </div>
-          </div>
+          </FormPanel>
           <div className="mt-4 flex gap-2">
-            <Button type="submit" disabled={enviando}>
+            <Button type="submit" size="lg" disabled={enviando}>
               {enviando && <Loader2 className="animate-spin" />}
               Crear usuario
             </Button>

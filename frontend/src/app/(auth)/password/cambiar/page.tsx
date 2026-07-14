@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CampoPassword } from "@/components/forms/campo-password";
 import { toast } from "sonner";
 
 export default function CambiarPasswordPage() {
@@ -42,7 +43,7 @@ export default function CambiarPasswordPage() {
 
   return (
     <div>
-      <div className="mb-6 flex size-11 items-center justify-center rounded-[11px] bg-muted">
+      <div className="mb-6 flex size-11 items-center justify-center rounded-lg bg-muted">
         <KeyRound className="size-[22px] text-foreground" />
       </div>
       <h2 className="text-[22px] font-semibold">
@@ -71,18 +72,16 @@ export default function CambiarPasswordPage() {
             onChange={(e) => setActual(e.target.value)}
           />
         </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="nueva">Nueva contraseña</Label>
-          <Input
-            id="nueva"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={12}
-            value={nueva}
-            onChange={(e) => setNueva(e.target.value)}
-          />
-        </div>
+        <CampoPassword
+          id="nueva"
+          label="Nueva contraseña"
+          value={nueva}
+          onChange={setNueva}
+          autoComplete="new-password"
+          generador
+          medidor
+          required
+        />
         <div className="flex flex-col gap-2">
           <Label htmlFor="confirmacion">Confirmar nueva contraseña</Label>
           <Input

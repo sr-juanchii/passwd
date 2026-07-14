@@ -5,6 +5,8 @@ import { Eye, EyeOff, Loader2, Lock, NotebookPen, Save } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { TipoActivo } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionHeader } from "@/components/ui/section-header";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -77,15 +79,12 @@ export function NotasPanel({
   }
 
   return (
-    <section className="overflow-hidden rounded-[14px] border bg-card">
-      <div className="flex items-center gap-2.5 border-b px-5 py-3.5">
-        <Lock className="size-4 text-muted-foreground" />
-        <div>
-          <div className="text-sm font-semibold">Nota segura</div>
-          <div className="text-[12px] text-muted-foreground">
-            Texto cifrado en reposo. Su revelado queda auditado y se oculta automáticamente.
-          </div>
-        </div>
+    <section className="overflow-hidden rounded-xl border bg-card">
+      <div className="flex flex-col gap-1 border-b px-5 py-3.5">
+        <SectionHeader icono={Lock} titulo="Nota segura" />
+        <p className="text-[12px] text-muted-foreground">
+          Texto cifrado en reposo. Su revelado queda auditado y se oculta automáticamente.
+        </p>
       </div>
       <div className="flex flex-col gap-3 p-5">
         {editando ? (
@@ -114,28 +113,34 @@ export function NotasPanel({
                 {contenido}
               </pre>
             )}
-            <div className="flex flex-wrap gap-2">
-              {tieneNotas && (
-                <Button variant="outline" onClick={ver} disabled={cargando}>
-                  {cargando ? (
-                    <Loader2 className="animate-spin" />
-                  ) : contenido !== null ? (
-                    <EyeOff />
-                  ) : (
-                    <Eye />
-                  )}
-                  {contenido !== null ? "Ocultar nota" : "Ver nota"}
-                </Button>
-              )}
-              {puedeGestionar && (
-                <Button variant="outline" onClick={abrirEdicion} disabled={cargando}>
-                  <NotebookPen /> {tieneNotas ? "Editar nota" : "Añadir nota"}
-                </Button>
-              )}
-              {!tieneNotas && !puedeGestionar && (
-                <p className="text-sm text-muted-foreground">Sin nota registrada.</p>
-              )}
-            </div>
+            {tieneNotas || puedeGestionar ? (
+              <div className="flex flex-wrap gap-2">
+                {tieneNotas && (
+                  <Button variant="outline" onClick={ver} disabled={cargando}>
+                    {cargando ? (
+                      <Loader2 className="animate-spin" />
+                    ) : contenido !== null ? (
+                      <EyeOff />
+                    ) : (
+                      <Eye />
+                    )}
+                    {contenido !== null ? "Ocultar nota" : "Ver nota"}
+                  </Button>
+                )}
+                {puedeGestionar && (
+                  <Button variant="outline" onClick={abrirEdicion} disabled={cargando}>
+                    <NotebookPen /> {tieneNotas ? "Editar nota" : "Añadir nota"}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <EmptyState
+                compacto
+                icono={Lock}
+                titulo="Sin nota registrada"
+                descripcion="Este activo no tiene una nota segura registrada."
+              />
+            )}
           </>
         )}
       </div>

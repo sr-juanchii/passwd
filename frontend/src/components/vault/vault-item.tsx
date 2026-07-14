@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Check,
@@ -42,13 +42,27 @@ export function VaultItem({ entrada, onCambio }: { entrada: VaultEntrada; onCamb
   const [usuarioRev, setUsuarioRev] = useState<string | null>(null);
   const [cargando, setCargando] = useState<"revelar" | "copiar" | null>(null);
   const [copiada, setCopiada] = useState(false);
+  const [restante, setRestante] = useState<number | null>(null);
   const tRevelar = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tCopiar = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tTick = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Al desmontar se limpian los timers visuales del revelado. El timeout del
+  // portapapeles (tCopiar) NO se toca: la limpieza a los 30 s debe ocurrir
+  // aunque el componente ya no esté montado.
+  useEffect(() => {
+    return () => {
+      if (tRevelar.current) clearTimeout(tRevelar.current);
+      if (tTick.current) clearInterval(tTick.current);
+    };
+  }, []);
 
   function ocultar() {
     if (tRevelar.current) clearTimeout(tRevelar.current);
+    if (tTick.current) clearInterval(tTick.current);
     setRevelada(null);
     setUsuarioRev(null);
+    setRestante(null);
   }
 
   async function revelar() {
@@ -59,6 +73,12 @@ export function VaultItem({ entrada, onCambio }: { entrada: VaultEntrada; onCamb
       setRevelada(r.password);
       setUsuarioRev(r.usuario);
       tRevelar.current = setTimeout(ocultar, OCULTAR_MS);
+      // Contador solo visual; la autoridad sigue siendo el timeout de arriba.
+      setRestante(Math.round(OCULTAR_MS / 1000));
+      if (tTick.current) clearInterval(tTick.current);
+      tTick.current = setInterval(() => {
+        setRestante((s) => (s === null || s <= 1 ? s : s - 1));
+      }, 1000);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "No se pudo revelar.");
     } finally {
@@ -100,7 +120,12 @@ export function VaultItem({ entrada, onCambio }: { entrada: VaultEntrada; onCamb
   }
 
   return (
-    <div className="overflow-hidden rounded-[11px] border bg-background">
+    <div
+      className={
+        "overflow-hidden rounded-lg border bg-background " +
+        (entrada.rotacion_vencida ? "bg-destructive/[0.06]" : "")
+      }
+    >
       <div className="flex items-center gap-2.5 px-3.5 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -123,7 +148,7 @@ export function VaultItem({ entrada, onCambio }: { entrada: VaultEntrada; onCamb
         <div className="text-right">
           {entrada.rotacion_vencida ? (
             <span className="font-mono text-xs font-semibold text-destructive">
-              {entrada.dias_sin_rotar}d · rotar
+              {entrada.dias_sin_rotar}d · vencida
             </span>
           ) : (
             <span className="font-mono text-xs text-muted-foreground">
@@ -164,12 +189,14 @@ export function VaultItem({ entrada, onCambio }: { entrada: VaultEntrada; onCamb
               <AlertDialogHeader>
                 <AlertDialogTitle>¿Eliminar esta entrada?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Se eliminará <strong>{entrada.titulo}</strong> de tu vault. Esta acción no se puede deshacer.
+                  Se eliminará <strong>{entrada.titulo}</strong> de su vault. Esta acción no se puede deshacer.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={eliminar}>Eliminar</AlertDialogAction>
+                <AlertDialogAction variant="destructive" onClick={eliminar}>
+                  Eliminar
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -180,8 +207,15 @@ export function VaultItem({ entrada, onCambio }: { entrada: VaultEntrada; onCamb
         <div className="px-3.5 pb-3.5">
           <div className="flex items-center gap-2 rounded-lg border bg-muted px-3 py-2 font-mono text-[13px] break-all">
             <LockOpen className="size-3.5 shrink-0 text-muted-foreground" />
-            {usuarioRev ? `${usuarioRev}: ` : ""}
-            {revelada}
+            <span className="min-w-0 flex-1">
+              {usuarioRev ? `${usuarioRev}: ` : ""}
+              {revelada}
+            </span>
+            {restante !== null && (
+              <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
+                se oculta en {restante}s
+              </span>
+            )}
           </div>
         </div>
       )}

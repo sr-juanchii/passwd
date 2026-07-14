@@ -6,13 +6,16 @@ import {
   Clipboard,
   KeyRound,
   Loader2,
+  Lock,
   MoreHorizontal,
   Plus,
   Search,
+  SearchX,
   ShieldAlert,
   ShieldCheck,
   ShieldOff,
   UserCheck,
+  Users,
   UserX,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -20,10 +23,13 @@ import type { Rol, Usuario } from "@/lib/types";
 import { ETIQUETAS_ROL } from "@/lib/constants";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Mono } from "@/components/ui/mono";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { EstadoBadge } from "@/components/estado-badge";
 import {
   Table,
@@ -94,6 +100,7 @@ export default function UsuariosPage() {
   const [rolSeleccionado, setRolSeleccionado] = useState<Rol>("operador");
   const [guardandoRol, setGuardandoRol] = useState(false);
   const [mfaUsuario, setMfaUsuario] = useState<Usuario | null>(null);
+  const [resetUsuario, setResetUsuario] = useState<Usuario | null>(null);
   const [passwordTemporal, setPasswordTemporal] = useState<{ username: string; password: string } | null>(null);
 
   const cargar = useCallback(async () => {
@@ -160,7 +167,10 @@ export default function UsuariosPage() {
     }
   }
 
-  async function resetPassword(u: Usuario) {
+  async function resetPassword() {
+    if (!resetUsuario) return;
+    const u = resetUsuario;
+    setResetUsuario(null);
     try {
       const r = await api.resetPassword(u.id);
       setPasswordTemporal({ username: r.username, password: r.password_temporal });
@@ -194,9 +204,7 @@ export default function UsuariosPage() {
     return (
       <>
         <PageHeader titulo="Usuarios" />
-        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No tiene permiso para gestionar usuarios.
-        </p>
+        <EmptyState icono={Lock} titulo="Sin permiso" descripcion="No tiene permiso para gestionar usuarios." />
       </>
     );
   }
@@ -218,37 +226,42 @@ export default function UsuariosPage() {
       <div className="flex flex-col gap-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {conteos.map(([r, n]) => (
-            <div key={r} className="flex flex-col gap-1.5 rounded-[14px] border bg-card p-4">
+            <div key={r} className="flex flex-col gap-1.5 rounded-xl border bg-card p-4">
               <div className="flex items-center justify-between">
                 <span className="text-[13px] font-semibold">{ETIQUETAS_ROL[r]}</span>
-                <Mono className="text-base font-semibold">{n}</Mono>
+                <Mono className="text-base font-semibold tabular-nums">{n}</Mono>
               </div>
-              <span className="text-[11.5px] leading-snug text-muted-foreground">{ROL_DESC[r]}</span>
+              <span className="text-2xs leading-snug text-muted-foreground">{ROL_DESC[r]}</span>
             </div>
           ))}
         </div>
 
         <div className="relative max-w-xs">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-[15px] -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Filtrar usuarios…"
-            className="pl-8"
+            className="pl-9"
             value={filtro}
             onChange={(e) => setFiltro(e.target.value)}
           />
         </div>
 
         {cargando ? (
-          <div className="flex items-center justify-center p-10">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
+          <PageSkeleton variante="tabla" cabecera={false} />
         ) : visibles.length === 0 ? (
-          <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-            {usuarios.length === 0 ? "No hay usuarios registrados." : "Sin coincidencias."}
-          </p>
+          usuarios.length === 0 ? (
+            <EmptyState
+              icono={Users}
+              titulo="No hay usuarios registrados"
+              descripcion="Cree la primera cuenta con «Nuevo usuario»."
+            />
+          ) : (
+            <EmptyState compacto icono={SearchX} titulo="Sin coincidencias" />
+          )
         ) : (
+          <div className="overflow-hidden rounded-xl border bg-card">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted">
               <TableRow>
                 <TableHead>Usuario</TableHead>
                 <TableHead>Rol</TableHead>
@@ -263,9 +276,11 @@ export default function UsuariosPage() {
                 <TableRow key={u.id}>
                   <TableCell>
                     <div className="flex items-center gap-2.5">
-                      <span className="flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-muted text-[11.5px] font-semibold">
-                        {iniciales(u.nombre_completo, u.username)}
-                      </span>
+                      <Avatar className="size-8 rounded-lg">
+                        <AvatarFallback className="rounded-lg bg-muted text-2xs font-semibold">
+                          {iniciales(u.nombre_completo, u.username)}
+                        </AvatarFallback>
+                      </Avatar>
                       <div>
                         <div className="text-[13px] font-medium">{u.nombre_completo || u.username}</div>
                         <Mono className="text-xs text-muted-foreground">{u.username}</Mono>
@@ -307,7 +322,7 @@ export default function UsuariosPage() {
                         <DropdownMenuItem onSelect={() => abrirRol(u)}>
                           <UserCheck /> Cambiar rol
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => void resetPassword(u)}>
+                        <DropdownMenuItem onSelect={() => setResetUsuario(u)}>
                           <KeyRound /> Restablecer contraseña
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => setMfaUsuario(u)}>
@@ -332,6 +347,7 @@ export default function UsuariosPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
         )}
       </div>
 
@@ -383,14 +399,34 @@ export default function UsuariosPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={resetMfa}>Restablecer</AlertDialogAction>
+            <AlertDialogAction variant="destructive" onClick={resetMfa}>
+              Restablecer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmación de restablecer contraseña */}
+      <AlertDialog open={resetUsuario !== null} onOpenChange={(o) => !o && setResetUsuario(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Restablecer la contraseña?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La contraseña actual de <strong>{resetUsuario?.username}</strong> dejará de ser válida
+              y se generará una temporal de un solo uso.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void resetPassword()}>Restablecer</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Diálogo contraseña temporal */}
       <Dialog open={passwordTemporal !== null} onOpenChange={(o) => !o && setPasswordTemporal(null)}>
-        <DialogContent>
+        {/* Secreto de un solo uso: no se cierra con click fuera (se perdería). */}
+        <DialogContent onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Contraseña temporal</DialogTitle>
             <DialogDescription>

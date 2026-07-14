@@ -7,9 +7,22 @@ import type { AnalistaRef, Concesion, NivelAcceso, TipoActivo } from "@/lib/type
 import { ETIQUETAS_NIVEL } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mono } from "@/components/ui/mono";
+import { SectionHeader } from "@/components/ui/section-header";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -79,59 +92,89 @@ export function AccesosPanel({
   }
 
   return (
-    <section className="overflow-hidden rounded-[14px] border bg-card">
-      <div className="flex items-center gap-2.5 border-b px-5 py-3.5">
-        <ShieldCheck className="size-4 text-muted-foreground" />
-        <div>
-          <div className="text-sm font-semibold">Control de acceso por objeto</div>
-          <div className="text-[12px] text-muted-foreground">
-            Conceda acceso a analistas sobre este activo. El acceso no se hereda a sus hijos.
-          </div>
-        </div>
+    <section className="overflow-hidden rounded-xl border bg-card">
+      <div className="flex flex-col gap-1 border-b px-5 py-3.5">
+        <SectionHeader
+          icono={ShieldCheck}
+          titulo="Control de acceso por objeto"
+          contador={accesos.length}
+        />
+        <p className="text-[12px] text-muted-foreground">
+          Conceda acceso a analistas sobre este activo. El acceso no se hereda a sus hijos.
+        </p>
       </div>
 
       <div className="flex flex-col gap-4 p-5">
-        {accesos.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Analista</TableHead>
-                <TableHead>Nivel</TableHead>
-                <TableHead>Caduca</TableHead>
-                <TableHead className="text-right">Acción</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {accesos.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>
-                    <Mono className="font-medium">{a.username}</Mono>
-                    <span className="block text-xs text-muted-foreground">{a.nombre_completo}</span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={a.nivel === "ver_credenciales" ? "default" : "secondary"}>
-                      {a.nivel_label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {a.expira_en ? (
-                      <span className={a.expirada ? "text-destructive" : "text-muted-foreground"}>
-                        {new Date(a.expira_en).toLocaleDateString()}
-                        {a.expirada && " (expirada)"}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">Sin caducidad</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="icon-sm" variant="ghost" onClick={() => revocar(a.id)} title="Revocar">
-                      <Trash2 className="text-destructive" />
-                    </Button>
-                  </TableCell>
+        {accesos.length === 0 ? (
+          <EmptyState
+            compacto
+            icono={ShieldCheck}
+            titulo="Sin accesos concedidos"
+            descripcion="Ningún analista tiene acceso directo a este activo. Concédalo con el formulario inferior."
+          />
+        ) : (
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <Table>
+              <TableHeader className="bg-muted">
+                <TableRow>
+                  <TableHead>Analista</TableHead>
+                  <TableHead>Nivel</TableHead>
+                  <TableHead>Caduca</TableHead>
+                  <TableHead className="text-right">Acción</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {accesos.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell>
+                      <Mono className="font-medium">{a.username}</Mono>
+                      <span className="block text-xs text-muted-foreground">{a.nombre_completo}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={a.nivel === "ver_credenciales" ? "default" : "secondary"}>
+                        {a.nivel_label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {a.expira_en ? (
+                        <span className={a.expirada ? "text-destructive" : "text-muted-foreground"}>
+                          {new Date(a.expira_en).toLocaleDateString()}
+                          {a.expirada && " · expirada"}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Sin caducidad</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button size="icon-sm" variant="ghost" title="Revocar">
+                            <Trash2 className="text-destructive" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Revocar el acceso de {a.username}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              <strong>{a.nombre_completo}</strong> perderá de inmediato su acceso «
+                              {a.nivel_label}» sobre este activo. Podrá volver a concederlo cuando
+                              lo necesite.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction variant="destructive" onClick={() => revocar(a.id)}>
+                              Revocar acceso
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
 
         <form onSubmit={conceder} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">

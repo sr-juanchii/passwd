@@ -3,13 +3,16 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Cpu, KeyRound, Loader2, MonitorSmartphone, Search, Server } from "lucide-react";
+import { Cpu, KeyRound, MonitorSmartphone, Search, SearchX, Server } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ResultadoBusqueda, TipoActivo } from "@/lib/types";
 import { ETIQUETAS_TIPO_ACTIVO, rutaActivo } from "@/lib/constants";
 import { PageHeader } from "@/components/page-header";
 import { EstadoBadge } from "@/components/estado-badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { SectionHeader } from "@/components/ui/section-header";
 import { Chip } from "@/components/ui/chip";
 import { Mono } from "@/components/ui/mono";
 import { toast } from "sonner";
@@ -37,10 +40,10 @@ function TarjetaActivo({
   return (
     <Link
       href={rutaActivo(tipo, id)}
-      className="flex flex-col gap-2 rounded-[11px] border bg-card p-3.5 transition-colors hover:border-foreground/20 hover:bg-muted"
+      className="flex flex-col gap-2 rounded-lg border bg-card p-3.5 transition-colors hover:border-foreground/20 hover:bg-muted"
     >
       <div className="flex items-center gap-2">
-        <Icono className="size-[15px] text-muted-foreground" />
+        <Icono className="size-4 text-muted-foreground" />
         <Mono className="truncate text-[13.5px] font-semibold">{nombre}</Mono>
         {estado !== "activo" && <EstadoBadge estado={estado} />}
       </div>
@@ -109,35 +112,34 @@ function BuscarContenido() {
       />
 
       <form onSubmit={enviar} className="relative mb-4 max-w-xl">
-        <Search className="pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           autoFocus
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           placeholder="Nombre, IP, usuario, servicio…"
-          className="h-11 pl-11 text-[15px]"
+          className="h-11 pl-10 text-[15px]"
         />
       </form>
 
       {!q.trim() ? (
-        <div className="rounded-[12px] border border-dashed p-12 text-center">
-          <Search className="mx-auto size-7 text-muted-foreground" />
-          <p className="mt-2.5 text-[13.5px] text-muted-foreground">
-            Escriba para buscar activos y credenciales.
-          </p>
-        </div>
+        <EmptyState
+          icono={Search}
+          titulo="Búsqueda global"
+          descripcion="Escriba para buscar activos y credenciales."
+        />
       ) : cargando ? (
-        <div className="flex items-center justify-center p-10">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
+        <PageSkeleton variante="tabla" cabecera={false} />
       ) : total === 0 ? (
-        <p className="rounded-[12px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-          Sin resultados para <strong>{q}</strong>.
-        </p>
+        <EmptyState
+          icono={SearchX}
+          titulo="Sin resultados"
+          descripcion={<>No hay coincidencias para <strong>{q}</strong>.</>}
+        />
       ) : (
         resultado && (
           <div className="flex flex-col gap-5">
-            <Mono className="text-[12.5px] text-muted-foreground">{total} resultado(s)</Mono>
+            <SectionHeader titulo="Resultados" contador={total} />
 
             {(resultado.servidores.length > 0 ||
               resultado.hipervisores.length > 0 ||
@@ -178,16 +180,16 @@ function BuscarContenido() {
 
             {resultado.credenciales.length > 0 && (
               <div className="flex flex-col gap-2">
-                <Mono className="text-[12.5px] text-muted-foreground">Credenciales</Mono>
+                <SectionHeader titulo="Credenciales" contador={resultado.credenciales.length} />
                 <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(248px,1fr))]">
                   {resultado.credenciales.map((c) => (
                     <Link
                       key={c.id}
                       href={rutaActivo(c.tipo_activo, c.activo_id)}
-                      className="flex flex-col gap-2 rounded-[11px] border bg-card p-3.5 transition-colors hover:border-foreground/20 hover:bg-muted"
+                      className="flex flex-col gap-2 rounded-lg border bg-card p-3.5 transition-colors hover:border-foreground/20 hover:bg-muted"
                     >
                       <div className="flex items-center gap-2">
-                        <KeyRound className="size-[15px] text-muted-foreground" />
+                        <KeyRound className="size-4 text-muted-foreground" />
                         <Mono className="truncate text-[13.5px] font-semibold">
                           {c.usuario_acceso}
                         </Mono>
@@ -212,11 +214,7 @@ function BuscarContenido() {
 export default function BuscarPage() {
   return (
     <Suspense
-      fallback={
-        <div className="flex items-center justify-center p-10">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
-      }
+      fallback={<PageSkeleton variante="tabla" />}
     >
       <BuscarContenido />
     </Suspense>

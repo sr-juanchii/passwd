@@ -67,7 +67,7 @@ export function HipervisorForm({
           <CampoTexto id="cpu" label="CPU" value={v.cpu} onChange={(x) => set("cpu", x)} />
           <CampoTexto id="alm" label="Almacenamiento" value={v.almacenamiento} onChange={(x) => set("almacenamiento", x)} />
           <CampoTexto id="serie" label="Número de serie" value={v.numero_serie} onChange={(x) => set("numero_serie", x)} />
-          <CampoTexto id="gar" label="Garantía hasta" value={v.garantia_hasta} onChange={(x) => set("garantia_hasta", x)} placeholder="AAAA-MM-DD" />
+          <CampoTexto id="gar" label="Garantía hasta" type="date" value={v.garantia_hasta} onChange={(x) => set("garantia_hasta", x)} />
           <CampoTexto id="prov" label="Proveedor" value={v.proveedor} onChange={(x) => set("proveedor", x)} />
           <CampoEstado value={v.estado} onChange={(x) => set("estado", x)} />
           <CampoTexto id="etq" label="Etiquetas (separadas por coma)" value={v.etiquetas} onChange={(x) => set("etiquetas", x)} />

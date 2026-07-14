@@ -1,3 +1,4 @@
+import { Eyebrow } from "@/components/ui/mono";
 import { cn } from "@/lib/utils";
 
 export interface Propiedad {
@@ -11,10 +12,10 @@ export function Propiedades({ titulo, items }: { titulo?: string; items: Propied
   const visibles = items.filter((p) => p.valor !== "" && p.valor !== null && p.valor !== undefined);
   if (visibles.length === 0) return null;
   return (
-    <section className="overflow-hidden rounded-[14px] border bg-card">
+    <section className="overflow-hidden rounded-xl border bg-card">
       {titulo && (
         <div className="border-b px-5 py-3.5">
-          <span className="text-sm font-semibold">{titulo}</span>
+          <Eyebrow>{titulo}</Eyebrow>
         </div>
       )}
       <dl className="grid gap-x-8 gap-y-3.5 p-5 sm:grid-cols-2">
