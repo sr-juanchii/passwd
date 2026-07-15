@@ -27,7 +27,7 @@ export function Segmented({
   const h = size === "sm" ? "h-7" : "h-8";
   return (
     <div
-      className={cn("inline-flex gap-[3px] rounded-[9px] bg-muted p-[3px]", className)}
+      className={cn("inline-flex gap-[3px] rounded-lg bg-muted p-[3px]", className)}
       role="tablist"
     >
       {options.map((o) => {

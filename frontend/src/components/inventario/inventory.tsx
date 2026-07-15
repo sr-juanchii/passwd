@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   MonitorSmartphone,
   Rows3,
+  SearchX,
   Server,
   TableProperties,
   TriangleAlert,
@@ -16,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Chip } from "@/components/ui/chip";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Eyebrow, Mono } from "@/components/ui/mono";
 import { Segmented } from "@/components/ui/segmented";
 import { RiskDot } from "@/components/risk-dot";
@@ -142,7 +144,7 @@ function AssetCard({ a, onOpen }: { a: ActivoInv; onOpen: (a: ActivoInv) => void
       )}
     >
       <div className="flex items-start gap-2.5">
-        <div className="flex size-[34px] shrink-0 items-center justify-center rounded-[9px] bg-muted">
+        <div className="flex size-[34px] shrink-0 items-center justify-center rounded-md bg-muted">
           <Icono className="size-[17px] text-foreground" />
         </div>
         <div className="min-w-0 flex-1">
@@ -210,7 +212,7 @@ export function Inventory({
   const flat = [...fisicos, ...hyps.flatMap((h) => [h, ...(h.vms ?? []).filter(vmVisible)])];
 
   return (
-    <section className="overflow-hidden rounded-[14px] border bg-card">
+    <section className="overflow-hidden rounded-xl border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div className="flex items-center gap-3">
           <Eyebrow>Inventario</Eyebrow>
@@ -244,13 +246,18 @@ export function Inventory({
       </div>
 
       {flat.length === 0 ? (
-        <p className="border-t p-10 text-center text-sm text-muted-foreground">
-          No hay activos que coincidan con el filtro.
-        </p>
+        <div className="border-t p-6">
+          <EmptyState
+            compacto
+            icono={SearchX}
+            titulo="Sin coincidencias"
+            descripcion="No hay activos que coincidan con el filtro."
+          />
+        </div>
       ) : vista === "tabla" ? (
         <div className="border-t">
-          <Table className="rounded-none shadow-none">
-            <TableHeader>
+          <Table>
+            <TableHeader className="bg-muted">
               <TableRow>
                 <TableHead>Activo</TableHead>
                 <TableHead>Tipo</TableHead>

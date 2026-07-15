@@ -28,7 +28,7 @@ export function TituloActivo({
   const Icono = ICONO[tipo];
   return (
     <span className="flex flex-wrap items-center gap-2.5">
-      <span className="flex size-9 items-center justify-center rounded-[10px] bg-muted">
+      <span className="flex size-9 items-center justify-center rounded-lg bg-muted">
         <Icono className="size-[18px]" />
       </span>
       {nivel && <RiskDot nivel={nivel} size={8} />}

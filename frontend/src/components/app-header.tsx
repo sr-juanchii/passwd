@@ -56,12 +56,12 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b bg-background/90 px-4 backdrop-blur">
-      <SidebarTrigger className="size-8 rounded-[9px] border bg-card text-muted-foreground" />
+      <SidebarTrigger className="size-9 rounded-lg border bg-card text-muted-foreground" />
 
       <button
         type="button"
         onClick={() => setCmd(true)}
-        className="flex h-9 max-w-md flex-1 items-center gap-2.5 rounded-[10px] border bg-card px-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="flex h-9 max-w-md flex-1 items-center gap-2.5 rounded-lg border bg-card px-3 text-sm text-muted-foreground transition-[color,box-shadow] outline-none hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <Search className="size-4 shrink-0" />
         <span className="flex-1 truncate text-left">
@@ -76,9 +76,9 @@ export function AppHeader() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex h-9 items-center gap-2 rounded-[9px] border bg-card pr-2 pl-1.5 transition-colors hover:bg-muted"
+              className="flex h-9 items-center gap-2 rounded-lg border bg-card pr-2 pl-1.5 transition-[color,background-color,box-shadow] outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              <span className="flex size-[26px] items-center justify-center rounded-[7px] bg-primary text-[11.5px] font-semibold text-primary-foreground">
+              <span className="flex size-6.5 items-center justify-center rounded-md bg-primary text-[11.5px] font-semibold text-primary-foreground">
                 {iniciales(usuario?.nombre_completo, usuario?.username)}
               </span>
               <span className="hidden text-sm font-medium text-foreground sm:inline">

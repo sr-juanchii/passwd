@@ -2,9 +2,10 @@
 
 import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/mono";
 
 // Panel con cabecera para agrupar los campos de un formulario, en el mismo
-// estilo de tarjeta del rediseño (borde hairline, esquinas de 14px).
+// estilo de tarjeta del rediseño (borde hairline, radio de tarjeta).
 export function FormPanel({
   titulo,
   children,
@@ -13,16 +14,17 @@ export function FormPanel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-[14px] border bg-card">
+    <div className="overflow-hidden rounded-xl border bg-card">
       <div className="border-b px-5 py-3.5">
-        <span className="text-sm font-semibold">{titulo}</span>
+        <Eyebrow>{titulo}</Eyebrow>
       </div>
       <div className="grid gap-4 p-5 sm:grid-cols-2">{children}</div>
     </div>
   );
 }
 
-// Barra de acciones (Guardar / Cancelar) común a todos los formularios.
+// Barra de acciones (Guardar / Cancelar) común a todos los formularios. El CTA
+// primario va en h-9 (size="lg") para marcar jerarquía frente a Cancelar.
 export function FormAcciones({
   enviando,
   onCancelar,
@@ -34,7 +36,7 @@ export function FormAcciones({
 }) {
   return (
     <div className="mt-4 flex gap-2">
-      <Button type="submit" disabled={enviando}>
+      <Button type="submit" size="lg" disabled={enviando}>
         {enviando ? <Loader2 className="animate-spin" /> : <Save />}
         {etiqueta}
       </Button>

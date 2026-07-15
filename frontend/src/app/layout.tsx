@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -22,6 +22,15 @@ export const metadata: Metadata = {
     "Custodia de credenciales de infraestructura con inventario relacional, MFA y auditoría.",
 };
 
+// La barra del navegador acompaña al tema (— #f7f7f7 ≈ --background claro,
+// #0a0a0a ≈ --background oscuro). metadata.themeColor está deprecado en v16.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f7f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -38,7 +47,7 @@ export default function RootLayout({
           <TooltipProvider>
             <SessionProvider>{children}</SessionProvider>
           </TooltipProvider>
-          <Toaster richColors closeButton />
+          <Toaster closeButton />
         </ThemeProvider>
       </body>
     </html>

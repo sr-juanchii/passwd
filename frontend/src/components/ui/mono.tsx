@@ -17,7 +17,7 @@ export function Eyebrow({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "font-mono text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase",
+        "font-mono text-2xs font-medium tracking-[0.14em] text-muted-foreground uppercase",
         className,
       )}
       {...props}
@@ -30,7 +30,7 @@ export function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
   return (
     <kbd
       className={cn(
-        "rounded-[5px] border bg-muted px-1.5 py-[3px] font-mono text-[11px] leading-none font-medium text-muted-foreground",
+        "rounded-sm border bg-muted px-1.5 py-[3px] font-mono text-2xs leading-none font-medium text-muted-foreground",
         className,
       )}
       {...props}

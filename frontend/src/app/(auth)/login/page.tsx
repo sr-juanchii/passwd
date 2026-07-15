@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -72,9 +73,17 @@ export default function LoginPage() {
             <Label htmlFor="password" className="shrink-0">
               Contraseña
             </Label>
-            <span className="truncate text-xs text-muted-foreground" title="Contacte a un administrador">
-              ¿Olvidó su contraseña?
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="truncate rounded-sm text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline focus-visible:outline-none"
+                >
+                  ¿Olvidó su contraseña?
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Contacte a un administrador para restablecerla.</TooltipContent>
+            </Tooltip>
           </div>
           <Input
             id="password"

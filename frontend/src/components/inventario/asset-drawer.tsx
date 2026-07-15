@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   ArrowUpRight,
   Cpu,
+  KeyRound,
   MonitorSmartphone,
   Plus,
   ScrollText,
@@ -14,7 +15,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Chip } from "@/components/ui/chip";
-import { Eyebrow, Mono } from "@/components/ui/mono";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Mono } from "@/components/ui/mono";
+import { SectionHeader } from "@/components/ui/section-header";
 import { RiskDot } from "@/components/risk-dot";
 import { EstadoBadge } from "@/components/estado-badge";
 import { CredItem } from "@/components/inventario/cred-item";
@@ -48,7 +51,7 @@ export function AssetDrawer({
       <SheetContent className="w-full gap-0 p-0 sm:max-w-[560px]">
         <SheetHeader className="gap-3 border-b p-5">
           <div className="flex items-start gap-3 pr-8">
-            <div className="flex size-10 items-center justify-center rounded-[10px] bg-muted">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
               <Icono className="size-[19px] text-foreground" />
             </div>
             <div className="min-w-0">
@@ -90,21 +93,28 @@ export function AssetDrawer({
             </div>
           )}
 
-          <div className="mb-3 flex items-center justify-between">
-            <Eyebrow>Credenciales · {asset.credenciales.length}</Eyebrow>
-            {puedeGestionar && (
-              <Button size="sm" asChild>
-                <Link href={`/credenciales/nueva?activo=${asset.tipo}&activo_id=${asset.id}`}>
-                  <Plus /> Nueva credencial
-                </Link>
-              </Button>
-            )}
-          </div>
+          <SectionHeader
+            className="mb-3"
+            titulo="Credenciales"
+            contador={asset.credenciales.length}
+            accion={
+              puedeGestionar && (
+                <Button size="sm" asChild>
+                  <Link href={`/credenciales/nueva?activo=${asset.tipo}&activo_id=${asset.id}`}>
+                    <Plus /> Nueva credencial
+                  </Link>
+                </Button>
+              )
+            }
+          />
 
           {asset.credenciales.length === 0 ? (
-            <p className="rounded-[10px] border border-dashed p-6 text-center text-[13px] text-muted-foreground">
-              No hay credenciales registradas para este activo.
-            </p>
+            <EmptyState
+              compacto
+              icono={KeyRound}
+              titulo="Sin credenciales"
+              descripcion="No hay credenciales registradas para este activo."
+            />
           ) : (
             <div className="flex flex-col gap-2.5">
               {asset.credenciales.map((c) => (
@@ -115,14 +125,18 @@ export function AssetDrawer({
 
           {asset.vms && asset.vms.length > 0 && (
             <div className="mt-6">
-              <Eyebrow className="mb-3">Máquinas virtuales · {asset.vms.length}</Eyebrow>
+              <SectionHeader
+                className="mb-3"
+                titulo="Máquinas virtuales"
+                contador={asset.vms.length}
+              />
               <div className="flex flex-col gap-1.5">
                 {asset.vms.map((v) => (
                   <button
                     key={v.id}
                     type="button"
                     onClick={() => onOpenVm(v)}
-                    className="flex items-center gap-2.5 rounded-[9px] border bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted"
+                    className="flex items-center gap-2.5 rounded-md border bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted"
                   >
                     <RiskDot nivel={nivelActivo(v)} size={7} />
                     <MonitorSmartphone className="size-[15px] text-muted-foreground" />

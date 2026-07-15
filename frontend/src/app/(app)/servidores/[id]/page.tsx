@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ServidorDetalle } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
@@ -16,6 +16,7 @@ import { ErrorRecurso } from "@/components/error-recurso";
 import { TituloActivo } from "@/components/inventario/titulo-activo";
 import { Chip } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { nivelActivo } from "@/lib/riesgo";
 import { toast } from "sonner";
 
@@ -43,11 +44,7 @@ export default function ServidorDetallePage() {
     return <ErrorRecurso titulo="Servidor no disponible" mensaje={error} />;
   }
   if (!d) {
-    return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageSkeleton variante="ficha" />;
   }
 
   async function eliminar() {

@@ -6,7 +6,6 @@ import {
   Activity,
   Clock,
   KeyRound,
-  Loader2,
   Lock,
   ScrollText,
   ShieldAlert,
@@ -19,7 +18,10 @@ import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Mono } from "@/components/ui/mono";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { SectionHeader } from "@/components/ui/section-header";
 import {
   Table,
   TableBody,
@@ -43,12 +45,12 @@ function MetricTile({
   alerta?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-2.5 rounded-[14px] border bg-card p-4">
+    <div className="flex flex-col gap-2.5 rounded-xl border bg-card p-4">
       <div className="flex items-center justify-between">
         <span className="text-[12.5px] text-muted-foreground">{etiqueta}</span>
         <div
           className={cn(
-            "flex size-[30px] items-center justify-center rounded-lg",
+            "flex size-8 items-center justify-center rounded-lg",
             alerta ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
           )}
         >
@@ -81,13 +83,9 @@ function CardPanel({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn("overflow-hidden rounded-[14px] border bg-card", className)}>
-      <div className="flex items-center justify-between border-b px-4 py-3.5">
-        <div className="flex items-center gap-2.5">
-          <Icono className="size-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">{titulo}</span>
-        </div>
-        {accion}
+    <div className={cn("overflow-hidden rounded-xl border bg-card", className)}>
+      <div className="border-b px-4 py-3.5">
+        <SectionHeader icono={Icono} titulo={titulo} accion={accion} />
       </div>
       <div className="p-4">{children}</div>
     </div>
@@ -124,9 +122,7 @@ export default function MetricasPage() {
     return (
       <>
         <PageHeader titulo="Métricas" />
-        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No tiene permiso para ver las métricas.
-        </p>
+        <EmptyState icono={Lock} titulo="Sin permiso" descripcion="No tiene permiso para ver las métricas." />
       </>
     );
   }
@@ -135,9 +131,7 @@ export default function MetricasPage() {
     return (
       <>
         <PageHeader titulo="Métricas de seguridad" />
-        <div className="flex items-center justify-center p-10">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
+        <PageSkeleton variante="hero" cabecera={false} />
       </>
     );
   }
@@ -174,7 +168,7 @@ export default function MetricasPage() {
             {datos.rotacion_vencida.length === 0 ? (
               vacio("Ninguna credencial vencida.")
             ) : (
-              <Table className="rounded-none shadow-none">
+              <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Activo</TableHead>
@@ -216,7 +210,7 @@ export default function MetricasPage() {
                         className="h-full rounded-full"
                         style={{
                           width: `${(t.accesos / maxAcc) * 100}%`,
-                          background: "var(--chart-3)",
+                          background: "color-mix(in oklch, var(--foreground) 55%, transparent)",
                         }}
                       />
                     </div>
@@ -244,7 +238,7 @@ export default function MetricasPage() {
               <div className="flex flex-col gap-2">
                 {datos.sin_mfa.map((u) => (
                   <div key={u.username} className="flex items-center gap-2.5">
-                    <ShieldAlert className="size-[15px] text-destructive" />
+                    <ShieldAlert className="size-4 text-destructive" />
                     <Mono className="text-[13px] font-medium">{u.username}</Mono>
                     <Badge variant="secondary">{u.rol}</Badge>
                   </div>
@@ -260,7 +254,7 @@ export default function MetricasPage() {
               <div className="flex flex-col gap-2">
                 {datos.bloqueados.map((b) => (
                   <div key={b.username} className="flex items-center gap-2.5">
-                    <Lock className="size-[15px] text-muted-foreground" />
+                    <Lock className="size-4 text-muted-foreground" />
                     <Mono className="text-[13px] font-medium">{b.username}</Mono>
                     <span className="text-xs text-muted-foreground">
                       hasta {new Date(b.bloqueado_hasta).toLocaleString()}
@@ -275,7 +269,7 @@ export default function MetricasPage() {
             {datos.concesiones_por_caducar.length === 0 ? (
               vacio("No hay concesiones próximas a caducar.")
             ) : (
-              <Table className="rounded-none shadow-none">
+              <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Usuario</TableHead>

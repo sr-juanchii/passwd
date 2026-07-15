@@ -22,6 +22,7 @@ export function CampoTexto({
   required,
   placeholder,
   type = "text",
+  error,
 }: {
   id: string;
   label: string;
@@ -30,6 +31,9 @@ export function CampoTexto({
   required?: boolean;
   placeholder?: string;
   type?: string;
+  // Mensaje de validación inline: marca el campo con aria-invalid (los estilos
+  // ya viven en el primitivo Input) y lo muestra debajo en text-destructive.
+  error?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -43,8 +47,15 @@ export function CampoTexto({
         required={required}
         placeholder={placeholder}
         value={value}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
         onChange={(e) => onChange(e.target.value)}
       />
+      {error && (
+        <p id={`${id}-error`} className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

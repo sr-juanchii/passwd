@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Boxes, Loader2, Plus } from "lucide-react";
+import { Boxes, Plus } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import type { Concesion, Dashboard } from "@/lib/types";
@@ -14,7 +14,9 @@ import { Inventory } from "@/components/inventario/inventory";
 import { AssetDrawer } from "@/components/inventario/asset-drawer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Mono } from "@/components/ui/mono";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
 import {
   Table,
   TableBody,
@@ -28,45 +30,46 @@ import { toast } from "sonner";
 function VistaAnalista({ concesiones }: { concesiones: Concesion[] }) {
   if (concesiones.length === 0) {
     return (
-      <div className="rounded-[14px] border border-dashed p-12 text-center">
-        <Boxes className="mx-auto size-10 text-muted-foreground" />
-        <p className="mt-3 text-sm text-muted-foreground">
-          Aún no tiene accesos concedidos. Solicite acceso a un administrador.
-        </p>
-      </div>
+      <EmptyState
+        icono={Boxes}
+        titulo="Sin accesos concedidos"
+        descripcion="Aún no tiene accesos concedidos. Solicite acceso a un administrador."
+      />
     );
   }
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Activo</TableHead>
-          <TableHead>Tipo</TableHead>
-          <TableHead>Nivel</TableHead>
-          <TableHead>Caduca</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {concesiones.map((c) => (
-          <TableRow key={c.id}>
-            <TableCell>
-              <Link href={rutaActivo(c.tipo, c.activo_id)} className="hover:underline">
-                <Mono className="font-medium">{c.activo_nombre}</Mono>
-              </Link>
-            </TableCell>
-            <TableCell>{ETIQUETAS_TIPO_ACTIVO[c.tipo]}</TableCell>
-            <TableCell>
-              <Badge variant={c.nivel === "ver_credenciales" ? "default" : "secondary"}>
-                {c.nivel_label}
-              </Badge>
-            </TableCell>
-            <TableCell className="text-muted-foreground">
-              {c.expira_en ? new Date(c.expira_en).toLocaleDateString() : "Sin caducidad"}
-            </TableCell>
+    <div className="overflow-hidden rounded-xl border bg-card">
+      <Table>
+        <TableHeader className="bg-muted">
+          <TableRow>
+            <TableHead>Activo</TableHead>
+            <TableHead>Tipo</TableHead>
+            <TableHead>Nivel</TableHead>
+            <TableHead>Caduca</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {concesiones.map((c) => (
+            <TableRow key={c.id}>
+              <TableCell>
+                <Link href={rutaActivo(c.tipo, c.activo_id)} className="hover:underline">
+                  <Mono className="font-medium">{c.activo_nombre}</Mono>
+                </Link>
+              </TableCell>
+              <TableCell>{ETIQUETAS_TIPO_ACTIVO[c.tipo]}</TableCell>
+              <TableCell>
+                <Badge variant={c.nivel === "ver_credenciales" ? "default" : "secondary"}>
+                  {c.nivel_label}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {c.expira_en ? new Date(c.expira_en).toLocaleDateString() : "Sin caducidad"}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -95,11 +98,7 @@ export default function DashboardPage() {
     return <p className="text-sm text-destructive">{error}</p>;
   }
   if (!data) {
-    return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageSkeleton variante="hero" />;
   }
 
   if (data.es_analista) {
@@ -144,12 +143,27 @@ export default function DashboardPage() {
           onOpen={setAsset}
         />
         {vacio ? (
-          <div className="rounded-[14px] border border-dashed p-12 text-center">
-            <Boxes className="mx-auto size-10 text-muted-foreground" />
-            <p className="mt-3 text-sm text-muted-foreground">
-              Aún no hay activos registrados.
-            </p>
-          </div>
+          <EmptyState
+            icono={Boxes}
+            titulo="Aún no hay activos registrados"
+            descripcion="Registre su primer servidor o hipervisor para empezar a inventariar sus credenciales."
+            accion={
+              puedeGestionar && (
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button asChild variant="outline">
+                    <Link href="/servidores/nuevo">
+                      <Plus /> Añadir servidor
+                    </Link>
+                  </Button>
+                  <Button asChild>
+                    <Link href="/hipervisores/nuevo">
+                      <Plus /> Añadir hipervisor
+                    </Link>
+                  </Button>
+                </div>
+              )
+            }
+          />
         ) : (
           <Inventory
             servidores={modelo.servidores}

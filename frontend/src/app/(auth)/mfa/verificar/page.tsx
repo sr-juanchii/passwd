@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OtpInput } from "@/components/ui/otp-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 
@@ -18,30 +19,6 @@ export default function MfaVerificarPage() {
   const [codigoRec, setCodigoRec] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const refs = useRef<(HTMLInputElement | null)[]>([]);
-
-  function setDig(i: number, v: string) {
-    const limpio = v.replace(/\D/g, "").slice(-1);
-    const next = [...digitos];
-    next[i] = limpio;
-    setDigitos(next);
-    setError("");
-    if (limpio && i < 5) refs.current[i + 1]?.focus();
-  }
-
-  function onKey(i: number, e: React.KeyboardEvent) {
-    if (e.key === "Backspace" && !digitos[i] && i > 0) refs.current[i - 1]?.focus();
-  }
-
-  function onPaste(e: React.ClipboardEvent) {
-    const txt = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
-    if (!txt) return;
-    e.preventDefault();
-    const next = txt.split("");
-    while (next.length < 6) next.push("");
-    setDigitos(next);
-    refs.current[Math.min(txt.length, 5)]?.focus();
-  }
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -65,7 +42,7 @@ export default function MfaVerificarPage() {
 
   return (
     <div>
-      <div className="mb-4 flex size-11 items-center justify-center rounded-[11px] bg-muted">
+      <div className="mb-4 flex size-11 items-center justify-center rounded-lg bg-muted">
         <ShieldCheck className="size-[22px] text-foreground" />
       </div>
       <h2 className="text-[22px] font-semibold">Verificación en dos pasos</h2>
@@ -92,25 +69,13 @@ export default function MfaVerificarPage() {
             onChange={(e) => setCodigoRec(e.target.value)}
           />
         ) : (
-          <div className="flex gap-2.5" onPaste={onPaste}>
-            {digitos.map((v, i) => (
-              <input
-                key={i}
-                ref={(el) => {
-                  refs.current[i] = el;
-                }}
-                value={v}
-                inputMode="numeric"
-                maxLength={1}
-                autoFocus={i === 0}
-                aria-label={`Dígito ${i + 1}`}
-                onChange={(e) => setDig(i, e.target.value)}
-                onKeyDown={(e) => onKey(i, e)}
-                className="h-[52px] w-full rounded-[10px] border bg-card text-center font-mono text-[22px] font-semibold text-foreground outline-none transition-colors focus:border-foreground aria-[invalid]:border-destructive data-[filled=true]:border-foreground"
-                data-filled={v ? "true" : "false"}
-              />
-            ))}
-          </div>
+          <OtpInput
+            valor={digitos}
+            onChange={(d) => {
+              setDigitos(d);
+              setError("");
+            }}
+          />
         )}
 
         <Button type="submit" className="h-10 w-full" disabled={enviando}>

@@ -2,12 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Wand2 } from "lucide-react";
 import type { VaultInput } from "@/lib/types";
 import { CATEGORIAS_VAULT, ETIQUETAS_CATEGORIA_VAULT } from "@/lib/constants";
 import { ApiError } from "@/lib/api";
-import { generarPassword } from "@/lib/password-gen";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CampoPassword } from "./campo-password";
 import { FormAcciones, FormPanel } from "./form-shell";
 import { toast } from "sonner";
 
@@ -39,30 +37,23 @@ export function VaultForm({
     categoria: inicial?.categoria ?? "cuenta",
     notas: inicial?.notas ?? "",
   });
-  const [mostrar, setMostrar] = useState(false);
+  const [errores, setErrores] = useState<{ titulo?: string; password?: string }>({});
   const [enviando, setEnviando] = useState(false);
   const set = <K extends keyof VaultInput>(k: K, val: VaultInput[K]) =>
     setV((prev) => ({ ...prev, [k]: val }));
 
-  function generar() {
-    set("password", generarPassword());
-    setMostrar(true);
-  }
-
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
-    if (!v.titulo.trim()) {
-      toast.error("El título es obligatorio.");
-      return;
-    }
-    if (!edicion && !v.password) {
-      toast.error("La contraseña es obligatoria.");
-      return;
-    }
+    // Validación inline: el toast queda para errores de red/API.
+    const errs: typeof errores = {};
+    if (!v.titulo.trim()) errs.titulo = "El título es obligatorio.";
+    if (!edicion && !v.password) errs.password = "La contraseña es obligatoria.";
+    setErrores(errs);
+    if (Object.keys(errs).length > 0) return;
     setEnviando(true);
     try {
       await onGuardar(v);
-      toast.success("Entrada guardada en tu vault.");
+      toast.success("Entrada guardada en su vault.");
       router.push("/vault");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "No se pudo guardar.");
@@ -71,14 +62,29 @@ export function VaultForm({
   }
 
   return (
-    <form onSubmit={enviar}>
+    <form onSubmit={enviar} noValidate>
       <FormPanel titulo="Datos de la entrada">
         <div className="space-y-2">
           <Label htmlFor="titulo">
             Título<span className="text-destructive"> *</span>
           </Label>
-          <Input id="titulo" required value={v.titulo} onChange={(e) => set("titulo", e.target.value)}
-                 placeholder="Ej.: Correo personal, Panel del banco…" />
+          <Input
+            id="titulo"
+            required
+            value={v.titulo}
+            aria-invalid={errores.titulo ? true : undefined}
+            aria-describedby={errores.titulo ? "titulo-error" : undefined}
+            onChange={(e) => {
+              set("titulo", e.target.value);
+              if (errores.titulo) setErrores((p) => ({ ...p, titulo: undefined }));
+            }}
+            placeholder="Ej.: Correo corporativo, Panel del proveedor…"
+          />
+          {errores.titulo && (
+            <p id="titulo-error" className="text-xs text-destructive">
+              {errores.titulo}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="usuario">Usuario / cuenta</Label>
@@ -86,32 +92,18 @@ export function VaultForm({
                  onChange={(e) => set("usuario_acceso", e.target.value)} placeholder="usuario@correo.com" />
         </div>
         <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="password">
-            Contraseña {edicion && <span className="text-muted-foreground">(en blanco = conservar la actual)</span>}
-          </Label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                id="password"
-                type={mostrar ? "text" : "password"}
-                autoComplete="new-password"
-                value={v.password}
-                onChange={(e) => set("password", e.target.value)}
-                className="pr-10 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setMostrar((m) => !m)}
-                className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
-                aria-label={mostrar ? "Ocultar" : "Mostrar"}
-              >
-                {mostrar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <Button type="button" variant="outline" onClick={generar}>
-              <Wand2 className="h-4 w-4" /> Generar
-            </Button>
-          </div>
+          <CampoPassword
+            id="password"
+            value={v.password}
+            edicion={edicion}
+            onChange={(x) => {
+              set("password", x);
+              if (errores.password) setErrores((p) => ({ ...p, password: undefined }));
+            }}
+          />
+          {errores.password && (
+            <p className="text-xs text-destructive">{errores.password}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Categoría</Label>
@@ -130,12 +122,12 @@ export function VaultForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor="url">URL (opcional)</Label>
-          <Input id="url" value={v.url} onChange={(e) => set("url", e.target.value)} placeholder="https://…" />
+          <Input id="url" type="url" value={v.url} onChange={(e) => set("url", e.target.value)} placeholder="https://…" />
         </div>
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="notas">Notas (opcional)</Label>
           <Textarea id="notas" rows={3} value={v.notas} onChange={(e) => set("notas", e.target.value)}
-                    placeholder="Información adicional (no pongas aquí la contraseña)." />
+                    placeholder="Información adicional (no escriba aquí la contraseña)." />
         </div>
       </FormPanel>
       <FormAcciones enviando={enviando} onCancelar={() => router.back()} />

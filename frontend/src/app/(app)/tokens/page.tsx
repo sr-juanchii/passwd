@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clipboard, KeyRound, Loader2, Plus, Trash2 } from "lucide-react";
+import { Clipboard, KeyRound, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { TokenAlcance, TokenApi } from "@/lib/types";
 import { ETIQUETAS_TOKEN_ALCANCE, TOKEN_ALCANCES } from "@/lib/constants";
@@ -9,9 +9,13 @@ import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Chip } from "@/components/ui/chip";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mono } from "@/components/ui/mono";
+import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { SectionHeader } from "@/components/ui/section-header";
 import {
   Select,
   SelectContent,
@@ -54,6 +58,9 @@ export default function TokensPage() {
   const [dias, setDias] = useState("0");
   const [creando, setCreando] = useState(false);
   const [tokenNuevo, setTokenNuevo] = useState<string | null>(null);
+  // Instante de referencia para señalar caducidades próximas (14 días);
+  // en inicializador de estado porque Date.now() es impuro durante el render.
+  const [ahora] = useState(() => Date.now());
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -113,9 +120,7 @@ export default function TokensPage() {
     return (
       <>
         <PageHeader titulo="Tokens de API" />
-        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No tiene permiso para gestionar tokens.
-        </p>
+        <EmptyState icono={Lock} titulo="Sin permiso" descripcion="No tiene permiso para gestionar tokens." />
       </>
     );
   }
@@ -149,9 +154,9 @@ export default function TokensPage() {
           </Alert>
         )}
 
-        <div className="overflow-hidden rounded-[14px] border bg-card">
+        <div className="overflow-hidden rounded-xl border bg-card">
           <div className="border-b px-5 py-3.5">
-            <span className="text-sm font-semibold">Crear token</span>
+            <SectionHeader icono={KeyRound} titulo="Crear token" />
           </div>
           <form onSubmit={crear} className="flex flex-wrap items-end gap-3 p-5">
             <div className="min-w-60 flex-1 space-y-2">
@@ -191,16 +196,17 @@ export default function TokensPage() {
         </div>
 
         {cargando ? (
-          <div className="flex items-center justify-center p-10">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
+          <PageSkeleton variante="tabla" cabecera={false} />
         ) : tokens.length === 0 ? (
-          <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-            No hay tokens creados.
-          </p>
+          <EmptyState
+            icono={KeyRound}
+            titulo="No hay tokens creados"
+            descripcion="Cree el primero con el formulario superior; el secreto se muestra una sola vez."
+          />
         ) : (
+          <div className="overflow-hidden rounded-xl border bg-card">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted">
               <TableRow>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Alcance</TableHead>
@@ -218,7 +224,14 @@ export default function TokensPage() {
                   <TableCell className="font-medium">{t.nombre}</TableCell>
                   <TableCell className="text-muted-foreground">{ETIQUETAS_TOKEN_ALCANCE[t.alcance]}</TableCell>
                   <TableCell className="text-muted-foreground">{fecha(t.creado_en)}</TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell
+                    className={
+                      t.activo && !t.caducado && t.expira_en &&
+                      new Date(t.expira_en).getTime() - ahora < 14 * 86_400_000
+                        ? "font-medium text-warning"
+                        : "text-muted-foreground"
+                    }
+                  >
                     {t.expira_en ? new Date(t.expira_en).toLocaleDateString() : "—"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{fecha(t.ultimo_uso)}</TableCell>
@@ -226,9 +239,9 @@ export default function TokensPage() {
                     {!t.activo ? (
                       <Badge variant="destructive">Revocado</Badge>
                     ) : t.caducado ? (
-                      <Badge variant="secondary">Caducado</Badge>
+                      <Chip className="text-destructive">Caducado</Chip>
                     ) : (
-                      <Badge variant="default">Activo</Badge>
+                      <Chip tono="outline">Activo</Chip>
                     )}
                   </TableCell>
                   <TableCell>
@@ -252,7 +265,9 @@ export default function TokensPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => revocar(t)}>Revocar</AlertDialogAction>
+                            <AlertDialogAction variant="destructive" onClick={() => revocar(t)}>
+                              Revocar
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -262,6 +277,7 @@ export default function TokensPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
         )}
       </div>
     </>

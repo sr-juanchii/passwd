@@ -1,14 +1,27 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, FileUp, Loader2, TriangleAlert, Upload } from "lucide-react";
+import { Download, FileUp, Loader2, Lock, TriangleAlert, Upload } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ResultadoImportacion } from "@/lib/types";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Mono } from "@/components/ui/mono";
+import { SectionHeader } from "@/components/ui/section-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -50,7 +63,6 @@ export default function ImportarPage() {
   }
 
   async function exportar() {
-    if (!window.confirm("El CSV incluirá las contraseñas EN CLARO. ¿Descargar?")) return;
     setExportando(true);
     try {
       const blob = await api.exportarInventario();
@@ -76,9 +88,7 @@ export default function ImportarPage() {
     return (
       <>
         <PageHeader titulo="Importar" />
-        <p className="rounded-[14px] border border-dashed p-10 text-center text-sm text-muted-foreground">
-          No tiene permiso para importar inventario.
-        </p>
+        <EmptyState icono={Lock} titulo="Sin permiso" descripcion="No tiene permiso para importar inventario." />
       </>
     );
   }
@@ -104,7 +114,7 @@ export default function ImportarPage() {
             if (f) elegir(f);
           }}
           className={cn(
-            "rounded-[14px] border-2 border-dashed bg-card p-12 text-center transition-colors",
+            "rounded-xl border-2 border-dashed bg-card p-12 text-center transition-colors",
             arrastrando ? "border-foreground/40 bg-muted" : "border-border",
           )}
         >
@@ -151,12 +161,9 @@ export default function ImportarPage() {
         </Alert>
 
         {resultado && (
-          <div className="overflow-hidden rounded-[14px] border bg-card">
+          <div className="overflow-hidden rounded-xl border bg-card">
             <div className="border-b px-4 py-3.5">
-              <span className="text-sm font-semibold">Resultado de la importación</span>
-              <span className="ml-2 text-[13px] text-muted-foreground">
-                {resultado.total} registro(s) creado(s)
-              </span>
+              <SectionHeader icono={FileUp} titulo="Resultado de la importación" contador={resultado.total} />
             </div>
             <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
               {(
@@ -191,10 +198,9 @@ export default function ImportarPage() {
           </div>
         )}
 
-        <div className="overflow-hidden rounded-[14px] border bg-card">
-          <div className="flex items-center gap-2.5 border-b px-4 py-3.5">
-            <FileUp className="size-4 text-muted-foreground" />
-            <span className="text-sm font-semibold">Formato del CSV</span>
+        <div className="overflow-hidden rounded-xl border bg-card">
+          <div className="border-b px-4 py-3.5">
+            <SectionHeader icono={FileUp} titulo="Formato del CSV" />
           </div>
           <div className="flex flex-col gap-3 p-4">
             <p className="text-[13px] text-muted-foreground">
@@ -220,21 +226,40 @@ export default function ImportarPage() {
         </Button>
 
         {puede("inventario.exportar") && (
-          <div className="overflow-hidden rounded-[14px] border bg-card">
-            <div className="flex items-center gap-2.5 border-b px-4 py-3.5">
-              <Download className="size-4 text-muted-foreground" />
-              <span className="text-sm font-semibold">Exportar para migración</span>
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="border-b px-4 py-3.5">
+              <SectionHeader icono={Download} titulo="Exportar para migración" />
             </div>
             <div className="flex flex-col gap-3 p-4">
               <p className="text-[13px] text-muted-foreground">
                 Descarga todo el inventario (servidores, hipervisores, VMs y credenciales) como CSV{" "}
-                <strong>con las contraseñas en claro</strong>, en este mismo formato: edítalo y vuelve
+                <strong>con las contraseñas en claro</strong>, en este mismo formato: edítelo y vuelva
                 a importarlo al migrar entre versiones. Los vaults personales no se incluyen. La
-                descarga queda registrada en auditoría; custodia y destruye el archivo tras la migración.
+                descarga queda registrada en auditoría; custodie y destruya el archivo tras la migración.
               </p>
-              <Button onClick={exportar} disabled={exportando} className="self-start">
-                {exportando ? <Loader2 className="animate-spin" /> : <Download />} Exportar inventario en claro (CSV)
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button disabled={exportando} className="self-start">
+                    {exportando ? <Loader2 className="animate-spin" /> : <Download />} Exportar inventario en claro (CSV)
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>¿Exportar las contraseñas en claro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      El CSV incluirá <strong>todas las contraseñas del inventario sin cifrar</strong>.
+                      La descarga queda registrada en auditoría. Custodie el archivo por un canal
+                      seguro y destrúyalo tras la migración.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction variant="destructive" onClick={() => void exportar()}>
+                      Exportar en claro
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         )}

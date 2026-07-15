@@ -14,7 +14,7 @@ export function ErrorRecurso({
   volverLabel?: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-[14px] border border-dashed p-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-12 text-center">
       <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
         <FileQuestion className="size-6 text-muted-foreground" />
       </div>
