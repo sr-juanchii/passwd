@@ -418,7 +418,9 @@ export default function UsuariosPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void resetPassword()}>Restablecer</AlertDialogAction>
+            <AlertDialogAction variant="destructive" onClick={() => void resetPassword()}>
+              Restablecer
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

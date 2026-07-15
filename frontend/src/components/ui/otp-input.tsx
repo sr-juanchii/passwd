@@ -57,6 +57,8 @@ export function OtpInput({
           value={v}
           inputMode="numeric"
           maxLength={1}
+          // El autofill de OTP del navegador (móvil) se ancla a la primera casilla.
+          autoComplete={i === 0 ? "one-time-code" : "off"}
           autoFocus={autoFocus && i === 0}
           aria-label={`Dígito ${i + 1}`}
           aria-invalid={invalido || undefined}
