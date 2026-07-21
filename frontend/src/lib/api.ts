@@ -49,15 +49,17 @@ const BASE = "/api/web";
 type Opts = {
   method?: string;
   body?: unknown;
-  csrf?: boolean; // adjunta X-CSRF-Token
+  csrf?: boolean; // adjunta X-CSRF-Token con el token de sesión
+  csrfValor?: string; // adjunta X-CSRF-Token con un token explícito (p. ej. el del desafío de recuperación)
   raw?: boolean; // devuelve el Response sin parsear
 };
 
 async function request<T>(path: string, opts: Opts = {}): Promise<T> {
-  const { method = "GET", body, csrf = false, raw = false } = opts;
+  const { method = "GET", body, csrf = false, csrfValor, raw = false } = opts;
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (csrf) headers["X-CSRF-Token"] = csrfToken;
+  if (csrfValor !== undefined) headers["X-CSRF-Token"] = csrfValor;
 
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -93,6 +95,24 @@ export const api = {
       body: { username, password, csrf_login },
     }),
   session: () => request<SessionState>("/session"),
+  // --- Auto-recuperación de contraseña (3 pasos, CSRF del desafío) ---
+  recuperarIniciar: (username: string, email: string, csrf_login: string) =>
+    request<{ ok: boolean; csrf: string }>("/password/recuperar/iniciar", {
+      method: "POST",
+      body: { username, email, csrf_login },
+    }),
+  recuperarVerificar: (codigo: string, csrfDesafio: string) =>
+    request<{ ok: boolean }>("/password/recuperar/verificar", {
+      method: "POST",
+      body: { codigo },
+      csrfValor: csrfDesafio,
+    }),
+  recuperarCambiar: (password_nueva: string, password_confirmacion: string, csrfDesafio: string) =>
+    request<{ ok: boolean; next: string }>("/password/recuperar/cambiar", {
+      method: "POST",
+      body: { password_nueva, password_confirmacion },
+      csrfValor: csrfDesafio,
+    }),
   cambiarPassword: (b: {
     password_actual: string;
     password_nueva: string;

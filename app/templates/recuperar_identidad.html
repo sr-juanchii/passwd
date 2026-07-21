@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Recuperar contraseña — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="tarjeta tarjeta-centrada">
+  <h1>Recuperar contraseña</h1>
+  <p class="texto-suave">
+    Identifique su cuenta. A continuación verificará su identidad con su segundo
+    factor (código de la app autenticadora o un código de recuperación).
+  </p>
+  {% if error %}<div class="alerta alerta-error">{{ error }}</div>{% endif %}
+  <form method="post" action="/recuperar" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_login }}">
+    <label for="username">Usuario</label>
+    <input id="username" name="username" type="text" autocomplete="username" required autofocus maxlength="64">
+    <label for="email">Email registrado</label>
+    <input id="email" name="email" type="email" autocomplete="email" required maxlength="255">
+    <button type="submit" class="boton boton-primario">Continuar</button>
+  </form>
+  <p class="texto-suave" style="margin-top:1rem"><a href="/login">Volver a iniciar sesión</a></p>
+</div>
+{% endblock %}

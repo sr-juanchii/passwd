@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block titulo %}Verificación — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="tarjeta tarjeta-centrada">
+  <h1>Verifique su identidad</h1>
+  <p class="texto-suave">
+    Introduzca el código de 6 dígitos de su aplicación autenticadora, o uno de
+    sus códigos de recuperación de un solo uso.
+  </p>
+  {% if error %}<div class="alerta alerta-error">{{ error }}</div>{% endif %}
+  <form method="post" action="/recuperar/verificar" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="codigo">Código</label>
+    <input id="codigo" name="codigo" type="text" inputmode="numeric" autocomplete="one-time-code"
+           required autofocus maxlength="14" class="texto-mono">
+    <button type="submit" class="boton boton-primario">Verificar</button>
+  </form>
+  <p class="texto-suave" style="margin-top:1rem"><a href="/recuperar">Empezar de nuevo</a></p>
+</div>
+{% endblock %}

@@ -29,6 +29,10 @@ MFA_REINICIADO = "mfa_reiniciado"
 MFA_RECUPERACION = "mfa_codigo_recuperacion_usado"
 LOGOUT = "cierre_sesion"
 PASSWORD_CAMBIADA = "password_cambiada"  # noqa: S105 — nombre de acción, no es una contraseña
+RECUPERACION_INICIADA = "recuperacion_iniciada"  # noqa: S105 — nombre de acción, no es una contraseña
+RECUPERACION_VERIFICADA = "recuperacion_verificada"  # noqa: S105 — nombre de acción, no es una contraseña
+RECUPERACION_COMPLETADA = "recuperacion_completada"  # noqa: S105 — nombre de acción, no es una contraseña
+RECUPERACION_FALLIDA = "recuperacion_fallida"  # noqa: S105 — nombre de acción, no es una contraseña
 CUENTA_BLOQUEADA = "cuenta_bloqueada"
 
 USUARIO_CREADO = "usuario_creado"

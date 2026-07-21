@@ -4,6 +4,8 @@
 <div class="tarjeta tarjeta-centrada">
   <h1>Iniciar sesión</h1>
   <p class="texto-suave">Acceso con contraseña y verificación en dos pasos (MFA).</p>
+  {% if aviso %}<div class="alerta">{{ aviso }}</div>{% endif %}
+  {% if error %}<div class="alerta alerta-error">{{ error }}</div>{% endif %}
   <form method="post" action="/login" class="formulario">
     <input type="hidden" name="csrf_token" value="{{ csrf_login }}">
     <label for="username">Usuario</label>
@@ -12,5 +14,6 @@
     <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200">
     <button type="submit" class="boton boton-primario">Continuar</button>
   </form>
+  <p class="texto-suave" style="margin-top:1rem"><a href="/recuperar">¿Olvidó su contraseña?</a></p>
 </div>
 {% endblock %}

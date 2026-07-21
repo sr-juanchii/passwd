@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -9,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [csrfLogin, setCsrfLogin] = useState("");
   const [error, setError] = useState("");
+  const [aviso, setAviso] = useState("");
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
@@ -25,6 +26,10 @@ export default function LoginPage() {
       .csrfLogin()
       .then((r) => setCsrfLogin(r.csrf_login))
       .catch(() => setError("No se pudo contactar al servidor."));
+    // Aviso tras un flujo externo (p. ej. recuperación de contraseña). Se lee de
+    // window (client-only) para no exigir Suspense de useSearchParams.
+    const msg = new URLSearchParams(window.location.search).get("msg");
+    if (msg) setAviso(msg.slice(0, 200));
   }, []);
 
   async function enviar(e: React.FormEvent) {
@@ -51,6 +56,11 @@ export default function LoginPage() {
         </p>
       </div>
       <form onSubmit={enviar} className="flex flex-col gap-4">
+        {aviso && (
+          <Alert>
+            <AlertDescription>{aviso}</AlertDescription>
+          </Alert>
+        )}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -73,17 +83,12 @@ export default function LoginPage() {
             <Label htmlFor="password" className="shrink-0">
               Contraseña
             </Label>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="truncate rounded-sm text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline focus-visible:outline-none"
-                >
-                  ¿Olvidó su contraseña?
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Contacte a un administrador para restablecerla.</TooltipContent>
-            </Tooltip>
+            <Link
+              href="/recuperar"
+              className="truncate rounded-sm text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline focus-visible:outline-none"
+            >
+              ¿Olvidó su contraseña?
+            </Link>
           </div>
           <Input
             id="password"

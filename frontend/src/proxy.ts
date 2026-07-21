@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
 const COOKIE_SESION = "passwd_session";
 
 // Prefijos públicos (no requieren sesión). El resto exige la cookie.
-const PUBLICAS = ["/login", "/mfa", "/password"];
+const PUBLICAS = ["/login", "/mfa", "/password", "/recuperar"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

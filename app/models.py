@@ -469,6 +469,45 @@ class CodigoRecuperacionMFA(Base):
     usuario: Mapped[Usuario] = relationship()
 
 
+class RecuperacionPassword(Base):
+    """Desafío de auto-recuperación de contraseña (server-side, efímero).
+
+    Vida del desafío: se crea al superar la identificación (usuario + email),
+    se marca ``verificado_en`` al validar el segundo factor (TOTP o código de
+    recuperación) y ``consumido_en`` al cambiar la contraseña o al invalidarse
+    (caducidad, exceso de intentos o un desafío nuevo). Solo se persiste el
+    hash SHA-256 del token; la cookie efímera lleva el valor en claro, de modo
+    que un volcado de la BD no permite retomar un desafío. El ``csrf_token``
+    protege los pasos de verificación y cambio (doble envío por cabecera).
+    """
+
+    __tablename__ = "recuperaciones_password"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    csrf_token: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    expira_en: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    intentos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    verificado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    consumido_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    usuario: Mapped[Usuario] = relationship()
+
+    @property
+    def vigente(self) -> bool:
+        """Ni consumido ni caducado (aún utilizable)."""
+        return self.consumido_en is None and self.expira_en > ahora_utc()
+
+    @property
+    def verificado(self) -> bool:
+        return self.verificado_en is not None
+
+
 TOKEN_ALCANCE_TODO = "todo"  # noqa: S105 — nombre de alcance, no es un secreto
 TOKEN_ALCANCE_AUDITORIA = "auditoria"  # noqa: S105 — nombre de alcance, no es un secreto
 TOKEN_ALCANCE_INVENTARIO = "inventario"  # noqa: S105 — nombre de alcance, no es un secreto
