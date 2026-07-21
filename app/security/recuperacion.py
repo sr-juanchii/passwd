@@ -21,7 +21,7 @@ from datetime import timedelta
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models import RecuperacionPassword, Usuario, ahora_utc
+from app.models import RecuperacionPassword, ahora_utc
 
 TTL_MINUTOS = 10
 MAX_INTENTOS = 5
@@ -31,16 +31,19 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 
 
-def crear_desafio(db: Session, usuario: Usuario) -> tuple[str, str]:
-    """Invalida los desafíos abiertos del usuario y crea uno nuevo.
+def crear_desafio(db: Session, usuario_id: int | None) -> tuple[str, str]:
+    """Crea un desafío y devuelve ``(token, csrf_token)``.
 
-    Devuelve ``(token, csrf_token)``: el token va en la cookie efímera y el
-    csrf se entrega al cliente para el doble envío por cabecera.
+    Con ``usuario_id`` real invalida antes los desafíos abiertos de ese usuario;
+    con ``usuario_id=None`` crea un desafío **señuelo** (identidad no coincidente)
+    para que el paso de verificación responda igual exista o no la cuenta. El
+    trabajo de BD es idéntico en ambos casos, cerrando también el canal de tiempo.
+    El token va en la cookie efímera; el csrf, al cliente para el doble envío.
     """
     db.execute(
         update(RecuperacionPassword)
         .where(
-            RecuperacionPassword.usuario_id == usuario.id,
+            RecuperacionPassword.usuario_id == usuario_id,
             RecuperacionPassword.consumido_en.is_(None),
         )
         .values(consumido_en=ahora_utc())
@@ -49,7 +52,7 @@ def crear_desafio(db: Session, usuario: Usuario) -> tuple[str, str]:
     csrf = secrets.token_urlsafe(24)
     db.add(
         RecuperacionPassword(
-            usuario_id=usuario.id,
+            usuario_id=usuario_id,
             token_hash=_hash(token),
             csrf_token=csrf,
             expira_en=ahora_utc() + timedelta(minutes=TTL_MINUTOS),

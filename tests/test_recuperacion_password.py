@@ -107,22 +107,27 @@ def test_recuperacion_con_codigo_de_recuperacion(client):
     assert r.status_code == 401
 
 
-def test_identidad_incorrecta_no_emite_desafio_pero_responde_igual(client):
+def test_identidad_incorrecta_responde_identico_a_una_cuenta_real(client):
     _preparar_admin(client)
 
-    # Email que no corresponde: misma respuesta (303 + cookie) que el caso válido…
+    # Email que no corresponde: misma respuesta (303 + cookie) que el caso válido.
     r = _iniciar(client, ADMIN_USER, "otro@ejemplo.local")
     assert r.status_code == 303 and r.headers["location"] == "/recuperar/verificar"
     assert "passwd_recuperacion" in r.headers.get("set-cookie", "")
 
-    # …pero no hay desafío real: el paso de verificación redirige a /recuperar.
-    r = _verificar(client, "000000")
-    assert r.status_code == 303 and r.headers["location"] == "/recuperar"
+    # Paso 2 indistinguible de una cuenta real: el formulario se muestra (200) y
+    # un código incorrecto responde 401 — no un 303/redirect que delataría que la
+    # identidad no existía (desafío señuelo, anti-enumeración también en el paso 2).
+    assert client.get("/recuperar/verificar", follow_redirects=False).status_code == 200
+    assert _verificar(client, "000000").status_code == 401
 
-    # No se creó ninguna fila de desafío para el usuario.
+    # No se creó ningún desafío REAL (ligado a un usuario); solo un señuelo.
     db = sesion_bd()
     try:
-        assert db.scalar(select(RecuperacionPassword)) is None
+        reales = db.scalars(
+            select(RecuperacionPassword).where(RecuperacionPassword.usuario_id.is_not(None))
+        ).all()
+        assert reales == []
     finally:
         db.close()
 
@@ -134,11 +139,17 @@ def test_usuario_sin_mfa_no_puede_recuperar(client):
     # NO se enrola MFA. La cuenta existe pero mfa_habilitado sigue en False.
 
     assert _iniciar(client, ADMIN_USER, ADMIN_EMAIL).status_code == 303
-    r = _verificar(client, "000000")
-    assert r.status_code == 303 and r.headers["location"] == "/recuperar"
+    # Indistinguible de una identidad incorrecta: formulario + 401, y el paso de
+    # cambio queda vedado (el señuelo nunca se verifica).
+    assert client.get("/recuperar/verificar", follow_redirects=False).status_code == 200
+    assert _verificar(client, "000000").status_code == 401
+    assert client.get("/recuperar/cambiar", follow_redirects=False).status_code == 303
     db = sesion_bd()
     try:
-        assert db.scalar(select(RecuperacionPassword)) is None
+        reales = db.scalars(
+            select(RecuperacionPassword).where(RecuperacionPassword.usuario_id.is_not(None))
+        ).all()
+        assert reales == []
     finally:
         db.close()
 
@@ -182,11 +193,12 @@ def test_recuperacion_json_camino_feliz_y_anti_enumeracion(client):
                         json={"username": ADMIN_USER, "email": "no@existe.local", "csrf_login": csrf_login})
     assert r_mal.status_code == 200 and r_mal.json()["ok"] is True
     assert "passwd_recuperacion" in r_mal.headers.get("set-cookie", "")
-    # Sin desafío real, la verificación falla (400) pese a la cookie presente.
-    csrf_falso = r_mal.json()["csrf"]
+    # El desafío señuelo se comporta como un 2.º factor incorrecto (401), igual
+    # que una cuenta real con un código erróneo → sin oráculo de enumeración.
+    csrf_senuelo = r_mal.json()["csrf"]
     r_vf = client.post("/api/web/password/recuperar/verificar", json={"codigo": "000000"},
-                       headers={"X-CSRF-Token": csrf_falso})
-    assert r_vf.status_code == 400
+                       headers={"X-CSRF-Token": csrf_senuelo})
+    assert r_vf.status_code == 401
 
     # Camino feliz por JSON.
     csrf_login = client.get("/api/web/csrf").json()["csrf_login"]

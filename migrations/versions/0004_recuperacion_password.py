@@ -21,7 +21,7 @@ def upgrade() -> None:
     op.create_table(
         'recuperaciones_password',
         sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('usuario_id', sa.Integer(), nullable=False),
+        sa.Column('usuario_id', sa.Integer(), nullable=True),
         sa.Column('token_hash', sa.String(length=64), nullable=False),
         sa.Column('csrf_token', sa.String(length=64), nullable=False),
         sa.Column('creado_en', sa.DateTime(), nullable=False),

@@ -529,13 +529,16 @@ def recuperar_iniciar(
         and hmac.compare_digest(usuario.email.strip().lower(), email)
     )
 
-    token = secrets.token_urlsafe(32)
-    csrf_desafio = secrets.token_urlsafe(24)
+    # Se crea SIEMPRE un desafío (real si la identidad coincide y la tasa por
+    # usuario lo permite; señuelo sin usuario en caso contrario), con el mismo
+    # trabajo de BD y la misma respuesta, de modo que ni el cuerpo ni la cookie
+    # ni la latencia distingan si la cuenta existe (anti-enumeración).
     if coincide and ratelimit.permitir_intento(f"recuperar-user:{usuario.id}", db=db):
-        token, csrf_desafio = recuperacion.crear_desafio(db, usuario)
+        token, csrf_desafio = recuperacion.crear_desafio(db, usuario.id)
         audit.registrar(db, audit.RECUPERACION_INICIADA, request=request, usuario=usuario,
                         detalle="Identidad verificada; desafío de recuperación emitido.")
     else:
+        token, csrf_desafio = recuperacion.crear_desafio(db, None)
         audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
                         usuario=usuario if coincide else None, username=username,
                         detalle="Tasa por usuario excedida." if coincide else "Identidad no coincide.",
@@ -566,17 +569,22 @@ def recuperar_verificar(
         db.commit()
         raise _error("Demasiados intentos; espere unos minutos.", 429)
 
-    usuario = db.get(Usuario, desafio.usuario_id)
-    if usuario is None or not usuario.activo or usuario.totp_secret_cifrado is None:
-        recuperacion.consumir(db, desafio)
-        db.commit()
-        raise _error("Solicitud de recuperación inválida. Reiníciela.", 400)
-
+    # Un desafío señuelo (usuario_id nulo) o una cuenta ya inválida se tratan
+    # EXACTAMENTE como un segundo factor incorrecto: mismo trabajo criptográfico
+    # y misma respuesta que un código erróneo sobre una cuenta real, para no
+    # reintroducir un oráculo de enumeración en este paso.
+    usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
+    recuperable = usuario is not None and usuario.activo and usuario.totp_secret_cifrado is not None
     codigo_limpio = cuerpo.codigo.strip().replace(" ", "")
-    secreto = descifrar(usuario.totp_secret_cifrado)
-    reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
-    totp_valido = not reutilizado and mfa.verificar_codigo(secreto, cuerpo.codigo)
-    codigo_recuperacion = recovery.consumir_codigo(db, usuario, cuerpo.codigo) if not totp_valido else False
+    if recuperable:
+        secreto = descifrar(usuario.totp_secret_cifrado)
+        reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
+        totp_valido = not reutilizado and mfa.verificar_codigo(secreto, cuerpo.codigo)
+        codigo_recuperacion = recovery.consumir_codigo(db, usuario, cuerpo.codigo) if not totp_valido else False
+    else:
+        mfa.verificar_codigo(mfa.generar_secreto(), cuerpo.codigo)  # equipara el tiempo, nunca válido
+        totp_valido = False
+        codigo_recuperacion = False
 
     if not totp_valido and not codigo_recuperacion:
         agotado = recuperacion.registrar_fallo(db, desafio)

@@ -484,8 +484,11 @@ class RecuperacionPassword(Base):
     __tablename__ = "recuperaciones_password"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    usuario_id: Mapped[int] = mapped_column(
-        ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+    # Nullable: los desafíos «señuelo» (identidad no coincidente) no tienen usuario.
+    # Existen solo para que el paso de verificación responda igual exista o no la
+    # cuenta (anti-enumeración), comportándose siempre como un 2.º factor fallido.
+    usuario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=True, index=True
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     csrf_token: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -496,7 +499,7 @@ class RecuperacionPassword(Base):
     verificado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     consumido_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    usuario: Mapped[Usuario] = relationship()
+    usuario: Mapped[Usuario | None] = relationship()
 
     @property
     def vigente(self) -> bool:
