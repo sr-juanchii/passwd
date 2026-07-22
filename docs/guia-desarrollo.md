@@ -131,4 +131,6 @@ Mapa detallado del backend en [`arquitectura.md`](arquitectura.md) §3; del fron
 - [`modelo-datos.md`](modelo-datos.md) — esquema relacional.
 - [`verificacion-cumplimiento.md`](verificacion-cumplimiento.md) — evidencia de pruebas y SAST.
 - [`hoja-de-ruta.md`](hoja-de-ruta.md) — estado y plan de evolución.
+- [`versionado.md`](versionado.md) — política SemVer y cómo cada PR declara su incremento.
+- [`../CHANGELOG.md`](../CHANGELOG.md) — registro de cambios por versión.
 </content>
