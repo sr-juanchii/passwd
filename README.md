@@ -1,5 +1,7 @@
 # 🔐 Gestor de Contraseñas de Servidores
 
+**Versión 1.0.0** · [Registro de cambios](CHANGELOG.md) · [Política de versionado](docs/versionado.md)
+
 Sistema interno para custodiar las credenciales de la infraestructura de servidores con un
 **inventario relacional completo**, **inicio de sesión seguro con MFA obligatorio** y
 controles alineados con **CIS Controls v8.1** e **ISO/IEC 27003**.

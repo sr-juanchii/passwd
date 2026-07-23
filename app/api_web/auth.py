@@ -42,7 +42,7 @@ from app.models import (
 )
 from app.notifications import enviar_alerta
 from app.rbac import PERMISOS, tiene_permiso
-from app.security import mfa, ratelimit, recovery
+from app.security import mfa, ratelimit, recovery, recuperacion
 from app.security.crypto import cifrar, descifrar
 from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
 from app.security.sessions import (
@@ -57,6 +57,7 @@ from app.security.sessions import (
 router = APIRouter()
 
 COOKIE_CSRF_LOGIN = "passwd_csrf_login"
+COOKIE_RECUPERACION = "passwd_recuperacion"  # noqa: S105 — nombre de cookie, no es un secreto
 
 # Hash ficticio para igualar tiempos cuando el usuario no existe.
 _HASH_FICTICIO = hashear_password(secrets.token_urlsafe(24))
@@ -84,6 +85,21 @@ class CambioPassword(BaseModel):
 
 class CodigoMFA(BaseModel):
     codigo: str = ""
+
+
+class RecuperarIniciar(BaseModel):
+    username: str = ""
+    email: str = ""
+    csrf_login: str = ""
+
+
+class RecuperarVerificar(BaseModel):
+    codigo: str = ""
+
+
+class RecuperarCambiar(BaseModel):
+    password_nueva: str = ""
+    password_confirmacion: str = ""
 
 
 def _etapa_inicial(usuario: Usuario) -> str:
@@ -458,6 +474,189 @@ def mfa_verificar(
     db.commit()
     respuesta = JSONResponse(cuerpo_resp)
     configurar_cookie(respuesta, token)
+    return respuesta
+
+
+# ---------------------------------------------------------------------------
+# Auto-recuperación de contraseña (usuario + email → 2.º factor → nueva clave)
+# ---------------------------------------------------------------------------
+
+
+def _cookie_recuperacion(respuesta: JSONResponse, token: str) -> None:
+    respuesta.set_cookie(
+        COOKIE_RECUPERACION, token, httponly=True, samesite="strict",
+        secure=get_settings().cookie_secure, max_age=recuperacion.TTL_MINUTOS * 60, path="/",
+    )
+
+
+def _borrar_cookie_recuperacion(respuesta: JSONResponse) -> None:
+    respuesta.delete_cookie(COOKIE_RECUPERACION, path="/")
+
+
+@router.post("/password/recuperar/iniciar")
+def recuperar_iniciar(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    cuerpo: RecuperarIniciar,
+):
+    """Paso 1: identifica la cuenta (usuario + email) y emite un desafío.
+
+    Respuesta *anti-enumeración*: SIEMPRE devuelve ``{ok, csrf}`` y fija una
+    cookie de desafío, exista o no la cuenta. Solo hay un desafío real (con
+    fila en BD) cuando usuario y email coinciden y la cuenta tiene MFA activo;
+    en caso contrario la cookie lleva un token aleatorio sin respaldo, de modo
+    que el atacante no puede distinguir ambos casos por la respuesta.
+    """
+    ip = request.client.host if request.client else "desconocida"
+    cookie_csrf = request.cookies.get(COOKIE_CSRF_LOGIN, "")
+    if not cookie_csrf or not hmac.compare_digest(cuerpo.csrf_login, cookie_csrf):
+        raise _error("Sesión de formulario inválida; intente de nuevo.", 403)
+
+    if not ratelimit.permitir_intento(f"recuperar:{ip}", db=db):
+        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
+                        username=cuerpo.username.strip().lower(), detalle="Tasa excedida.", exito=False)
+        db.commit()
+        raise _error("Demasiados intentos; espere unos minutos.", 429)
+
+    username = cuerpo.username.strip().lower()
+    email = cuerpo.email.strip().lower()
+    usuario = db.scalar(select(Usuario).where(func.lower(Usuario.username) == username))
+    coincide = (
+        usuario is not None
+        and usuario.activo
+        and usuario.mfa_habilitado
+        and usuario.totp_secret_cifrado is not None
+        and hmac.compare_digest(usuario.email.strip().lower(), email)
+    )
+
+    # Se crea SIEMPRE un desafío (real si la identidad coincide y la tasa por
+    # usuario lo permite; señuelo sin usuario en caso contrario), con el mismo
+    # trabajo de BD y la misma respuesta, de modo que ni el cuerpo ni la cookie
+    # ni la latencia distingan si la cuenta existe (anti-enumeración).
+    if coincide and ratelimit.permitir_intento(f"recuperar-user:{usuario.id}", db=db):
+        token, csrf_desafio = recuperacion.crear_desafio(db, usuario.id)
+        audit.registrar(db, audit.RECUPERACION_INICIADA, request=request, usuario=usuario,
+                        detalle="Identidad verificada; desafío de recuperación emitido.")
+    else:
+        token, csrf_desafio = recuperacion.crear_desafio(db, None)
+        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
+                        usuario=usuario if coincide else None, username=username,
+                        detalle="Tasa por usuario excedida." if coincide else "Identidad no coincide.",
+                        exito=False)
+    db.commit()
+    respuesta = JSONResponse({"ok": True, "csrf": csrf_desafio})
+    _cookie_recuperacion(respuesta, token)
+    return respuesta
+
+
+@router.post("/password/recuperar/verificar")
+def recuperar_verificar(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    cuerpo: RecuperarVerificar,
+):
+    """Paso 2: valida el segundo factor (TOTP en vivo o código de recuperación)."""
+    desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
+    if desafio is None:
+        raise _error("Solicitud de recuperación inválida o caducada. Reiníciela.", 400)
+    enviado = request.headers.get("x-csrf-token", "")
+    if not enviado or not hmac.compare_digest(enviado, desafio.csrf_token):
+        raise _error("Token CSRF inválido o ausente.", 403)
+    if desafio.verificado:
+        return {"ok": True}  # idempotente: permite reintentar el paso de cambio
+
+    if not ratelimit.permitir_intento(f"recuperar-verif:{desafio.usuario_id}", db=db):
+        db.commit()
+        raise _error("Demasiados intentos; espere unos minutos.", 429)
+
+    # Un desafío señuelo (usuario_id nulo) o una cuenta ya inválida se tratan
+    # EXACTAMENTE como un segundo factor incorrecto: mismo trabajo criptográfico
+    # y misma respuesta que un código erróneo sobre una cuenta real, para no
+    # reintroducir un oráculo de enumeración en este paso.
+    usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
+    recuperable = usuario is not None and usuario.activo and usuario.totp_secret_cifrado is not None
+    codigo_limpio = cuerpo.codigo.strip().replace(" ", "")
+    if recuperable:
+        secreto = descifrar(usuario.totp_secret_cifrado)
+        reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
+        totp_valido = not reutilizado and mfa.verificar_codigo(secreto, cuerpo.codigo)
+        codigo_recuperacion = recovery.consumir_codigo(db, usuario, cuerpo.codigo) if not totp_valido else False
+    else:
+        mfa.verificar_codigo(mfa.generar_secreto(), cuerpo.codigo)  # equipara el tiempo, nunca válido
+        totp_valido = False
+        codigo_recuperacion = False
+
+    if not totp_valido and not codigo_recuperacion:
+        agotado = recuperacion.registrar_fallo(db, desafio)
+        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request, usuario=usuario,
+                        detalle="Segundo factor incorrecto." + (" Desafío agotado." if agotado else ""),
+                        exito=False)
+        db.commit()
+        if agotado:
+            respuesta = JSONResponse(
+                {"detail": "Demasiados códigos incorrectos; reinicie la recuperación.", "next": "/recuperar"},
+                status_code=400,
+            )
+            _borrar_cookie_recuperacion(respuesta)
+            return respuesta
+        raise _error("Código incorrecto.", 401)
+
+    if totp_valido:
+        usuario.ultimo_otp_usado = codigo_limpio  # cierra reutilización del mismo TOTP
+    recuperacion.marcar_verificado(db, desafio)
+    audit.registrar(db, audit.RECUPERACION_VERIFICADA, request=request, usuario=usuario,
+                    detalle="Código de recuperación usado." if codigo_recuperacion else "TOTP verificado.")
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/password/recuperar/cambiar")
+def recuperar_cambiar(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    cuerpo: RecuperarCambiar,
+):
+    """Paso 3: fija la nueva contraseña y revoca todas las sesiones del usuario."""
+    desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
+    if desafio is None or not desafio.verificado:
+        raise _error("Solicitud de recuperación inválida o sin verificar. Reiníciela.", 400)
+    enviado = request.headers.get("x-csrf-token", "")
+    if not enviado or not hmac.compare_digest(enviado, desafio.csrf_token):
+        raise _error("Token CSRF inválido o ausente.", 403)
+
+    usuario = db.get(Usuario, desafio.usuario_id)
+    if usuario is None or not usuario.activo:
+        recuperacion.consumir(db, desafio)
+        db.commit()
+        raise _error("Solicitud de recuperación inválida. Reiníciela.", 400)
+
+    if cuerpo.password_nueva != cuerpo.password_confirmacion:
+        raise _error("La confirmación no coincide.", 400)
+    errores = validar_politica(cuerpo.password_nueva, usuario.username)
+    if errores:
+        raise _error(" ".join(errores), 400)
+    if verificar_password(usuario.password_hash, cuerpo.password_nueva):
+        raise _error("La nueva contraseña debe ser distinta de la anterior.", 400)
+
+    usuario.password_hash = hashear_password(cuerpo.password_nueva)
+    usuario.debe_cambiar_password = False
+    usuario.password_cambiada_en = ahora_utc()
+    usuario.intentos_fallidos = 0
+    usuario.bloqueado_hasta = None
+    revocar_sesiones_de_usuario(db, usuario.id)
+    recuperacion.consumir(db, desafio)
+    audit.registrar(db, audit.RECUPERACION_COMPLETADA, request=request, usuario=usuario,
+                    detalle="Contraseña restablecida por auto-recuperación.")
+    ip = request.client.host if request.client else "desconocida"
+    enviar_alerta(
+        "Contraseña restablecida por auto-recuperación",
+        f"La contraseña de «{usuario.username}» se restableció mediante el flujo de "
+        f"auto-recuperación (IP de origen: {ip}). Si no fue usted, contacte al "
+        f"administrador de inmediato.",
+    )
+    db.commit()
+    respuesta = JSONResponse({"ok": True, "next": "/login"})
+    _borrar_cookie_recuperacion(respuesta)
     return respuesta
 
 

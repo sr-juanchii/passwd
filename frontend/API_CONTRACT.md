@@ -29,6 +29,9 @@ Todas las rutas cuelgan de `/api/web`.
 | POST | `/mfa/configurar` | `{codigo}` | `{ codigos_recuperacion: string[] }` (única vez; stage→activa) |
 | GET | `/mfa/verificar` | — | `{ ok: true }` (solo confirma stage) |
 | POST | `/mfa/verificar` | `{codigo}` | `{ ok, aviso? }` |
+| POST | `/password/recuperar/iniciar` | `{username, email, csrf_login}` | `{ ok: true, csrf }`; fija cookie efímera `passwd_recuperacion`. **Anti-enumeración**: responde igual exista o no la cuenta. `csrf` es el token del desafío para los pasos siguientes |
+| POST | `/password/recuperar/verificar` | `{codigo}` + cabecera `X-CSRF-Token: <csrf del desafío>` | `{ ok: true }`. Acepta TOTP en vivo o un código de recuperación. 400 si el desafío caducó/se agotó; 401 código incorrecto |
+| POST | `/password/recuperar/cambiar` | `{password_nueva, password_confirmacion}` + cabecera `X-CSRF-Token` | `{ ok: true, next: "/login" }`; revoca todas las sesiones del usuario y borra la cookie de desafío |
 | POST | `/logout` | — | `{ ok: true }`; borra cookie |
 
 `stage`→`next`: `cambio_password`→`/password/cambiar`, `mfa_enrolamiento`→`/mfa/configurar`,

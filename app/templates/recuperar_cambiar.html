@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Nueva contraseña — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="tarjeta tarjeta-centrada">
+  <h1>Establezca su nueva contraseña</h1>
+  <p class="texto-suave">
+    Al guardar, se cerrarán todas sus sesiones y deberá iniciar sesión de nuevo.
+  </p>
+  {% if error %}<div class="alerta alerta-error">{{ error }}</div>{% endif %}
+  <form method="post" action="/recuperar/cambiar" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="password_nueva">Nueva contraseña</label>
+    <input id="password_nueva" name="password_nueva" type="password" autocomplete="new-password"
+           required autofocus maxlength="200">
+    <label for="password_confirmacion">Confirmar nueva contraseña</label>
+    <input id="password_confirmacion" name="password_confirmacion" type="password"
+           autocomplete="new-password" required maxlength="200">
+    <button type="submit" class="boton boton-primario">Guardar y volver a iniciar sesión</button>
+  </form>
+</div>
+{% endblock %}

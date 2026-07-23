@@ -102,6 +102,25 @@ En cada ingreso posterior:
 Si no tiene el móvil a mano, use uno de sus **códigos de recuperación** en lugar del código de 6
 dígitos (cada uno sirve **una sola vez**; el sistema le avisa cuántos le quedan).
 
+### ¿Olvidó su contraseña?
+
+Puede restablecerla **usted mismo**, sin intervención del administrador, desde el enlace
+**«¿Olvidó su contraseña?»** de la pantalla de inicio de sesión:
+
+1. **Identifíquese**: escriba su **usuario** y su **email registrado** (deben coincidir).
+2. **Verifique su identidad** con su segundo factor: el **código de 6 dígitos** de su app
+   autenticadora o uno de sus **códigos de recuperación** de un solo uso.
+3. **Establezca la nueva contraseña**. Al guardar, se **cierran todas sus sesiones** y se le pide
+   iniciar sesión de nuevo con la contraseña recién creada (y su MFA).
+
+Notas de seguridad:
+
+- El enlace **solo funciona si su cuenta ya tiene el MFA enrolado**. Si nunca completó el
+  enrolamiento (o perdió a la vez la contraseña, el dispositivo y todos los códigos de
+  recuperación), pida al **administrador** que reinicie su acceso.
+- Cada solicitud caduca a los **10 minutos** y se bloquea tras varios códigos incorrectos.
+- Todo el proceso queda **auditado** y se envía una **alerta** al completar el restablecimiento.
+
 ### La sesión caduca sola
 
 - Tras **15 minutos sin actividad**, la sesión expira y deberá volver a entrar.

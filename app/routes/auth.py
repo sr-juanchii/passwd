@@ -43,7 +43,7 @@ from app.models import (
     ahora_utc,
 )
 from app.notifications import enviar_alerta
-from app.security import mfa, ratelimit, recovery
+from app.security import mfa, ratelimit, recovery, recuperacion
 from app.security.crypto import cifrar, descifrar
 from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
 from app.security.sessions import (
@@ -58,9 +58,17 @@ from app.security.sessions import (
 router = APIRouter()
 
 COOKIE_CSRF_LOGIN = "passwd_csrf_login"
+COOKIE_RECUPERACION = "passwd_recuperacion"  # noqa: S105 — nombre de cookie, no es un secreto
 
 # Hash ficticio para igualar tiempos cuando el usuario no existe
 _HASH_FICTICIO = hashear_password(secrets.token_urlsafe(24))
+
+
+def _cookie_recuperacion(respuesta, token: str) -> None:
+    respuesta.set_cookie(
+        COOKIE_RECUPERACION, token, httponly=True, samesite="strict",
+        secure=get_settings().cookie_secure, max_age=recuperacion.TTL_MINUTOS * 60, path="/",
+    )
 
 
 def _etapa_inicial(usuario: Usuario) -> tuple[str, str]:
@@ -100,7 +108,8 @@ def _registrar_fallo(db: Session, request: Request, usuario: Usuario) -> None:
 @router.get("/login")
 def login_form(request: Request):
     token = request.cookies.get(COOKIE_CSRF_LOGIN) or secrets.token_urlsafe(24)
-    respuesta = render(request, "login.html", {"csrf_login": token})
+    aviso = request.query_params.get("msg", "")[:200]
+    respuesta = render(request, "login.html", {"csrf_login": token, "aviso": aviso})
     respuesta.set_cookie(
         COOKIE_CSRF_LOGIN, token, httponly=True, samesite="strict",
         secure=get_settings().cookie_secure, max_age=3600, path="/",
@@ -399,6 +408,197 @@ def mfa_verificar(
 
     respuesta = RedirectResponse(destino, status_code=303)
     configurar_cookie(respuesta, token)
+    return respuesta
+
+
+# ---------------------------------------------------------------------------
+# Auto-recuperación de contraseña (usuario + email → 2.º factor → nueva clave)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/recuperar")
+def recuperar_form(request: Request):
+    token = request.cookies.get(COOKIE_CSRF_LOGIN) or secrets.token_urlsafe(24)
+    respuesta = render(request, "recuperar_identidad.html", {"csrf_login": token})
+    respuesta.set_cookie(
+        COOKIE_CSRF_LOGIN, token, httponly=True, samesite="strict",
+        secure=get_settings().cookie_secure, max_age=3600, path="/",
+    )
+    return respuesta
+
+
+@router.post("/recuperar")
+def recuperar_iniciar(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    username: Annotated[str, Form()] = "",
+    email: Annotated[str, Form()] = "",
+    csrf_token: Annotated[str, Form()] = "",
+):
+    ip = request.client.host if request.client else "desconocida"
+    cookie_csrf = request.cookies.get(COOKIE_CSRF_LOGIN, "")
+    if not cookie_csrf or not hmac.compare_digest(csrf_token, cookie_csrf):
+        return render(request, "recuperar_identidad.html",
+                      {"error": "Sesión de formulario inválida; intente de nuevo.",
+                       "csrf_login": cookie_csrf}, status_code=403)
+    if not ratelimit.permitir_intento(f"recuperar:{ip}", db=db):
+        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
+                        username=username.strip().lower(), detalle="Tasa excedida.", exito=False)
+        db.commit()
+        return render(request, "recuperar_identidad.html",
+                      {"error": "Demasiados intentos; espere unos minutos.", "csrf_login": cookie_csrf},
+                      status_code=429)
+
+    usuario = db.scalar(select(Usuario).where(func.lower(Usuario.username) == username.strip().lower()))
+    coincide = (
+        usuario is not None and usuario.activo and usuario.mfa_habilitado
+        and usuario.totp_secret_cifrado is not None
+        and hmac.compare_digest(usuario.email.strip().lower(), email.strip().lower())
+    )
+    # Se crea SIEMPRE un desafío (real o señuelo sin usuario) para que el paso 2
+    # responda igual y con la misma latencia exista o no la cuenta.
+    if coincide and ratelimit.permitir_intento(f"recuperar-user:{usuario.id}", db=db):
+        token, _csrf = recuperacion.crear_desafio(db, usuario.id)
+        audit.registrar(db, audit.RECUPERACION_INICIADA, request=request, usuario=usuario,
+                        detalle="Identidad verificada; desafío de recuperación emitido.")
+    else:
+        token, _csrf = recuperacion.crear_desafio(db, None)
+        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
+                        usuario=usuario if coincide else None, username=username.strip().lower(),
+                        detalle="Tasa por usuario excedida." if coincide else "Identidad no coincide.",
+                        exito=False)
+    db.commit()
+    # PRG + anti-enumeración: SIEMPRE se redirige al paso 2 con cookie de desafío.
+    respuesta = RedirectResponse("/recuperar/verificar", status_code=303)
+    _cookie_recuperacion(respuesta, token)
+    return respuesta
+
+
+@router.get("/recuperar/verificar")
+def recuperar_verificar_form(request: Request, db: Annotated[Session, Depends(get_db)]):
+    desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
+    if desafio is None:
+        return RedirectResponse("/recuperar", status_code=303)
+    return render(request, "recuperar_verificar.html", {"csrf_token": desafio.csrf_token})
+
+
+@router.post("/recuperar/verificar")
+def recuperar_verificar(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    codigo: Annotated[str, Form()] = "",
+    csrf_token: Annotated[str, Form()] = "",
+):
+    desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
+    if desafio is None:
+        return RedirectResponse("/recuperar", status_code=303)
+    if not hmac.compare_digest(csrf_token, desafio.csrf_token):
+        return render(request, "recuperar_verificar.html",
+                      {"csrf_token": desafio.csrf_token, "error": "Token CSRF inválido."}, status_code=403)
+    if desafio.verificado:
+        return RedirectResponse("/recuperar/cambiar", status_code=303)
+    if not ratelimit.permitir_intento(f"recuperar-verif:{desafio.usuario_id}", db=db):
+        db.commit()
+        return render(request, "recuperar_verificar.html",
+                      {"csrf_token": desafio.csrf_token, "error": "Demasiados intentos; espere unos minutos."},
+                      status_code=429)
+
+    # Señuelo (usuario_id nulo) o cuenta inválida → mismo camino y respuesta que
+    # un código incorrecto sobre una cuenta real (anti-enumeración en el paso 2).
+    usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
+    recuperable = usuario is not None and usuario.activo and usuario.totp_secret_cifrado is not None
+    codigo_limpio = codigo.strip().replace(" ", "")
+    if recuperable:
+        secreto = descifrar(usuario.totp_secret_cifrado)
+        reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
+        totp_valido = not reutilizado and mfa.verificar_codigo(secreto, codigo)
+        codigo_recuperacion = recovery.consumir_codigo(db, usuario, codigo) if not totp_valido else False
+    else:
+        mfa.verificar_codigo(mfa.generar_secreto(), codigo)  # equipara el tiempo, nunca válido
+        totp_valido = False
+        codigo_recuperacion = False
+
+    if not totp_valido and not codigo_recuperacion:
+        agotado = recuperacion.registrar_fallo(db, desafio)
+        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request, usuario=usuario,
+                        detalle="Segundo factor incorrecto." + (" Desafío agotado." if agotado else ""),
+                        exito=False)
+        db.commit()
+        if agotado:
+            respuesta = RedirectResponse("/recuperar", status_code=303)
+            respuesta.delete_cookie(COOKIE_RECUPERACION, path="/")
+            return respuesta
+        return render(request, "recuperar_verificar.html",
+                      {"csrf_token": desafio.csrf_token, "error": "Código incorrecto."}, status_code=401)
+
+    if totp_valido:
+        usuario.ultimo_otp_usado = codigo_limpio
+    recuperacion.marcar_verificado(db, desafio)
+    audit.registrar(db, audit.RECUPERACION_VERIFICADA, request=request, usuario=usuario,
+                    detalle="Código de recuperación usado." if codigo_recuperacion else "TOTP verificado.")
+    db.commit()
+    return RedirectResponse("/recuperar/cambiar", status_code=303)
+
+
+@router.get("/recuperar/cambiar")
+def recuperar_cambiar_form(request: Request, db: Annotated[Session, Depends(get_db)]):
+    desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
+    if desafio is None or not desafio.verificado:
+        return RedirectResponse("/recuperar", status_code=303)
+    return render(request, "recuperar_cambiar.html", {"csrf_token": desafio.csrf_token})
+
+
+@router.post("/recuperar/cambiar")
+def recuperar_cambiar(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    password_nueva: Annotated[str, Form()] = "",
+    password_confirmacion: Annotated[str, Form()] = "",
+    csrf_token: Annotated[str, Form()] = "",
+):
+    desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
+    if desafio is None or not desafio.verificado:
+        return RedirectResponse("/recuperar", status_code=303)
+    ctx = {"csrf_token": desafio.csrf_token}
+    if not hmac.compare_digest(csrf_token, desafio.csrf_token):
+        return render(request, "recuperar_cambiar.html", {**ctx, "error": "Token CSRF inválido."}, status_code=403)
+
+    usuario = db.get(Usuario, desafio.usuario_id)
+    if usuario is None or not usuario.activo:
+        recuperacion.consumir(db, desafio)
+        db.commit()
+        return RedirectResponse("/recuperar", status_code=303)
+
+    if password_nueva != password_confirmacion:
+        return render(request, "recuperar_cambiar.html", {**ctx, "error": "La confirmación no coincide."},
+                      status_code=400)
+    errores = validar_politica(password_nueva, usuario.username)
+    if errores:
+        return render(request, "recuperar_cambiar.html", {**ctx, "error": " ".join(errores)}, status_code=400)
+    if verificar_password(usuario.password_hash, password_nueva):
+        return render(request, "recuperar_cambiar.html",
+                      {**ctx, "error": "La nueva contraseña debe ser distinta de la anterior."}, status_code=400)
+
+    usuario.password_hash = hashear_password(password_nueva)
+    usuario.debe_cambiar_password = False
+    usuario.password_cambiada_en = ahora_utc()
+    usuario.intentos_fallidos = 0
+    usuario.bloqueado_hasta = None
+    revocar_sesiones_de_usuario(db, usuario.id)
+    recuperacion.consumir(db, desafio)
+    audit.registrar(db, audit.RECUPERACION_COMPLETADA, request=request, usuario=usuario,
+                    detalle="Contraseña restablecida por auto-recuperación.")
+    ip = request.client.host if request.client else "desconocida"
+    enviar_alerta(
+        "Contraseña restablecida por auto-recuperación",
+        f"La contraseña de «{usuario.username}» se restableció mediante el flujo de "
+        f"auto-recuperación (IP de origen: {ip}). Si no fue usted, contacte al "
+        f"administrador de inmediato.",
+    )
+    db.commit()
+    aviso = "Contraseña restablecida. Inicie sesión con su nueva contraseña."
+    respuesta = RedirectResponse(f"/login?msg={quote(aviso)}", status_code=303)
+    respuesta.delete_cookie(COOKIE_RECUPERACION, path="/")
     return respuesta
 
 
