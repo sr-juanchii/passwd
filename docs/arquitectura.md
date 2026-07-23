@@ -186,8 +186,9 @@ estos endpoints dedicados.
   ejecuta `create_all()` y luego `reconciliar_esquema()` para añadir columnas nuevas que falten
   (`ALTER TABLE ADD COLUMN`, aditivo). Los cambios **no aditivos** se entregan como revisiones de
   **Alembic** (`migrations/`, ver [`guia-desarrollo.md`](guia-desarrollo.md) §7).
-- **Inventario:** dos activos de nivel superior (servidor físico e hipervisor) y máquinas virtuales
-  bajo el hipervisor; las credenciales cuelgan de exactamente uno de los tres (restricción CHECK).
+- **Inventario:** tres activos de nivel superior (servidor físico, hipervisor y dispositivo de
+  red) y máquinas virtuales bajo el hipervisor; las credenciales cuelgan de exactamente uno de
+  los cuatro (restricción CHECK).
   Esquema completo en [`modelo-datos.md`](modelo-datos.md).
 
 ---

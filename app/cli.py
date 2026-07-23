@@ -157,6 +157,7 @@ def _cmd_recifrar(_args: argparse.Namespace) -> int:
     """
     from app.models import (
         Credencial,
+        DispositivoRed,
         EntradaVault,
         Hipervisor,
         HistorialCredencial,
@@ -176,6 +177,7 @@ def _cmd_recifrar(_args: argparse.Namespace) -> int:
             (ServidorFisico, "notas_cifradas"),
             (Hipervisor, "notas_cifradas"),
             (MaquinaVirtual, "notas_cifradas"),
+            (DispositivoRed, "notas_cifradas"),
             (EntradaVault, "password_cifrada"),
         ]
         total = 0

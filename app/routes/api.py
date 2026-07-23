@@ -21,6 +21,7 @@ from app.models import (
     TOKEN_ALCANCE_AUDITORIA,
     TOKEN_ALCANCE_INVENTARIO,
     TOKEN_ALCANCE_TODO,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     RegistroAuditoria,
@@ -126,6 +127,7 @@ def api_inventario(
     servidores = db.scalars(_pag(select(ServidorFisico).order_by(ServidorFisico.nombre))).all()
     hipervisores = db.scalars(_pag(select(Hipervisor).order_by(Hipervisor.nombre))).all()
     vms = db.scalars(_pag(select(MaquinaVirtual).order_by(MaquinaVirtual.nombre))).all()
+    dispositivos = db.scalars(_pag(select(DispositivoRed).order_by(DispositivoRed.nombre))).all()
 
     def _srv(s: ServidorFisico) -> dict:
         return {"id": s.id, "nombre": s.nombre, "estado": s.estado,
@@ -147,4 +149,11 @@ def api_inventario(
                                 "sistema_operativo": v.sistema_operativo, "ip": v.ip,
                                 "ram": v.ram, "cpu": v.cpu, "almacenamiento": v.almacenamiento,
                                 "hipervisor_id": v.hipervisor_id} for v in vms],
+        "dispositivos_red": [{"id": d.id, "nombre": d.nombre,
+                              "tipo_dispositivo": d.tipo_dispositivo, "estado": d.estado,
+                              "marca_modelo": d.marca_modelo, "version": d.version,
+                              "ip_gestion": d.ip_gestion, "ubicacion": d.ubicacion,
+                              "puertos": d.puertos, "numero_serie": d.numero_serie,
+                              "garantia_hasta": d.garantia_hasta, "proveedor": d.proveedor,
+                              "etiquetas": d.lista_etiquetas} for d in dispositivos],
     }

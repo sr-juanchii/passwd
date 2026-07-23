@@ -37,6 +37,7 @@
 {{ tabla_activos('Servidores físicos', fisicos, '/servidores', '🖥️') }}
 {{ tabla_activos('Hipervisores', hipervisores, '/hipervisores', '⚙️') }}
 {{ tabla_activos('Máquinas virtuales', vms, '/vms', '🗔') }}
+{{ tabla_activos('Dispositivos de red', dispositivos, '/dispositivos', '🔌') }}
 
 {% if credenciales %}
 <div class="tarjeta">
@@ -47,6 +48,7 @@
       {% for c in credenciales %}
       {% set url = ('/servidores/' ~ c.servidor_fisico_id) if c.tipo_activo == 'fisico'
                    else ('/hipervisores/' ~ c.hipervisor_id) if c.tipo_activo == 'hipervisor'
+                   else ('/dispositivos/' ~ c.dispositivo_red_id) if c.tipo_activo == 'dispositivo'
                    else ('/vms/' ~ c.maquina_virtual_id) %}
       <tr>
         <td class="texto-mono">{{ c.usuario_acceso }}</td>

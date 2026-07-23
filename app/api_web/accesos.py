@@ -18,6 +18,7 @@ from app import audit
 from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.database import get_db
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
@@ -25,6 +26,7 @@ from app.models import (
     NIVELES_CONCESION,
     ROL_ANALISTA,
     ConcesionAcceso,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -42,6 +44,7 @@ _ACTIVOS = {
     ACTIVO_FISICO: (ServidorFisico, "servidor_fisico_id"),
     ACTIVO_HIPERVISOR: (Hipervisor, "hipervisor_id"),
     ACTIVO_VM: (MaquinaVirtual, "maquina_virtual_id"),
+    ACTIVO_DISPOSITIVO: (DispositivoRed, "dispositivo_red_id"),
 }
 
 
@@ -128,6 +131,7 @@ def revocar(
         concesion.servidor_fisico_id
         or concesion.hipervisor_id
         or concesion.maquina_virtual_id
+        or concesion.dispositivo_red_id
     )
     detalle = (f"Acceso de {concesion.usuario.username} sobre {concesion.nombre_activo} "
                f"(nivel {concesion.nivel}) revocado")

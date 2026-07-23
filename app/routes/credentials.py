@@ -21,11 +21,13 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     ROL_ANALISTA,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     HistorialCredencial,
     MaquinaVirtual,
@@ -58,9 +60,11 @@ _MODELOS_ACTIVO = {
     ACTIVO_FISICO: (ServidorFisico, "servidor físico", "/servidores/{id}"),
     ACTIVO_HIPERVISOR: (Hipervisor, "hipervisor", "/hipervisores/{id}"),
     ACTIVO_VM: (MaquinaVirtual, "máquina virtual", "/vms/{id}"),
+    ACTIVO_DISPOSITIVO: (DispositivoRed, "dispositivo de red", "/dispositivos/{id}"),
 }
 
-SERVICIOS_SUGERIDOS = ("SSH", "RDP", "iLO/IPMI", "Panel web", "Consola hipervisor", "Base de datos", "Otro")
+SERVICIOS_SUGERIDOS = ("SSH", "RDP", "iLO/IPMI", "Panel web", "Consola hipervisor",
+                       "Base de datos", "Telnet", "SNMP", "Otro")
 
 
 def _resolver_activo(db: Session, tipo: str, activo_id: int):
@@ -137,6 +141,7 @@ def credencial_crear(
         servidor_fisico_id=activo_id if activo == ACTIVO_FISICO else None,
         hipervisor_id=activo_id if activo == ACTIVO_HIPERVISOR else None,
         maquina_virtual_id=activo_id if activo == ACTIVO_VM else None,
+        dispositivo_red_id=activo_id if activo == ACTIVO_DISPOSITIVO else None,
     )
     db.add(credencial)
     db.flush()
@@ -157,7 +162,8 @@ def credencial_editar_form(
     if credencial is None:
         raise HTTPException(status_code=404, detail="La credencial no existe.")
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     instancia, _, url_volver = _resolver_activo(db, tipo, activo_id)
     return render(request, "credencial_form.html",
                   {**_ctx_form(usuario, credencial, tipo, instancia, url_volver),
@@ -180,7 +186,8 @@ def credencial_editar(
     if credencial is None:
         raise HTTPException(status_code=404, detail="La credencial no existe.")
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     instancia, etiqueta, url_volver = _resolver_activo(db, tipo, activo_id)
 
     error = ""
@@ -230,7 +237,8 @@ def credencial_eliminar(
     if credencial is None:
         raise HTTPException(status_code=404, detail="La credencial no existe.")
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     _, _, url_volver = _resolver_activo(db, tipo, activo_id)
     detalle = f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio})"
     db.delete(credencial)

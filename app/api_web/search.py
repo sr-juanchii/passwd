@@ -17,15 +17,18 @@ from app import access
 from app.api_web.deps import requiere_permiso_json
 from app.api_web.serializers import (
     serializar_credencial,
+    serializar_dispositivo_breve,
     serializar_hipervisor_breve,
     serializar_vm_breve,
 )
 from app.database import get_db
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -61,7 +64,8 @@ def buscar(
 ):
     consulta = q.strip()
     if len(consulta) < LONGITUD_MINIMA:
-        return {"q": consulta, "servidores": [], "hipervisores": [], "vms": [], "credenciales": []}
+        return {"q": consulta, "servidores": [], "hipervisores": [], "vms": [],
+                "dispositivos": [], "credenciales": []}
 
     patron = f"%{consulta.lower()}%"
 
@@ -71,6 +75,7 @@ def buscar(
     ids_fisicos = access.ids_activos_concedidos(db, usuario, ACTIVO_FISICO)
     ids_hipervisores = access.ids_activos_concedidos(db, usuario, ACTIVO_HIPERVISOR)
     ids_vms = access.ids_activos_concedidos(db, usuario, ACTIVO_VM)
+    ids_dispositivos = access.ids_activos_concedidos(db, usuario, ACTIVO_DISPOSITIVO)
 
     consulta_fisicos = select(ServidorFisico).where(or_(
         _like(ServidorFisico.nombre, patron),
@@ -109,6 +114,20 @@ def buscar(
         consulta_vms.order_by(MaquinaVirtual.nombre).limit(LIMITE_POR_TIPO)
     ).all()
 
+    consulta_dispositivos = select(DispositivoRed).where(or_(
+        _like(DispositivoRed.nombre, patron),
+        _like(DispositivoRed.tipo_dispositivo, patron),
+        _like(DispositivoRed.marca_modelo, patron),
+        _like(DispositivoRed.ip_gestion, patron),
+        _like(DispositivoRed.ubicacion, patron),
+        _like(DispositivoRed.etiquetas, patron),
+    ))
+    if ids_dispositivos is not None:
+        consulta_dispositivos = consulta_dispositivos.where(DispositivoRed.id.in_(ids_dispositivos))
+    dispositivos = db.scalars(
+        consulta_dispositivos.order_by(DispositivoRed.nombre).limit(LIMITE_POR_TIPO)
+    ).all()
+
     consulta_credenciales = select(Credencial).where(or_(
         _like(Credencial.usuario_acceso, patron),
         _like(Credencial.servicio, patron),
@@ -118,6 +137,7 @@ def buscar(
             Credencial.servidor_fisico_id.in_(ids_fisicos),
             Credencial.hipervisor_id.in_(ids_hipervisores or []),
             Credencial.maquina_virtual_id.in_(ids_vms or []),
+            Credencial.dispositivo_red_id.in_(ids_dispositivos or []),
         ))
     credenciales = db.scalars(consulta_credenciales.limit(LIMITE_POR_TIPO)).all()
 
@@ -130,6 +150,7 @@ def buscar(
         "servidores": [_servidor_breve(s) for s in visibles(fisicos, ACTIVO_FISICO)],
         "hipervisores": [serializar_hipervisor_breve(h) for h in visibles(hipervisores, ACTIVO_HIPERVISOR)],
         "vms": [serializar_vm_breve(v) for v in visibles(vms, ACTIVO_VM)],
+        "dispositivos": [serializar_dispositivo_breve(d) for d in visibles(dispositivos, ACTIVO_DISPOSITIVO)],
         "credenciales": [
             serializar_credencial(db, usuario, c)
             for c in credenciales

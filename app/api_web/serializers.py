@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 from app import access
 from app.config import get_settings
 from app.models import (
+    ETIQUETAS_TIPO_DISPOSITIVO,
     NIVEL_VER,
     ConcesionAcceso,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     RegistroAuditoria,
@@ -63,6 +65,7 @@ def serializar_credencial(db: Session, usuario: Usuario, credencial: Credencial)
             credencial.servidor_fisico_id
             or credencial.hipervisor_id
             or credencial.maquina_virtual_id
+            or credencial.dispositivo_red_id
         ),
     }
 
@@ -82,6 +85,7 @@ def serializar_concesion(concesion: ConcesionAcceso) -> dict:
             concesion.servidor_fisico_id
             or concesion.hipervisor_id
             or concesion.maquina_virtual_id
+            or concesion.dispositivo_red_id
         ),
         "activo_nombre": concesion.nombre_activo,
     }
@@ -159,6 +163,21 @@ def serializar_servidor_nodo(db: Session, usuario: Usuario, servidor: ServidorFi
     }
 
 
+def serializar_dispositivo_nodo(db: Session, usuario: Usuario, dispositivo: DispositivoRed) -> dict:
+    return {
+        "id": dispositivo.id,
+        "nombre": dispositivo.nombre,
+        "tipo_dispositivo": dispositivo.tipo_dispositivo,
+        "tipo_dispositivo_label": ETIQUETAS_TIPO_DISPOSITIVO.get(
+            dispositivo.tipo_dispositivo, dispositivo.tipo_dispositivo
+        ),
+        "estado": dispositivo.estado,
+        "ip_gestion": dispositivo.ip_gestion,
+        "etiquetas": dispositivo.lista_etiquetas,
+        "credenciales": _credenciales_de(db, usuario, dispositivo.credenciales),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Detalle de cada activo
 # ---------------------------------------------------------------------------
@@ -225,6 +244,29 @@ def serializar_vm_detalle(vm: MaquinaVirtual) -> dict:
     }
 
 
+def serializar_dispositivo_detalle(dispositivo: DispositivoRed) -> dict:
+    return {
+        "id": dispositivo.id,
+        "nombre": dispositivo.nombre,
+        "tipo_dispositivo": dispositivo.tipo_dispositivo,
+        "tipo_dispositivo_label": ETIQUETAS_TIPO_DISPOSITIVO.get(
+            dispositivo.tipo_dispositivo, dispositivo.tipo_dispositivo
+        ),
+        "marca_modelo": dispositivo.marca_modelo,
+        "version": dispositivo.version,
+        "ip_gestion": dispositivo.ip_gestion,
+        "ubicacion": dispositivo.ubicacion,
+        "puertos": dispositivo.puertos,
+        "descripcion": dispositivo.descripcion,
+        "numero_serie": dispositivo.numero_serie,
+        "garantia_hasta": dispositivo.garantia_hasta,
+        "proveedor": dispositivo.proveedor,
+        "estado": dispositivo.estado,
+        "etiquetas": dispositivo.etiquetas,
+        "lista_etiquetas": dispositivo.lista_etiquetas,
+    }
+
+
 def serializar_hipervisor_breve(hipervisor: Hipervisor) -> dict:
     return {
         "id": hipervisor.id,
@@ -241,6 +283,19 @@ def serializar_vm_breve(vm: MaquinaVirtual) -> dict:
         "nombre": vm.nombre,
         "sistema_operativo": vm.sistema_operativo,
         "estado": vm.estado,
+    }
+
+
+def serializar_dispositivo_breve(dispositivo: DispositivoRed) -> dict:
+    return {
+        "id": dispositivo.id,
+        "nombre": dispositivo.nombre,
+        "tipo_dispositivo": dispositivo.tipo_dispositivo,
+        "tipo_dispositivo_label": ETIQUETAS_TIPO_DISPOSITIVO.get(
+            dispositivo.tipo_dispositivo, dispositivo.tipo_dispositivo
+        ),
+        "ip_gestion": dispositivo.ip_gestion,
+        "estado": dispositivo.estado,
     }
 
 

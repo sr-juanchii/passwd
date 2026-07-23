@@ -111,19 +111,27 @@ export default function DashboardPage() {
   }
 
   const modelo = construirInventario(data);
-  const vacio = modelo.servidores.length === 0 && modelo.hipervisores.length === 0;
+  const vacio =
+    modelo.servidores.length === 0 &&
+    modelo.hipervisores.length === 0 &&
+    modelo.dispositivos.length === 0;
 
   return (
     <>
       <PageHeader
         titulo="Inventario"
-        descripcion="Servidores dedicados e hipervisores con sus máquinas virtuales."
+        descripcion="Servidores dedicados, hipervisores con sus máquinas virtuales y dispositivos de red."
         acciones={
           puedeGestionar && (
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline">
                 <Link href="/servidores/nuevo">
                   <Plus /> Servidor
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/dispositivos/nuevo">
+                  <Plus /> Dispositivo
                 </Link>
               </Button>
               <Button asChild>
@@ -146,13 +154,18 @@ export default function DashboardPage() {
           <EmptyState
             icono={Boxes}
             titulo="Aún no hay activos registrados"
-            descripcion="Registre su primer servidor o hipervisor para empezar a inventariar sus credenciales."
+            descripcion="Registre su primer servidor, hipervisor o dispositivo de red para empezar a inventariar sus credenciales."
             accion={
               puedeGestionar && (
                 <div className="flex flex-wrap justify-center gap-2">
                   <Button asChild variant="outline">
                     <Link href="/servidores/nuevo">
                       <Plus /> Añadir servidor
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href="/dispositivos/nuevo">
+                      <Plus /> Añadir dispositivo
                     </Link>
                   </Button>
                   <Button asChild>
@@ -168,6 +181,7 @@ export default function DashboardPage() {
           <Inventory
             servidores={modelo.servidores}
             hipervisores={modelo.hipervisores}
+            dispositivos={modelo.dispositivos}
             onOpen={setAsset}
           />
         )}

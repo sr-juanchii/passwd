@@ -12,7 +12,22 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
-_Nada pendiente de publicar._
+### Añadido
+
+- **Dispositivos de red** como tercer activo de nivel superior del inventario: switches,
+  routers, firewalls, puntos de acceso, balanceadores y otros, con tipo, marca/modelo,
+  firmware, IP de gestión, ubicación, puertos, número de serie, garantía, proveedor, estado,
+  etiquetas y notas cifradas. Cada dispositivo custodia sus **credenciales de gestión** con
+  los mismos controles del resto del inventario: cifrado en reposo, RBAC, **concesiones por
+  objeto a analistas** (404 por defecto), revelado/copiado auditado con límite
+  anti-exfiltración y historial de rotación.
+- Cobertura completa del nuevo activo en ambas interfaces (web Jinja y frontend Next.js),
+  búsqueda global, importación/exportación CSV (columnas `tipo_dispositivo` y `puertos`,
+  `activo_tipo=dispositivo` en credenciales, round-trip), plantilla CSV, respaldo cifrado,
+  API REST `GET /api/v1/inventario` (colección `dispositivos_red`) y métrica de conteo en el
+  panel.
+- Migración Alembic `0005` (nueva tabla `dispositivos_red`; cuarta clave foránea con CHECK y
+  UNIQUE ampliados en `credenciales` y `concesiones_acceso`).
 
 <!--
 Al abrir un PR, añada aquí sus entradas bajo la categoría correspondiente

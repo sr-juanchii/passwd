@@ -1,8 +1,9 @@
-"""Inventario relacional: servidores dedicados, hipervisores y máquinas virtuales.
+"""Inventario relacional: servidores, hipervisores, VMs y dispositivos de red.
 
-Modelo de dos activos de nivel superior:
+Modelo de tres activos de nivel superior:
 - Servidor físico dedicado a una sola función (con sus credenciales).
 - Hipervisor: máquina física (con su hardware) que aloja directamente sus VMs.
+- Dispositivo de red: switch, router, firewall, punto de acceso, balanceador…
 Las máquinas virtuales viven siempre dentro de un hipervisor.
 """
 
@@ -22,13 +23,17 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     ESTADO_ACTIVO,
     ESTADOS_ACTIVO,
     ROL_ANALISTA,
+    TIPO_DISPOSITIVO_SWITCH,
+    TIPOS_DISPOSITIVO,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -118,11 +123,17 @@ def dashboard(
         )
         .order_by(Hipervisor.nombre)
     ).all()
+    dispositivos = db.scalars(
+        select(DispositivoRed)
+        .options(selectinload(DispositivoRed.credenciales))
+        .order_by(DispositivoRed.nombre)
+    ).all()
     limite_rotacion = ahora_utc() - timedelta(days=get_settings().rotation_max_days)
     totales = {
         "fisicos": len(servidores),
         "hipervisores": len(hipervisores),
         "vms": db.scalar(select(func.count(MaquinaVirtual.id))) or 0,
+        "dispositivos": len(dispositivos),
         "credenciales": db.scalar(select(func.count(Credencial.id))) or 0,
         "rotacion_vencida": db.scalar(
             select(func.count(Credencial.id)).where(Credencial.password_rotada_en < limite_rotacion)
@@ -130,7 +141,7 @@ def dashboard(
     }
     return render(request, "dashboard.html", {
         "usuario_actual": usuario, "servidores": servidores, "hipervisores": hipervisores,
-        "totales": totales, "msg": msg,
+        "dispositivos": dispositivos, "totales": totales, "msg": msg,
     })
 
 
@@ -587,3 +598,167 @@ def vm_eliminar(
     audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,
                     objeto_tipo="maquina_virtual", objeto_id=vm_id, detalle=nombre)
     return _redir(f"/hipervisores/{hipervisor_id}", f"Máquina virtual «{nombre}» eliminada.")
+
+
+# ---------------------------------------------------------------------------
+# Dispositivos de red (switches, routers, firewalls…)
+# ---------------------------------------------------------------------------
+
+
+def _tipo_dispositivo_valido(tipo: str) -> str:
+    return tipo if tipo in TIPOS_DISPOSITIVO else TIPO_DISPOSITIVO_SWITCH
+
+
+@router.get("/dispositivos/nuevo")
+def dispositivo_nuevo_form(request: Request, usuario: Annotated[Usuario, GESTIONAR]):
+    return render(request, "dispositivo_form.html",
+                  {"usuario_actual": usuario, "dispositivo": None,
+                   "estados": ESTADOS_ACTIVO, "tipos_dispositivo": TIPOS_DISPOSITIVO})
+
+
+@router.post("/dispositivos/nuevo", dependencies=[Depends(verificar_csrf)])
+def dispositivo_crear(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+    nombre: Annotated[str, Form()] = "",
+    tipo_dispositivo: Annotated[str, Form()] = TIPO_DISPOSITIVO_SWITCH,
+    marca_modelo: Annotated[str, Form()] = "",
+    version: Annotated[str, Form()] = "",
+    ip_gestion: Annotated[str, Form()] = "",
+    ubicacion: Annotated[str, Form()] = "",
+    puertos: Annotated[str, Form()] = "",
+    descripcion: Annotated[str, Form()] = "",
+    numero_serie: Annotated[str, Form()] = "",
+    garantia_hasta: Annotated[str, Form()] = "",
+    proveedor: Annotated[str, Form()] = "",
+    estado: Annotated[str, Form()] = ESTADO_ACTIVO,
+    etiquetas: Annotated[str, Form()] = "",
+):
+    nombre = nombre.strip()
+    error = ""
+    if not nombre:
+        error = "El nombre es obligatorio."
+    elif db.scalar(select(DispositivoRed).where(func.lower(DispositivoRed.nombre) == nombre.lower())):
+        error = "Ya existe un dispositivo con ese nombre."
+    if error:
+        return render(request, "dispositivo_form.html",
+                      {"usuario_actual": usuario, "dispositivo": None,
+                       "estados": ESTADOS_ACTIVO, "tipos_dispositivo": TIPOS_DISPOSITIVO,
+                       "error": error}, status_code=400)
+
+    dispositivo = DispositivoRed(
+        nombre=nombre, tipo_dispositivo=_tipo_dispositivo_valido(tipo_dispositivo),
+        marca_modelo=marca_modelo.strip(), version=version.strip(),
+        ip_gestion=ip_gestion.strip(), ubicacion=ubicacion.strip(),
+        puertos=puertos.strip(), descripcion=descripcion.strip(),
+        numero_serie=numero_serie.strip(), garantia_hasta=garantia_hasta.strip(),
+        proveedor=proveedor.strip(), estado=_estado_valido(estado),
+        etiquetas=normalizar_etiquetas(etiquetas),
+    )
+    db.add(dispositivo)
+    db.flush()
+    audit.registrar(db, audit.ACTIVO_CREADO, request=request, usuario=usuario,
+                    objeto_tipo="dispositivo_red", objeto_id=dispositivo.id,
+                    detalle=f"{nombre} ({dispositivo.tipo_dispositivo})")
+    return _redir(f"/dispositivos/{dispositivo.id}", "Dispositivo de red registrado.")
+
+
+@router.get("/dispositivos/{dispositivo_id}")
+def dispositivo_detalle(
+    request: Request,
+    dispositivo_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, VER],
+    msg: str = "",
+):
+    dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_DISPOSITIVO, dispositivo_id)
+    return render(request, "dispositivo_detalle.html", {
+        "usuario_actual": usuario, "dispositivo": dispositivo, "msg": msg,
+        "modo_analista": usuario.rol == ROL_ANALISTA,
+        "puede_revelar": access.puede_revelar_en_activo(db, usuario, ACTIVO_DISPOSITIVO, dispositivo_id),
+        "tipo_activo": ACTIVO_DISPOSITIVO, "activo_id": dispositivo_id, "activo": dispositivo,
+        **_ctx_accesos(db, usuario, ACTIVO_DISPOSITIVO, dispositivo_id),
+    })
+
+
+@router.get("/dispositivos/{dispositivo_id}/editar")
+def dispositivo_editar_form(
+    request: Request,
+    dispositivo_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+):
+    dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    return render(request, "dispositivo_form.html",
+                  {"usuario_actual": usuario, "dispositivo": dispositivo,
+                   "estados": ESTADOS_ACTIVO, "tipos_dispositivo": TIPOS_DISPOSITIVO})
+
+
+@router.post("/dispositivos/{dispositivo_id}/editar", dependencies=[Depends(verificar_csrf)])
+def dispositivo_editar(
+    request: Request,
+    dispositivo_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+    nombre: Annotated[str, Form()] = "",
+    tipo_dispositivo: Annotated[str, Form()] = TIPO_DISPOSITIVO_SWITCH,
+    marca_modelo: Annotated[str, Form()] = "",
+    version: Annotated[str, Form()] = "",
+    ip_gestion: Annotated[str, Form()] = "",
+    ubicacion: Annotated[str, Form()] = "",
+    puertos: Annotated[str, Form()] = "",
+    descripcion: Annotated[str, Form()] = "",
+    numero_serie: Annotated[str, Form()] = "",
+    garantia_hasta: Annotated[str, Form()] = "",
+    proveedor: Annotated[str, Form()] = "",
+    estado: Annotated[str, Form()] = ESTADO_ACTIVO,
+    etiquetas: Annotated[str, Form()] = "",
+):
+    dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    nombre = nombre.strip()
+    error = ""
+    if not nombre:
+        error = "El nombre es obligatorio."
+    elif db.scalar(select(DispositivoRed).where(
+            func.lower(DispositivoRed.nombre) == nombre.lower(), DispositivoRed.id != dispositivo.id)):
+        error = "Ya existe otro dispositivo con ese nombre."
+    if error:
+        return render(request, "dispositivo_form.html",
+                      {"usuario_actual": usuario, "dispositivo": dispositivo,
+                       "estados": ESTADOS_ACTIVO, "tipos_dispositivo": TIPOS_DISPOSITIVO,
+                       "error": error}, status_code=400)
+
+    dispositivo.nombre = nombre
+    dispositivo.tipo_dispositivo = _tipo_dispositivo_valido(tipo_dispositivo)
+    dispositivo.marca_modelo = marca_modelo.strip()
+    dispositivo.version = version.strip()
+    dispositivo.ip_gestion = ip_gestion.strip()
+    dispositivo.ubicacion = ubicacion.strip()
+    dispositivo.puertos = puertos.strip()
+    dispositivo.descripcion = descripcion.strip()
+    dispositivo.numero_serie = numero_serie.strip()
+    dispositivo.garantia_hasta = garantia_hasta.strip()
+    dispositivo.proveedor = proveedor.strip()
+    dispositivo.estado = _estado_valido(estado)
+    dispositivo.etiquetas = normalizar_etiquetas(etiquetas)
+    audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
+                    objeto_tipo="dispositivo_red", objeto_id=dispositivo.id, detalle=nombre)
+    return _redir(f"/dispositivos/{dispositivo.id}", "Dispositivo actualizado.")
+
+
+@router.post("/dispositivos/{dispositivo_id}/eliminar", dependencies=[Depends(verificar_csrf)])
+def dispositivo_eliminar(
+    request: Request,
+    dispositivo_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+):
+    dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    nombre = dispositivo.nombre
+    db.delete(dispositivo)  # cascada: credenciales del dispositivo
+    audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,
+                    objeto_tipo="dispositivo_red", objeto_id=dispositivo_id,
+                    detalle=f"{nombre} (incluye credenciales en cascada)")
+    return _redir("/", f"Dispositivo «{nombre}» eliminado con todo su contenido.")

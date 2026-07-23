@@ -20,6 +20,7 @@ from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.database import get_db
 from app.models import (
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -33,7 +34,7 @@ router = APIRouter()
 GESTIONAR = Depends(requiere_permiso_json("inventario.gestionar"))
 CSRF = Depends(verificar_csrf_json)
 IMPORTACION_REALIZADA = "importacion_realizada"
-_ORDEN = {"servidor": 0, "hipervisor": 1, "vm": 2, "credencial": 3}
+_ORDEN = {"servidor": 0, "hipervisor": 1, "dispositivo": 2, "vm": 3, "credencial": 4}
 
 
 def _estado(valor: str) -> str:
@@ -95,6 +96,33 @@ def _procesar_fila(db: Session, fila: dict) -> str:
         ))
         return "hipervisor"
 
+    if tipo == "dispositivo":
+        from app.models import TIPO_DISPOSITIVO_SWITCH, TIPOS_DISPOSITIVO
+
+        if not nombre:
+            raise ValueError("nombre obligatorio")
+        if db.scalar(select(DispositivoRed).where(func.lower(DispositivoRed.nombre) == nombre.lower())):
+            raise ValueError(f"ya existe el dispositivo «{nombre}»")
+        tipo_dispositivo = (fila.get("tipo_dispositivo") or "").strip().lower()
+        if tipo_dispositivo and tipo_dispositivo not in TIPOS_DISPOSITIVO:
+            raise ValueError(f"tipo_dispositivo inválido: {tipo_dispositivo}")
+        db.add(DispositivoRed(
+            nombre=nombre,
+            tipo_dispositivo=tipo_dispositivo or TIPO_DISPOSITIVO_SWITCH,
+            marca_modelo=(fila.get("marca_modelo") or "").strip(),
+            version=(fila.get("version") or "").strip(),
+            ip_gestion=(fila.get("ip") or "").strip(),
+            ubicacion=(fila.get("ubicacion") or "").strip(),
+            puertos=(fila.get("puertos") or "").strip(),
+            descripcion=(fila.get("descripcion") or "").strip(),
+            numero_serie=(fila.get("numero_serie") or "").strip(),
+            garantia_hasta=(fila.get("garantia_hasta") or "").strip(),
+            proveedor=(fila.get("proveedor") or "").strip(),
+            estado=_estado(fila.get("estado")),
+            etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+        ))
+        return "dispositivo"
+
     if tipo == "vm":
         padre = db.scalar(select(Hipervisor).where(
             func.lower(Hipervisor.nombre) == (fila.get("padre") or "").strip().lower()))
@@ -122,7 +150,8 @@ def _procesar_fila(db: Session, fila: dict) -> str:
         password = fila.get("password") or ""
         if not usuario_acceso or not password:
             raise ValueError("usuario_acceso y password obligatorios")
-        modelo = {"servidor": ServidorFisico, "hipervisor": Hipervisor, "vm": MaquinaVirtual}.get(activo_tipo)
+        modelo = {"servidor": ServidorFisico, "hipervisor": Hipervisor,
+                  "vm": MaquinaVirtual, "dispositivo": DispositivoRed}.get(activo_tipo)
         if modelo is None:
             raise ValueError(f"activo_tipo inválido: {activo_tipo}")
         activo = db.scalar(select(modelo).where(func.lower(modelo.nombre) == padre_nombre.lower()))
@@ -137,6 +166,7 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             servidor_fisico_id=activo.id if activo_tipo == "servidor" else None,
             hipervisor_id=activo.id if activo_tipo == "hipervisor" else None,
             maquina_virtual_id=activo.id if activo_tipo == "vm" else None,
+            dispositivo_red_id=activo.id if activo_tipo == "dispositivo" else None,
         ))
         return "credencial"
 
@@ -163,7 +193,7 @@ def importar(
 
     indexadas = sorted(enumerate(filas, start=2), key=_clave_orden)
 
-    creados = {"servidor": 0, "hipervisor": 0, "vm": 0, "credencial": 0}
+    creados = {"servidor": 0, "hipervisor": 0, "dispositivo": 0, "vm": 0, "credencial": 0}
     errores: list[str] = []
     for numero, fila in indexadas:
         try:

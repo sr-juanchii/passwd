@@ -21,11 +21,13 @@ from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.config import get_settings
 from app.database import get_db
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     ROL_ANALISTA,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     HistorialCredencial,
     MaquinaVirtual,
@@ -47,6 +49,7 @@ _MODELOS_ACTIVO = {
     ACTIVO_FISICO: (ServidorFisico, "servidor físico"),
     ACTIVO_HIPERVISOR: (Hipervisor, "hipervisor"),
     ACTIVO_VM: (MaquinaVirtual, "máquina virtual"),
+    ACTIVO_DISPOSITIVO: (DispositivoRed, "dispositivo de red"),
 }
 
 
@@ -125,6 +128,7 @@ def credencial_crear(
         servidor_fisico_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_FISICO else None,
         hipervisor_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_HIPERVISOR else None,
         maquina_virtual_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_VM else None,
+        dispositivo_red_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_DISPOSITIVO else None,
     )
     db.add(credencial)
     db.flush()
@@ -144,7 +148,8 @@ def credencial_editar_datos(
 ):
     credencial = _obtener_credencial(db, credencial_id)
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     return {
         "id": credencial.id,
         "usuario_acceso": credencial.usuario_acceso,
@@ -176,7 +181,8 @@ def credencial_editar(
 ):
     credencial = _obtener_credencial(db, credencial_id)
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     instancia, _ = _resolver_activo(db, tipo, activo_id)
 
     if not cuerpo.usuario_acceso.strip():

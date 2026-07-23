@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar' if dispositivo else 'Nuevo' }} dispositivo de red — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="{{ '/dispositivos/' ~ dispositivo.id if dispositivo else '/' }}">← Volver</a></p>
+<div class="tarjeta tarjeta-formulario">
+  <h1>{{ 'Editar dispositivo de red' if dispositivo else 'Nuevo dispositivo de red' }}</h1>
+  <form method="post" action="{{ '/dispositivos/' ~ dispositivo.id ~ '/editar' if dispositivo else '/dispositivos/nuevo' }}" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label for="nombre">Nombre / hostname *</label>
+    <input id="nombre" name="nombre" type="text" required maxlength="120" value="{{ dispositivo.nombre if dispositivo else '' }}">
+
+    <label for="tipo_dispositivo">Tipo de dispositivo</label>
+    <select id="tipo_dispositivo" name="tipo_dispositivo">
+      {% for t in tipos_dispositivo %}
+      <option value="{{ t }}" {{ 'selected' if dispositivo and dispositivo.tipo_dispositivo == t }}>{{ etiquetas_tipo_dispositivo[t] }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="marca_modelo">Marca y modelo</label>
+    <input id="marca_modelo" name="marca_modelo" type="text" maxlength="120"
+           value="{{ dispositivo.marca_modelo if dispositivo else '' }}" placeholder="Ej.: Cisco Catalyst 9300, FortiGate 100F">
+
+    <label for="version">Firmware / versión</label>
+    <input id="version" name="version" type="text" maxlength="60"
+           value="{{ dispositivo.version if dispositivo else '' }}" placeholder="Ej.: IOS-XE 17.9, RouterOS 7.14">
+
+    <label for="ip_gestion">IP de gestión</label>
+    <input id="ip_gestion" name="ip_gestion" type="text" maxlength="45"
+           value="{{ dispositivo.ip_gestion if dispositivo else '' }}" placeholder="Ej.: 192.168.10.2">
+
+    <label for="ubicacion">Ubicación física</label>
+    <input id="ubicacion" name="ubicacion" type="text" maxlength="120"
+           value="{{ dispositivo.ubicacion if dispositivo else '' }}" placeholder="Ej.: Sala de servidores, rack 1">
+
+    <label for="puertos">Puertos</label>
+    <input id="puertos" name="puertos" type="text" maxlength="120"
+           value="{{ dispositivo.puertos if dispositivo else '' }}" placeholder="Ej.: 48× 1GbE + 4× SFP+">
+
+    <label for="descripcion">Descripción / función</label>
+    <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
+      placeholder="Ej.: Switch de núcleo de la red de servidores">{{ dispositivo.descripcion if dispositivo else '' }}</textarea>
+
+    <label for="estado">Estado</label>
+    <select id="estado" name="estado">
+      {% for e in estados %}
+      <option value="{{ e }}" {{ 'selected' if dispositivo and dispositivo.estado == e }}>{{ etiquetas_estado[e] }}</option>
+      {% endfor %}
+    </select>
+
+    <label for="numero_serie">Número de serie</label>
+    <input id="numero_serie" name="numero_serie" type="text" maxlength="120"
+           value="{{ dispositivo.numero_serie if dispositivo else '' }}">
+
+    <label for="garantia_hasta">Garantía hasta</label>
+    <input id="garantia_hasta" name="garantia_hasta" type="text" maxlength="40"
+           value="{{ dispositivo.garantia_hasta if dispositivo else '' }}" placeholder="Ej.: 2027-03">
+
+    <label for="proveedor">Contacto del proveedor</label>
+    <input id="proveedor" name="proveedor" type="text" maxlength="120"
+           value="{{ dispositivo.proveedor if dispositivo else '' }}">
+
+    <label for="etiquetas">Etiquetas (separadas por coma)</label>
+    <input id="etiquetas" name="etiquetas" type="text" maxlength="255"
+           value="{{ dispositivo.etiquetas if dispositivo else '' }}" placeholder="Ej.: red, núcleo, crítico">
+
+    <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if dispositivo else 'Registrar dispositivo' }}</button>
+  </form>
+</div>
+{% endblock %}

@@ -2,7 +2,14 @@
 
 export type Rol = "admin" | "operador" | "auditor" | "analista";
 export type EstadoActivo = "activo" | "mantenimiento" | "retirado";
-export type TipoActivo = "fisico" | "hipervisor" | "vm";
+export type TipoActivo = "fisico" | "hipervisor" | "vm" | "dispositivo";
+export type TipoDispositivo =
+  | "switch"
+  | "router"
+  | "firewall"
+  | "access_point"
+  | "balanceador"
+  | "otro";
 export type NivelAcceso = "ver" | "ver_credenciales";
 export type Etapa = "cambio_password" | "mfa_enrolamiento" | "mfa_pendiente" | "activa";
 
@@ -81,10 +88,22 @@ export interface ServidorNodo {
   credenciales: Credencial[];
 }
 
+export interface DispositivoNodo {
+  id: number;
+  nombre: string;
+  tipo_dispositivo: TipoDispositivo;
+  tipo_dispositivo_label: string;
+  estado: EstadoActivo;
+  ip_gestion: string;
+  etiquetas: string[];
+  credenciales: Credencial[];
+}
+
 export interface Resumen {
   servidores: number;
   hipervisores: number;
   vms: number;
+  dispositivos: number;
   credenciales: number;
   rotacion_vencida: number;
 }
@@ -108,6 +127,7 @@ export interface DashboardAdmin {
   resumen: Resumen;
   servidores: ServidorNodo[];
   hipervisores: HipervisorNodo[];
+  dispositivos: DispositivoNodo[];
 }
 export interface DashboardAnalista {
   es_analista: true;
@@ -203,6 +223,34 @@ export interface VmDetalle extends VmInput {
   analistas?: AnalistaRef[];
 }
 
+export interface DispositivoInput {
+  nombre: string;
+  tipo_dispositivo: TipoDispositivo;
+  marca_modelo: string;
+  version: string; // firmware / versión
+  ip_gestion: string;
+  ubicacion: string;
+  puertos: string; // texto libre
+  descripcion: string;
+  numero_serie: string;
+  garantia_hasta: string;
+  proveedor: string;
+  estado: EstadoActivo;
+  etiquetas: string;
+}
+
+export interface DispositivoDetalle extends DispositivoInput {
+  id: number;
+  tipo_dispositivo_label: string;
+  lista_etiquetas: string[];
+  credenciales: Credencial[];
+  puede_gestionar: boolean;
+  puede_gestionar_accesos: boolean;
+  tiene_notas: boolean;
+  accesos?: Concesion[];
+  analistas?: AnalistaRef[];
+}
+
 export interface CredencialInput {
   usuario_acceso: string;
   password: string;
@@ -234,6 +282,14 @@ export interface ResultadoBusqueda {
   servidores: { id: number; nombre: string; ip_gestion: string; ubicacion: string; estado: EstadoActivo }[];
   hipervisores: { id: number; nombre: string; plataforma: string; ip_gestion: string; estado: EstadoActivo }[];
   vms: { id: number; nombre: string; ip: string; sistema_operativo: string; estado: EstadoActivo }[];
+  dispositivos: {
+    id: number;
+    nombre: string;
+    tipo_dispositivo: TipoDispositivo;
+    tipo_dispositivo_label: string;
+    ip_gestion: string;
+    estado: EstadoActivo;
+  }[];
   credenciales: Credencial[];
 }
 

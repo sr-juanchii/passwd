@@ -21,10 +21,12 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     ROL_ANALISTA,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -42,6 +44,7 @@ _ACTIVOS = {
     ACTIVO_FISICO: (ServidorFisico, "/servidores"),
     ACTIVO_HIPERVISOR: (Hipervisor, "/hipervisores"),
     ACTIVO_VM: (MaquinaVirtual, "/vms"),
+    ACTIVO_DISPOSITIVO: (DispositivoRed, "/dispositivos"),
 }
 
 

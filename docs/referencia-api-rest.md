@@ -91,7 +91,9 @@ curl -s https://passwd.su-organizacion.tld/api/v1/auditoria?desde_id=0&limit=200
 ## `GET /api/v1/inventario`
 
 Devuelve el inventario completo en JSON, **sin credenciales ni notas**. Requiere alcance
-`inventario` o `todo`. Las máquinas virtuales incluyen `ram`, `cpu` y `almacenamiento` asignados.
+`inventario` o `todo`. Las máquinas virtuales incluyen `ram`, `cpu` y `almacenamiento` asignados;
+los dispositivos de red incluyen su tipo (`switch | router | firewall | access_point |
+balanceador | otro`), firmware (`version`) y `puertos`.
 
 **Parámetros de paginación (opcionales):** `limit` (>0, tope **500**) y `offset` paginan cada
 colección por separado; omitidos, devuelve todo el inventario.
@@ -115,6 +117,13 @@ colección por separado; omitidos, devuelve todo el inventario.
   "maquinas_virtuales": [
     {"id": 3, "nombre": "vm-correo", "estado": "activo",
      "sistema_operativo": "Ubuntu 24.04", "ip": "10.0.1.20", "hipervisor_id": 2}
+  ],
+  "dispositivos_red": [
+    {"id": 4, "nombre": "sw-core-01", "tipo_dispositivo": "switch", "estado": "activo",
+     "marca_modelo": "Cisco Catalyst 9300", "version": "IOS-XE 17.9",
+     "ip_gestion": "10.0.0.2", "ubicacion": "Rack A1", "puertos": "48x 1GbE + 4x SFP+",
+     "numero_serie": "XYZ789", "garantia_hasta": "2028-05", "proveedor": "Cisco",
+     "etiquetas": ["red", "critico"]}
   ]
 }
 ```

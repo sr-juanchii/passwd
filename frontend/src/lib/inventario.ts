@@ -6,6 +6,7 @@
 import type {
   Credencial,
   DashboardAdmin,
+  DispositivoNodo,
   EstadoActivo,
   HipervisorNodo,
   ServidorNodo,
@@ -22,6 +23,7 @@ export interface ActivoInv {
   ip?: string;
   plataforma?: string;
   so?: string;
+  tipoDispositivo?: string; // etiqueta del tipo de dispositivo de red (Switch, Router…)
   etiquetas?: string[];
   credenciales: Credencial[];
   vms?: ActivoInv[];
@@ -49,6 +51,19 @@ export function deVm(v: VmNodo, parent?: string): ActivoInv {
     so: v.sistema_operativo || undefined,
     credenciales: v.credenciales,
     parent,
+  };
+}
+
+export function deDispositivo(d: DispositivoNodo): ActivoInv {
+  return {
+    tipo: "dispositivo",
+    id: d.id,
+    nombre: d.nombre,
+    estado: d.estado,
+    ip: d.ip_gestion || undefined,
+    tipoDispositivo: d.tipo_dispositivo_label || undefined,
+    etiquetas: d.etiquetas,
+    credenciales: d.credenciales,
   };
 }
 
@@ -85,12 +100,14 @@ export interface Postura {
   servidores: number;
   hipervisores: number;
   vms: number;
+  dispositivos: number;
   umbralDias: number;
 }
 
 export interface InventarioModelo {
   servidores: ActivoInv[];
   hipervisores: ActivoInv[];
+  dispositivos: ActivoInv[];
   postura: Postura;
   colaRiesgo: ItemRiesgo[];
 }
@@ -98,12 +115,14 @@ export interface InventarioModelo {
 export function construirInventario(data: DashboardAdmin): InventarioModelo {
   const servidores = data.servidores.map(deServidor);
   const hipervisores = data.hipervisores.map(deHipervisor);
+  const dispositivos = (data.dispositivos ?? []).map(deDispositivo);
 
   // Recorre todas las credenciales, junto al activo que las posee.
   const todos: ActivoInv[] = [
     ...servidores,
     ...hipervisores,
     ...hipervisores.flatMap((h) => h.vms ?? []),
+    ...dispositivos,
   ];
 
   let sanas = 0;
@@ -142,6 +161,7 @@ export function construirInventario(data: DashboardAdmin): InventarioModelo {
   return {
     servidores,
     hipervisores,
+    dispositivos,
     postura: {
       total: r.credenciales,
       sanas,
@@ -150,12 +170,16 @@ export function construirInventario(data: DashboardAdmin): InventarioModelo {
       servidores: r.servidores,
       hipervisores: r.hipervisores,
       vms: r.vms,
+      dispositivos: r.dispositivos ?? dispositivos.length,
       umbralDias: DIAS_PROXIMA,
     },
     colaRiesgo,
   };
 }
 
-export function iconoTipo(tipo: TipoActivo): "server" | "cpu" | "monitor-smartphone" {
-  return tipo === "fisico" ? "server" : tipo === "hipervisor" ? "cpu" : "monitor-smartphone";
+export function iconoTipo(tipo: TipoActivo): "server" | "cpu" | "monitor-smartphone" | "network" {
+  if (tipo === "fisico") return "server";
+  if (tipo === "hipervisor") return "cpu";
+  if (tipo === "dispositivo") return "network";
+  return "monitor-smartphone";
 }

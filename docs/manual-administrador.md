@@ -59,8 +59,8 @@ operativo del rol **analista** (*default-deny*: no ve nada hasta que se le conce
 ### 2.1 Conceder acceso a un analista
 
 1. Cree el usuario con rol **analista** (§1.1).
-2. Abra el **detalle del activo** (servidor físico, hipervisor o VM). Al final verá el panel
-   **«Accesos de analistas»** (en el frontend, la pestaña/sección de accesos).
+2. Abra el **detalle del activo** (servidor físico, hipervisor, VM o dispositivo de red). Al
+   final verá el panel **«Accesos de analistas»** (en el frontend, la pestaña/sección de accesos).
 3. Elija el analista, el **nivel** y, si procede, los **días de caducidad**; pulse **Conceder**.
    - **Ver** — ve el activo y la lista de credenciales (usuario, servicio, puerto, descripción),
      **sin** las contraseñas.
@@ -69,8 +69,8 @@ operativo del rol **analista** (*default-deny*: no ve nada hasta que se le conce
 
 ### 2.2 Reglas que conviene recordar
 
-- **Sin herencia:** conceder un servidor físico no da acceso a sus hipervisores ni VMs; cada activo
-  se concede por separado.
+- **Sin herencia:** conceder un servidor físico no da acceso a sus hipervisores ni VMs (ni a los
+  dispositivos de red); cada activo se concede por separado.
 - **Default-deny:** sin concesión vigente, el analista recibe **404** (ni siquiera se filtra la
   existencia del activo).
 - **Caducidad:** al vencer `expira_en`, la concesión deja de surtir efecto automáticamente.
@@ -135,12 +135,13 @@ Menú **Importar** (requiere `inventario.gestionar`: admin y operador).
 - Suba un **CSV** con activos y/o credenciales. El archivo se procesa **en memoria** (no se
   persiste) y las contraseñas se **cifran al guardar**.
 - Los **errores por fila no abortan** la importación: al final se muestra un resumen con lo creado
-  (servidores, hipervisores, VMs, credenciales) y la lista de errores.
+  (servidores, hipervisores, dispositivos de red, VMs, credenciales) y la lista de errores.
 - La operación queda auditada.
 
-El CSV usa una columna `tipo` (`servidor`/`hipervisor`/`vm`/`credencial`) y, para las VMs y
-credenciales, una referencia al activo padre. Tras importar, revise el inventario y rote o complete
-las credenciales que lo necesiten.
+El CSV usa una columna `tipo` (`servidor`/`hipervisor`/`dispositivo`/`vm`/`credencial`) y, para las
+VMs y credenciales, una referencia al activo padre (en credenciales, `activo_tipo` acepta también
+`dispositivo`). Los dispositivos de red usan además `tipo_dispositivo`, `version` (firmware) y
+`puertos`. Tras importar, revise el inventario y rote o complete las credenciales que lo necesiten.
 
 ---
 

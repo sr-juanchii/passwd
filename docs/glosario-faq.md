@@ -12,6 +12,7 @@ Términos del sistema y respuestas rápidas a dudas habituales. Para procedimien
 | **Activo** | Elemento del inventario: servidor físico, hipervisor o máquina virtual. |
 | **Servidor físico** | Máquina dedicada a una función única (activo de nivel superior). |
 | **Hipervisor** | Máquina física que aloja máquinas virtuales (Proxmox, ESXi, Hyper-V…); activo de nivel superior, no se anida bajo un servidor físico. |
+| **Dispositivo de red** | Equipo de red de la infraestructura (switch, router, firewall, punto de acceso, balanceador u otro); activo de nivel superior con sus credenciales de gestión. |
 | **Máquina virtual (VM)** | Sistema virtual que corre dentro de un hipervisor. |
 | **Credencial** | Usuario + contraseña (cifrada) de acceso a un activo, con servicio, puerto y descripción. |
 | **Rol** | Conjunto de permisos: `admin`, `operador`, `auditor`, `analista`. |

@@ -24,6 +24,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
@@ -47,6 +48,7 @@ def _columna_activo(tipo: str):
         ACTIVO_FISICO: ConcesionAcceso.servidor_fisico_id,
         ACTIVO_HIPERVISOR: ConcesionAcceso.hipervisor_id,
         ACTIVO_VM: ConcesionAcceso.maquina_virtual_id,
+        ACTIVO_DISPOSITIVO: ConcesionAcceso.dispositivo_red_id,
     }[tipo]
 
 
@@ -92,6 +94,8 @@ def _tipo_y_id_de_credencial(credencial: Credencial) -> tuple[str, int]:
         return ACTIVO_FISICO, credencial.servidor_fisico_id
     if credencial.hipervisor_id is not None:
         return ACTIVO_HIPERVISOR, credencial.hipervisor_id
+    if credencial.dispositivo_red_id is not None:
+        return ACTIVO_DISPOSITIVO, credencial.dispositivo_red_id
     return ACTIVO_VM, credencial.maquina_virtual_id  # type: ignore[return-value]
 
 
@@ -130,7 +134,7 @@ def ids_activos_concedidos(db: Session, usuario: Usuario, tipo: str) -> list[int
 def concesiones_vigentes_de_usuario(db: Session, usuario_id: int) -> list[ConcesionAcceso]:
     """Concesiones no expiradas de un usuario (para su panel).
 
-    Precarga los tres activos posibles (``selectinload``) para que leer
+    Precarga los cuatro activos posibles (``selectinload``) para que leer
     ``nombre_activo``/``tipo_activo`` por fila no dispare una consulta por
     concesión (evita el N+1 en el panel del analista).
     """
@@ -141,6 +145,7 @@ def concesiones_vigentes_de_usuario(db: Session, usuario_id: int) -> list[Conces
             selectinload(ConcesionAcceso.servidor_fisico),
             selectinload(ConcesionAcceso.hipervisor),
             selectinload(ConcesionAcceso.maquina_virtual),
+            selectinload(ConcesionAcceso.dispositivo_red),
         )
     ).all()
     return [c for c in concesiones if c.esta_vigente()]

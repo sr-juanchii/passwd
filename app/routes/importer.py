@@ -17,8 +17,14 @@ Formato (una fila por activo o credencial; columna `tipo` discrimina):
                     es un activo de nivel superior, no requiere padre
     vm              nombre, padre(=nombre del hipervisor), sistema_operativo,
                     ip, descripcion, estado, etiquetas
-    credencial      activo_tipo(servidor|hipervisor|vm), padre(=nombre activo),
-                    usuario_acceso, password, servicio, puerto, descripcion
+    dispositivo     nombre, tipo_dispositivo(switch|router|firewall|
+                    access_point|balanceador|otro), marca_modelo, version,
+                    ip, ubicacion, puertos, descripcion, estado, etiquetas
+                    (+ numero_serie, garantia_hasta, proveedor); activo de
+                    nivel superior, no requiere padre
+    credencial      activo_tipo(servidor|hipervisor|vm|dispositivo),
+                    padre(=nombre activo), usuario_acceso, password,
+                    servicio, puerto, descripcion
 
 Las filas se procesan por orden de dependencia; los errores por fila no abortan
 el resto (se informan al final).
@@ -41,6 +47,7 @@ from app.deps import render, requiere_permiso, verificar_csrf
 from app.exporter import exportar_csv, plantilla_csv
 from app.models import (
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -54,7 +61,7 @@ router = APIRouter()
 GESTIONAR = Depends(requiere_permiso("inventario.gestionar"))
 EXPORTAR = Depends(requiere_permiso("inventario.exportar"))
 IMPORTACION_REALIZADA = "importacion_realizada"
-_ORDEN = {"servidor": 0, "hipervisor": 1, "vm": 2, "credencial": 3}
+_ORDEN = {"servidor": 0, "hipervisor": 1, "dispositivo": 2, "vm": 3, "credencial": 4}
 
 
 def _csv_descarga(texto: str, nombre: str) -> Response:
@@ -151,6 +158,33 @@ def _procesar_fila(db: Session, fila: dict) -> str:
         ))
         return f"hipervisor «{nombre}» creado"
 
+    if tipo == "dispositivo":
+        from app.models import TIPO_DISPOSITIVO_SWITCH, TIPOS_DISPOSITIVO
+
+        if not nombre:
+            raise ValueError("nombre obligatorio")
+        if db.scalar(select(DispositivoRed).where(func.lower(DispositivoRed.nombre) == nombre.lower())):
+            raise ValueError(f"ya existe el dispositivo «{nombre}»")
+        tipo_dispositivo = (fila.get("tipo_dispositivo") or "").strip().lower()
+        if tipo_dispositivo and tipo_dispositivo not in TIPOS_DISPOSITIVO:
+            raise ValueError(f"tipo_dispositivo inválido: {tipo_dispositivo}")
+        db.add(DispositivoRed(
+            nombre=nombre,
+            tipo_dispositivo=tipo_dispositivo or TIPO_DISPOSITIVO_SWITCH,
+            marca_modelo=(fila.get("marca_modelo") or "").strip(),
+            version=(fila.get("version") or "").strip(),
+            ip_gestion=(fila.get("ip") or "").strip(),
+            ubicacion=(fila.get("ubicacion") or "").strip(),
+            puertos=(fila.get("puertos") or "").strip(),
+            descripcion=(fila.get("descripcion") or "").strip(),
+            numero_serie=(fila.get("numero_serie") or "").strip(),
+            garantia_hasta=(fila.get("garantia_hasta") or "").strip(),
+            proveedor=(fila.get("proveedor") or "").strip(),
+            estado=_estado(fila.get("estado")),
+            etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+        ))
+        return f"dispositivo «{nombre}» creado"
+
     if tipo == "vm":
         padre = db.scalar(select(Hipervisor).where(
             func.lower(Hipervisor.nombre) == (fila.get("padre") or "").strip().lower()))
@@ -178,7 +212,8 @@ def _procesar_fila(db: Session, fila: dict) -> str:
         password = fila.get("password") or ""
         if not usuario_acceso or not password:
             raise ValueError("usuario_acceso y password obligatorios")
-        modelo = {"servidor": ServidorFisico, "hipervisor": Hipervisor, "vm": MaquinaVirtual}.get(activo_tipo)
+        modelo = {"servidor": ServidorFisico, "hipervisor": Hipervisor,
+                  "vm": MaquinaVirtual, "dispositivo": DispositivoRed}.get(activo_tipo)
         if modelo is None:
             raise ValueError(f"activo_tipo inválido: {activo_tipo}")
         activo = db.scalar(select(modelo).where(func.lower(modelo.nombre) == padre_nombre.lower()))
@@ -193,6 +228,7 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             servidor_fisico_id=activo.id if activo_tipo == "servidor" else None,
             hipervisor_id=activo.id if activo_tipo == "hipervisor" else None,
             maquina_virtual_id=activo.id if activo_tipo == "vm" else None,
+            dispositivo_red_id=activo.id if activo_tipo == "dispositivo" else None,
         )
         db.add(cred)
         return f"credencial «{usuario_acceso}@{padre_nombre}» creada"
@@ -219,8 +255,8 @@ def importar(
     def _clave_orden(par: tuple[int, dict]) -> int:
         return _ORDEN.get((par[1].get("tipo") or "").strip().lower(), 9)
 
-    # Orden de dependencia: servidores → hipervisores → VMs → credenciales,
-    # conservando el número de fila original para los mensajes.
+    # Orden de dependencia: servidores → hipervisores → dispositivos → VMs →
+    # credenciales, conservando el número de fila original para los mensajes.
     indexadas = sorted(enumerate(filas, start=2), key=_clave_orden)
 
     creados = 0

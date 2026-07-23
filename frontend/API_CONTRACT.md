@@ -48,7 +48,7 @@ tokens.gestionar`.
 
 | Método | Path | Permiso | Notas |
 |---|---|---|---|
-| GET | `/dashboard` | inventario.ver | admin/op/auditor: `{ es_analista:false, resumen, arbol: ServidorNodo[] }`; analista: `{ es_analista:true, concesiones: Concesion[] }` |
+| GET | `/dashboard` | inventario.ver | admin/op/auditor: `{ es_analista:false, resumen, arbol: ServidorNodo[], dispositivos: DispositivoNodo[] }`; analista: `{ es_analista:true, concesiones: Concesion[] }` |
 | GET | `/servidores/{id}` | inventario.ver (+objeto) | `ServidorDetalle` |
 | POST | `/servidores` | inventario.gestionar | cuerpo `ServidorInput` → `{ id }` |
 | PUT | `/servidores/{id}` | inventario.gestionar | `ServidorInput` → `{ id }` |
@@ -61,8 +61,12 @@ tokens.gestionar`.
 | GET | `/vms/{id}` | inventario.ver (+objeto) | `VmDetalle` |
 | PUT | `/vms/{id}` | inventario.gestionar | `VmInput` → `{ id }` |
 | DELETE | `/vms/{id}` | inventario.gestionar | `{ ok, hipervisor_id }` |
+| GET | `/dispositivos/{id}` | inventario.ver (+objeto) | `DispositivoDetalle` |
+| POST | `/dispositivos` | inventario.gestionar | `DispositivoInput` → `{ id }` (400 nombre vacío, 409 duplicado) |
+| PUT | `/dispositivos/{id}` | inventario.gestionar | `DispositivoInput` → `{ id }` |
+| DELETE | `/dispositivos/{id}` | inventario.gestionar | `{ ok }` (elimina en cascada sus credenciales) |
 
-`resumen`: `{ servidores, hipervisores, vms, credenciales, rotacion_vencida }`.
+`resumen`: `{ servidores, hipervisores, vms, dispositivos, credenciales, rotacion_vencida }`.
 
 `ServidorInput`: `{ nombre, tipo('funcion_unica'|'host_virtualizacion'), descripcion, sistema_operativo,
 marca_modelo, ubicacion, ip_gestion, ram, cpu, almacenamiento, numero_serie, garantia_hasta,
@@ -73,29 +77,41 @@ proveedor, estado('activo'|'mantenimiento'|'retirado'), etiquetas }`.
 `VmInput`: `{ nombre, sistema_operativo, ip, descripcion, ram, cpu, almacenamiento, estado, etiquetas }`
 (`ram`/`cpu`/`almacenamiento` = recursos asignados a la VM). `VmDetalle` los incluye.
 
+`DispositivoInput`: `{ nombre, tipo_dispositivo('switch'|'router'|'firewall'|'access_point'|'balanceador'|'otro'),
+marca_modelo, version (firmware), ip_gestion, ubicacion, puertos (texto libre), descripcion,
+numero_serie, garantia_hasta, proveedor, estado, etiquetas }`. Etiquetas en español del tipo
+(`tipo_dispositivo_label`): Switch, Router, Firewall, Punto de acceso, Balanceador, Otro.
+
 `Credencial` (serializada, **nunca** la contraseña): `{ id, usuario_acceso, servicio, puerto,
 descripcion, dias_sin_rotar, rotacion_vencida, puede_revelar, tipo_activo, activo_id }`.
+`tipo_activo`: `'fisico'|'hipervisor'|'vm'|'dispositivo'` (`activo_id` = id del activo dueño).
 
 `ServidorNodo` (árbol): `{ id, nombre, tipo, etiqueta_tipo, estado, ip_gestion, etiquetas:string[],
 credenciales: Credencial[], hipervisores: HipervisorNodo[] }`.
 `HipervisorNodo`: `{ id, nombre, plataforma, estado, credenciales, vms: VmNodo[] }`.
 `VmNodo`: `{ id, nombre, sistema_operativo, estado, credenciales }`.
+`DispositivoNodo`: `{ id, nombre, tipo_dispositivo, tipo_dispositivo_label, estado, ip_gestion,
+etiquetas: string[], credenciales: Credencial[] }` (solo cuando `es_analista` es false).
 
 `ServidorDetalle` = todos los campos del servidor + `etiqueta_tipo`, `lista_etiquetas`,
 `credenciales: Credencial[]`, `hipervisores: {id,nombre,plataforma,estado}[]`,
 `puede_gestionar: bool`, `puede_gestionar_accesos: bool`, `tiene_notas: bool`,
 `accesos?: Concesion[]` (si admin), `analistas?: {id,username,nombre_completo}[]` (si admin).
 Análogo para `HipervisorDetalle` (incluye `servidor_fisico_id`, `servidor_fisico_nombre`,
-`vms: {...}[]`) y `VmDetalle` (incluye `hipervisor_id`, `hipervisor_nombre`).
+`vms: {...}[]`), `VmDetalle` (incluye `hipervisor_id`, `hipervisor_nombre`) y
+`DispositivoDetalle` (= `DispositivoInput` + `tipo_dispositivo_label`, `lista_etiquetas`,
+`credenciales`, `puede_gestionar`, `puede_gestionar_accesos`, `tiene_notas`, `accesos?`,
+`analistas?`).
 
 `Concesion`: `{ id, usuario_id, username, nombre_completo, nivel('ver'|'ver_credenciales'),
-nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`.
+nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`. `tipo` puede ser también
+`'dispositivo'` (enlaza a `/dispositivos/{id}`).
 
 ## Credenciales
 
 | Método | Path | Permiso | Notas |
 |---|---|---|---|
-| POST | `/credenciales` | credenciales.gestionar | `{activo('fisico'|'hipervisor'|'vm'), activo_id, usuario_acceso, password, servicio, puerto?, descripcion}` → `{ id }` |
+| POST | `/credenciales` | credenciales.gestionar | `{activo('fisico'|'hipervisor'|'vm'|'dispositivo'), activo_id, usuario_acceso, password, servicio, puerto?, descripcion}` → `{ id }` |
 | GET | `/credenciales/{id}` | credenciales.gestionar | datos para editar + `historial: {id, rotada_en, rotada_por}[]` (sin password) |
 | PUT | `/credenciales/{id}` | credenciales.gestionar | `{usuario_acceso, password(''=conservar), servicio, puerto?, descripcion}` → `{ id }` |
 | DELETE | `/credenciales/{id}` | credenciales.gestionar | `{ ok }` |
@@ -105,7 +121,7 @@ nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`.
 
 ## Búsqueda
 
-| GET | `/buscar?q=` | inventario.ver | `{ q, servidores:[], hipervisores:[], vms:[], credenciales:[] }` (filtrado por objeto, sin passwords, máx 50/tipo) |
+| GET | `/buscar?q=` | inventario.ver | `{ q, servidores:[], hipervisores:[], vms:[], dispositivos:[], credenciales:[] }` (filtrado por objeto, sin passwords, máx 50/tipo). `dispositivos`: `{ id, nombre, tipo_dispositivo, tipo_dispositivo_label, ip_gestion, estado }[]` |
 
 ## Accesos (concesiones)
 
@@ -117,6 +133,8 @@ nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`.
 | GET | `/activos/{tipo}/{id}/notas` | inventario.gestionar | `{ tiene_notas: bool }` (no devuelve el contenido en claro) |
 | PUT | `/activos/{tipo}/{id}/notas` | inventario.gestionar | `{contenido}` → `{ ok }` |
 | POST | `/activos/{tipo}/{id}/notas/revelar` | credenciales.revelar (+objeto) | `{ notas }` (auditado, rate-limited) |
+
+`{tipo}` acepta `fisico`, `hipervisor`, `vm` y `dispositivo`.
 
 ## Usuarios
 

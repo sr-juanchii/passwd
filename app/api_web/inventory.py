@@ -1,9 +1,10 @@
-"""Inventario en JSON: dashboard, servidores, hipervisores y máquinas virtuales.
+"""Inventario en JSON: dashboard, servidores, hipervisores, VMs y dispositivos de red.
 
-Modelo de dos activos de nivel superior: servidores dedicados (con sus
-credenciales) e hipervisores físicos (con hardware) que alojan directamente sus
-máquinas virtuales. Replica el control de acceso por objeto de
-``app/routes/inventory.py`` (el analista solo ve activos concedidos).
+Modelo de tres activos de nivel superior: servidores dedicados (con sus
+credenciales), hipervisores físicos (con hardware) que alojan directamente sus
+máquinas virtuales, y dispositivos de red (switches, routers, firewalls…).
+Replica el control de acceso por objeto de ``app/routes/inventory.py`` (el
+analista solo ve activos concedidos).
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ from app.api_web.serializers import (
     serializar_analista,
     serializar_concesion,
     serializar_credencial,
+    serializar_dispositivo_detalle,
+    serializar_dispositivo_nodo,
     serializar_hipervisor_detalle,
     serializar_hipervisor_nodo,
     serializar_servidor_detalle,
@@ -32,13 +35,17 @@ from app.api_web.serializers import (
 from app.config import get_settings
 from app.database import get_db
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     ESTADO_ACTIVO,
     ESTADOS_ACTIVO,
     ROL_ANALISTA,
+    TIPO_DISPOSITIVO_SWITCH,
+    TIPOS_DISPOSITIVO,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -102,8 +109,28 @@ class VmInput(BaseModel):
     etiquetas: str = ""
 
 
+class DispositivoInput(BaseModel):
+    nombre: str = ""
+    tipo_dispositivo: str = TIPO_DISPOSITIVO_SWITCH
+    marca_modelo: str = ""
+    version: str = ""
+    ip_gestion: str = ""
+    ubicacion: str = ""
+    puertos: str = ""
+    descripcion: str = ""
+    numero_serie: str = ""
+    garantia_hasta: str = ""
+    proveedor: str = ""
+    estado: str = ESTADO_ACTIVO
+    etiquetas: str = ""
+
+
 def _estado_valido(estado: str) -> str:
     return estado if estado in ESTADOS_ACTIVO else ESTADO_ACTIVO
+
+
+def _tipo_dispositivo_valido(tipo: str) -> str:
+    return tipo if tipo in TIPOS_DISPOSITIVO else TIPO_DISPOSITIVO_SWITCH
 
 
 def _obtener_o_404(db: Session, modelo, objeto_id: int):
@@ -173,11 +200,17 @@ def dashboard(
         )
         .order_by(Hipervisor.nombre)
     ).all()
+    dispositivos = db.scalars(
+        select(DispositivoRed)
+        .options(selectinload(DispositivoRed.credenciales))
+        .order_by(DispositivoRed.nombre)
+    ).all()
     limite_rotacion = ahora_utc() - timedelta(days=get_settings().rotation_max_days)
     resumen = {
         "servidores": len(servidores),
         "hipervisores": len(hipervisores),
         "vms": db.scalar(select(func.count(MaquinaVirtual.id))) or 0,
+        "dispositivos": len(dispositivos),
         "credenciales": db.scalar(select(func.count(Credencial.id))) or 0,
         "rotacion_vencida": db.scalar(
             select(func.count(Credencial.id)).where(Credencial.password_rotada_en < limite_rotacion)
@@ -188,6 +221,7 @@ def dashboard(
         "resumen": resumen,
         "servidores": [serializar_servidor_nodo(db, usuario, s) for s in servidores],
         "hipervisores": [serializar_hipervisor_nodo(db, usuario, h) for h in hipervisores],
+        "dispositivos": [serializar_dispositivo_nodo(db, usuario, d) for d in dispositivos],
     }
 
 
@@ -489,3 +523,106 @@ def vm_eliminar(
     audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,
                     objeto_tipo="maquina_virtual", objeto_id=vm_id, detalle=nombre)
     return {"ok": True, "hipervisor_id": hipervisor_id}
+
+
+# ---------------------------------------------------------------------------
+# Dispositivos de red (switches, routers, firewalls…)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dispositivos/{dispositivo_id}")
+def dispositivo_detalle(
+    request: Request,
+    dispositivo_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, VER],
+):
+    dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_DISPOSITIVO, dispositivo_id)
+    datos = serializar_dispositivo_detalle(dispositivo)
+    datos["credenciales"] = _credenciales_ordenadas(db, usuario, dispositivo.credenciales)
+    datos["puede_gestionar"] = tiene_permiso(usuario.rol, "inventario.gestionar")
+    datos["puede_gestionar_accesos"] = tiene_permiso(usuario.rol, "accesos.gestionar")
+    datos["tiene_notas"] = dispositivo.notas_cifradas is not None
+    datos.update(_accesos_admin(db, usuario, ACTIVO_DISPOSITIVO, dispositivo_id))
+    return datos
+
+
+@router.post("/dispositivos", dependencies=[CSRF])
+def dispositivo_crear(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+    cuerpo: DispositivoInput,
+):
+    nombre = cuerpo.nombre.strip()
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio.")
+    if db.scalar(select(DispositivoRed).where(func.lower(DispositivoRed.nombre) == nombre.lower())):
+        raise HTTPException(status_code=409, detail="Ya existe un dispositivo con ese nombre.")
+
+    dispositivo = DispositivoRed(
+        nombre=nombre, tipo_dispositivo=_tipo_dispositivo_valido(cuerpo.tipo_dispositivo),
+        marca_modelo=cuerpo.marca_modelo.strip(), version=cuerpo.version.strip(),
+        ip_gestion=cuerpo.ip_gestion.strip(), ubicacion=cuerpo.ubicacion.strip(),
+        puertos=cuerpo.puertos.strip(), descripcion=cuerpo.descripcion.strip(),
+        numero_serie=cuerpo.numero_serie.strip(), garantia_hasta=cuerpo.garantia_hasta.strip(),
+        proveedor=cuerpo.proveedor.strip(), estado=_estado_valido(cuerpo.estado),
+        etiquetas=normalizar_etiquetas(cuerpo.etiquetas),
+    )
+    db.add(dispositivo)
+    db.flush()
+    audit.registrar(db, audit.ACTIVO_CREADO, request=request, usuario=usuario,
+                    objeto_tipo="dispositivo_red", objeto_id=dispositivo.id,
+                    detalle=f"{nombre} ({dispositivo.tipo_dispositivo})")
+    return {"id": dispositivo.id}
+
+
+@router.put("/dispositivos/{dispositivo_id}", dependencies=[CSRF])
+def dispositivo_editar(
+    request: Request,
+    dispositivo_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+    cuerpo: DispositivoInput,
+):
+    dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    nombre = cuerpo.nombre.strip()
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio.")
+    if db.scalar(select(DispositivoRed).where(
+            func.lower(DispositivoRed.nombre) == nombre.lower(), DispositivoRed.id != dispositivo.id)):
+        raise HTTPException(status_code=409, detail="Ya existe otro dispositivo con ese nombre.")
+
+    dispositivo.nombre = nombre
+    dispositivo.tipo_dispositivo = _tipo_dispositivo_valido(cuerpo.tipo_dispositivo)
+    dispositivo.marca_modelo = cuerpo.marca_modelo.strip()
+    dispositivo.version = cuerpo.version.strip()
+    dispositivo.ip_gestion = cuerpo.ip_gestion.strip()
+    dispositivo.ubicacion = cuerpo.ubicacion.strip()
+    dispositivo.puertos = cuerpo.puertos.strip()
+    dispositivo.descripcion = cuerpo.descripcion.strip()
+    dispositivo.numero_serie = cuerpo.numero_serie.strip()
+    dispositivo.garantia_hasta = cuerpo.garantia_hasta.strip()
+    dispositivo.proveedor = cuerpo.proveedor.strip()
+    dispositivo.estado = _estado_valido(cuerpo.estado)
+    dispositivo.etiquetas = normalizar_etiquetas(cuerpo.etiquetas)
+    audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
+                    objeto_tipo="dispositivo_red", objeto_id=dispositivo.id, detalle=nombre)
+    return {"id": dispositivo.id}
+
+
+@router.delete("/dispositivos/{dispositivo_id}", dependencies=[CSRF])
+def dispositivo_eliminar(
+    request: Request,
+    dispositivo_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+):
+    dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    nombre = dispositivo.nombre
+    db.delete(dispositivo)  # cascada: credenciales del dispositivo
+    audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,
+                    objeto_tipo="dispositivo_red", objeto_id=dispositivo_id,
+                    detalle=f"{nombre} (incluye credenciales en cascada)")
+    return {"ok": True}

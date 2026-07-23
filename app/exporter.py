@@ -20,9 +20,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -34,6 +36,7 @@ from app.security.crypto import descifrar
 COLUMNAS = [
     "tipo", "nombre", "padre", "activo_tipo",
     "plataforma", "version", "sistema_operativo", "ip",
+    "tipo_dispositivo", "puertos",
     "descripcion", "estado", "etiquetas",
     "marca_modelo", "ubicacion", "ram", "cpu", "almacenamiento",
     "numero_serie", "garantia_hasta", "proveedor",
@@ -42,7 +45,11 @@ COLUMNAS = [
 
 # El importador espera activo_tipo "servidor" para los físicos; el modelo usa
 # "fisico" en su property tipo_activo.
-_ACTIVO_TIPO_CSV = {ACTIVO_FISICO: "servidor", ACTIVO_HIPERVISOR: "hipervisor"}
+_ACTIVO_TIPO_CSV = {
+    ACTIVO_FISICO: "servidor",
+    ACTIVO_HIPERVISOR: "hipervisor",
+    ACTIVO_DISPOSITIVO: "dispositivo",
+}
 
 
 def _fila() -> dict[str, str]:
@@ -82,11 +89,22 @@ def _serializar_a_filas(db: Session) -> list[dict[str, str]]:
                  ram=v.ram, cpu=v.cpu, almacenamiento=v.almacenamiento)
         filas.append(f)
 
+    for d in db.scalars(select(DispositivoRed).order_by(DispositivoRed.nombre)).all():
+        f = _fila()
+        f.update(tipo="dispositivo", nombre=d.nombre, tipo_dispositivo=d.tipo_dispositivo,
+                 version=d.version, ip=d.ip_gestion, puertos=d.puertos,
+                 descripcion=d.descripcion, estado=d.estado, etiquetas=d.etiquetas,
+                 marca_modelo=d.marca_modelo, ubicacion=d.ubicacion,
+                 numero_serie=d.numero_serie, garantia_hasta=d.garantia_hasta,
+                 proveedor=d.proveedor)
+        filas.append(f)
+
     credenciales = db.scalars(
         select(Credencial).options(
             selectinload(Credencial.servidor_fisico),
             selectinload(Credencial.hipervisor),
             selectinload(Credencial.maquina_virtual),
+            selectinload(Credencial.dispositivo_red),
         )
     ).all()
     for c in credenciales:
@@ -127,9 +145,16 @@ def plantilla_csv() -> str:
         {"tipo": "vm", "nombre": "vm-correo", "padre": "pve-01", "sistema_operativo": "Ubuntu 24.04",
          "ip": "10.0.1.10", "descripcion": "Correo", "estado": "activo", "etiquetas": "correo",
          "ram": "8 GB", "cpu": "4 vCPU", "almacenamiento": "120 GB"},
+        {"tipo": "dispositivo", "nombre": "sw-core-01", "tipo_dispositivo": "switch",
+         "marca_modelo": "Cisco Catalyst 9300", "version": "IOS-XE 17.9",
+         "ip": "10.0.0.2", "ubicacion": "Rack A1", "puertos": "48x 1GbE + 4x SFP+",
+         "descripcion": "Switch de núcleo", "estado": "activo", "etiquetas": "red,crítico"},
         {"tipo": "credencial", "activo_tipo": "servidor", "padre": "srv-bd",
          "usuario_acceso": "root", "password": "S3cret!", "servicio": "SSH", "puerto": "22",
          "descripcion": "Acceso root"},
+        {"tipo": "credencial", "activo_tipo": "dispositivo", "padre": "sw-core-01",
+         "usuario_acceso": "admin", "password": "S3cret!", "servicio": "SSH", "puerto": "22",
+         "descripcion": "Gestión del switch"},
     ]
     filas = [{**_fila(), **e} for e in ejemplos]
     return _a_csv(filas)

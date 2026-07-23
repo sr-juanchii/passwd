@@ -2,9 +2,10 @@
 
 ## Jerarquía del inventario
 
-La segmentación se modela con **dos activos de nivel superior** (servidor físico dedicado e
-hipervisor) enlazados por claves foráneas. El hipervisor es la propia máquina física (con su
-hardware) y aloja directamente sus máquinas virtuales:
+La segmentación se modela con **tres activos de nivel superior** (servidor físico dedicado,
+hipervisor y dispositivo de red) enlazados por claves foráneas. El hipervisor es la propia
+máquina física (con su hardware) y aloja directamente sus máquinas virtuales; el dispositivo
+de red cubre la electrónica de red (switch, router, firewall, punto de acceso, balanceador…):
 
 ```mermaid
 erDiagram
@@ -12,6 +13,7 @@ erDiagram
     SERVIDOR_FISICO ||--o{ CREDENCIAL : "tiene"
     HIPERVISOR ||--o{ CREDENCIAL : "tiene"
     MAQUINA_VIRTUAL ||--o{ CREDENCIAL : "tiene"
+    DISPOSITIVO_RED ||--o{ CREDENCIAL : "tiene"
     USUARIO ||--o{ SESION_WEB : "abre"
     USUARIO ||--o{ CREDENCIAL : "registró"
     USUARIO ||--o{ REGISTRO_AUDITORIA : "genera"
@@ -21,6 +23,7 @@ erDiagram
     SERVIDOR_FISICO ||--o{ CONCESION_ACCESO : "concedido"
     HIPERVISOR ||--o{ CONCESION_ACCESO : "concedido"
     MAQUINA_VIRTUAL ||--o{ CONCESION_ACCESO : "concedido"
+    DISPOSITIVO_RED ||--o{ CONCESION_ACCESO : "concedido"
 
     SERVIDOR_FISICO {
         int id PK
@@ -52,11 +55,23 @@ erDiagram
         string cpu "vCPU/nucleos asignados"
         string almacenamiento "disco asignado"
     }
+    DISPOSITIVO_RED {
+        int id PK
+        string nombre UK
+        string tipo_dispositivo "switch | router | firewall | access_point | balanceador | otro"
+        string marca_modelo
+        string version "firmware"
+        string ip_gestion
+        string ubicacion
+        string puertos "p. ej. 48x 1GbE + 4x SFP+"
+        text descripcion
+    }
     CREDENCIAL {
         int id PK
-        int servidor_fisico_id FK "exactamente uno de los tres"
+        int servidor_fisico_id FK "exactamente uno de los cuatro"
         int hipervisor_id FK
         int maquina_virtual_id FK
+        int dispositivo_red_id FK
         string usuario_acceso
         bytes password_cifrada "Fernet AES"
         string servicio "SSH, RDP, iLO..."
@@ -95,9 +110,10 @@ erDiagram
     CONCESION_ACCESO {
         int id PK
         int usuario_id FK "analista"
-        int servidor_fisico_id FK "exactamente uno de los tres"
+        int servidor_fisico_id FK "exactamente uno de los cuatro"
         int hipervisor_id FK
         int maquina_virtual_id FK
+        int dispositivo_red_id FK
         string nivel "ver | ver_credenciales"
         int concedido_por_id FK "admin"
         datetime expira_en "caducidad opcional"
@@ -125,24 +141,27 @@ erDiagram
 
 ## Reglas de integridad
 
-1. **Activos de nivel superior**: el servidor físico dedicado y el hipervisor son entidades
-   independientes; el hipervisor es la propia máquina física (con su hardware) y no se anida
-   bajo un servidor físico.
+1. **Activos de nivel superior**: el servidor físico dedicado, el hipervisor y el
+   dispositivo de red son entidades independientes; el hipervisor es la propia máquina
+   física (con su hardware) y no se anida bajo un servidor físico. El dispositivo de red
+   lleva su clase en `tipo_dispositivo` (CHECK: `switch | router | firewall | access_point
+   | balanceador | otro`).
 2. **Máquinas virtuales**: siempre pertenecen a un hipervisor (`hipervisor_id NOT NULL`).
-3. **Credenciales**: restricción CHECK que exige exactamente **una** de las tres claves
-   foráneas (`servidor_fisico_id`, `hipervisor_id`, `maquina_virtual_id`); imposible una
-   credencial huérfana o ambigua.
+3. **Credenciales**: restricción CHECK que exige exactamente **una** de las cuatro claves
+   foráneas (`servidor_fisico_id`, `hipervisor_id`, `maquina_virtual_id`,
+   `dispositivo_red_id`); imposible una credencial huérfana o ambigua.
 4. **Borrado en cascada**: eliminar un servidor físico elimina sus hipervisores, las VMs
    de estos y todas las credenciales asociadas; eliminar un hipervisor hace lo propio con
-   sus VMs y credenciales.
+   sus VMs y credenciales; eliminar un dispositivo de red elimina sus credenciales.
 5. **Secretos**: `password_cifrada` y `totp_secret_cifrado` nunca contienen texto plano;
    `token_hash` impide reutilizar un volcado de BD para secuestrar sesiones.
 6. **Auditoría**: `usuario_id` usa `ON DELETE SET NULL` y se conserva el `username`
    textual, de modo que la trazabilidad sobrevive a cualquier baja.
 7. **Concesiones de acceso**: misma restricción CHECK de «exactamente un activo» que las
-   credenciales, más `UNIQUE(usuario, activo)` (sin duplicados) y `nivel ∈ {ver,
-   ver_credenciales}`. `ON DELETE CASCADE` desde el usuario y desde el activo: al eliminar
-   cualquiera, sus concesiones desaparecen. No hay herencia entre niveles del inventario.
+   credenciales (los cuatro tipos, dispositivos de red incluidos), más `UNIQUE(usuario,
+   activo)` (sin duplicados) y `nivel ∈ {ver, ver_credenciales}`. `ON DELETE CASCADE`
+   desde el usuario y desde el activo: al eliminar cualquiera, sus concesiones
+   desaparecen. No hay herencia entre niveles del inventario.
    Detalle del modelo de acceso en [`control-acceso.md`](control-acceso.md).
 8. **Vault personal** (`ENTRADA_VAULT`): pertenece a **un** usuario (`usuario_id`,
    `ON DELETE CASCADE`) y es **privado** —solo el dueño la ve, edita y revela; ni el

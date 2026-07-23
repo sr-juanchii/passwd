@@ -232,6 +232,20 @@ r = admin.post("/api/web/importar", headers=H, files={"archivo": ("inv.csv", csv
 imp = r.json()
 check("importación CSV", r.status_code == 200 and imp["creados"]["servidor"]==1 and imp["creados"]["hipervisor"]==1 and imp["creados"]["credencial"]==1, str(imp.get("errores")))
 
+# === 13 ter. Dispositivos de red (switches, routers, firewalls…) ===
+r = admin.post("/api/web/dispositivos", headers=H, json={"nombre":"sw-core-01","tipo_dispositivo":"switch","marca_modelo":"Catalyst 9300","version":"IOS-XE 17.9","ip_gestion":"10.0.3.1","ubicacion":"Rack A1","puertos":"48x 1GbE + 4x SFP+","descripcion":"switch de núcleo","etiquetas":"red"})
+disp_id = r.json()["id"]; check("crear dispositivo de red", r.status_code == 200)
+r = admin.get(f"/api/web/dispositivos/{disp_id}")
+check("detalle de dispositivo", r.status_code == 200 and r.json()["tipo_dispositivo_label"] == "Switch" and r.json()["puertos"] == "48x 1GbE + 4x SFP+")
+r = admin.post("/api/web/credenciales", headers=H, json={"activo":"dispositivo","activo_id":disp_id,"usuario_acceso":"netadmin","password":"SwitchPwd!2026","servicio":"SSH","puerto":22,"descripcion":"gestión"})
+cred_disp = r.json()["id"]; check("credencial en dispositivo", r.status_code == 200)
+r = admin.post(f"/api/web/credenciales/{cred_disp}/revelar", headers=H)
+check("revelar credencial de dispositivo", r.status_code == 200 and r.json()["password"] == "SwitchPwd!2026")
+r = admin.get("/api/web/buscar?q=sw-core")
+check("búsqueda dispositivos", r.status_code == 200 and any(d["nombre"]=="sw-core-01" for d in r.json()["dispositivos"]))
+r = admin.get("/api/web/dashboard")
+check("dashboard cuenta dispositivos", r.json()["resumen"]["dispositivos"] >= 1)
+
 # === 13 bis. Vault personal (privado del usuario) ===
 r = admin.post("/api/web/vault", headers=H, json={"titulo":"Correo admin","usuario_acceso":"admin@correo","password":"VaultPwd!2026x","url":"https://correo","categoria":"cuenta","notas":"principal"})
 vault_id = r.json()["id"]; check("crear entrada de vault", r.status_code == 200)

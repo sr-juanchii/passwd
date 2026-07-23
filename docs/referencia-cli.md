@@ -134,7 +134,7 @@ python -m app.cli restaurar --entrada copia.passwd --sobrescribir
 ## `recifrar`
 
 Reescribe **todos los secretos cifrados** (contraseñas de credenciales, historial, semillas TOTP
-y notas de los tres tipos de activo) con la **clave primaria** de `PASSWD_ENCRYPTION_KEY`. Es el
+y notas de los cuatro tipos de activo) con la **clave primaria** de `PASSWD_ENCRYPTION_KEY`. Es el
 mecanismo de **rotación de la clave de cifrado sin restaurar respaldos**: la variable admite
 varias claves separadas por comas y la primera es la que cifra (las demás solo descifran).
 

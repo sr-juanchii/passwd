@@ -6,6 +6,7 @@ import {
   Cpu,
   KeyRound,
   MonitorSmartphone,
+  Network,
   Plus,
   ScrollText,
   Server,
@@ -25,7 +26,7 @@ import type { ActivoInv } from "@/lib/inventario";
 import { alertas, nivelActivo } from "@/lib/riesgo";
 import { ETIQUETAS_TIPO_ACTIVO, rutaActivo } from "@/lib/constants";
 
-const ICONO = { fisico: Server, hipervisor: Cpu, vm: MonitorSmartphone } as const;
+const ICONO = { fisico: Server, hipervisor: Cpu, vm: MonitorSmartphone, dispositivo: Network } as const;
 
 export function AssetDrawer({
   asset,
@@ -45,6 +46,7 @@ export function AssetDrawer({
   if (asset.ip) props.push(["IP de gestión", asset.ip]);
   if (asset.plataforma) props.push(["Plataforma", asset.plataforma]);
   if (asset.so) props.push(["Sistema operativo", asset.so]);
+  if (asset.tipoDispositivo) props.push(["Tipo de dispositivo", asset.tipoDispositivo]);
 
   return (
     <Sheet open={!!asset} onOpenChange={onOpenChange}>

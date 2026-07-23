@@ -8,6 +8,7 @@ import {
   KeyRound,
   LayoutGrid,
   MonitorSmartphone,
+  Network,
   Rows3,
   SearchX,
   Server,
@@ -35,7 +36,7 @@ import { alertas, nivelActivo, rangoUrgencia } from "@/lib/riesgo";
 import { ETIQUETAS_TIPO_ACTIVO } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-const ICONO = { fisico: Server, hipervisor: Cpu, vm: MonitorSmartphone } as const;
+const ICONO = { fisico: Server, hipervisor: Cpu, vm: MonitorSmartphone, dispositivo: Network } as const;
 
 function tintRiesgo(a: ActivoInv): string {
   return nivelActivo(a) === "vencida" ? "bg-destructive/[0.05]" : "";
@@ -106,6 +107,7 @@ function TreeRow({
         <Chip tono="outline">{ETIQUETAS_TIPO_ACTIVO[a.tipo]}</Chip>
         {a.plataforma && <Chip>{a.plataforma}</Chip>}
         {a.so && <Chip>{a.so}</Chip>}
+        {a.tipoDispositivo && <Chip>{a.tipoDispositivo}</Chip>}
         {a.estado !== "activo" && <EstadoBadge estado={a.estado} />}
       </div>
       <div className="hidden md:block">
@@ -154,7 +156,13 @@ function AssetCard({ a, onOpen }: { a: ActivoInv; onOpen: (a: ActivoInv) => void
           </div>
           <div className="mt-0.5 text-[11.5px] text-muted-foreground">
             {ETIQUETAS_TIPO_ACTIVO[a.tipo]}
-            {a.plataforma ? ` · ${a.plataforma}` : a.so ? ` · ${a.so}` : ""}
+            {a.plataforma
+              ? ` · ${a.plataforma}`
+              : a.so
+                ? ` · ${a.so}`
+                : a.tipoDispositivo
+                  ? ` · ${a.tipoDispositivo}`
+                  : ""}
           </div>
         </div>
       </div>
@@ -188,10 +196,12 @@ function AssetCard({ a, onOpen }: { a: ActivoInv; onOpen: (a: ActivoInv) => void
 export function Inventory({
   servidores,
   hipervisores,
+  dispositivos,
   onOpen,
 }: {
   servidores: ActivoInv[];
   hipervisores: ActivoInv[];
+  dispositivos: ActivoInv[];
   onOpen: (a: ActivoInv) => void;
 }) {
   const [filtro, setFiltro] = useState("todos");
@@ -203,13 +213,18 @@ export function Inventory({
 
   const fisicos = servidores.filter(show).sort((a, b) => rangoUrgencia(b) - rangoUrgencia(a));
   const hyps =
-    filtro === "fisico"
+    filtro === "fisico" || filtro === "dispositivo"
       ? []
       : hipervisores
           .filter((h) => filtro !== "riesgo" || rangoUrgencia(h) > 0)
           .sort((a, b) => rangoUrgencia(b) - rangoUrgencia(a));
+  const disps = dispositivos.filter(show).sort((a, b) => rangoUrgencia(b) - rangoUrgencia(a));
   const vmVisible = (v: ActivoInv) => filtro !== "riesgo" || nivelActivo(v) !== "ok";
-  const flat = [...fisicos, ...hyps.flatMap((h) => [h, ...(h.vms ?? []).filter(vmVisible)])];
+  const flat = [
+    ...fisicos,
+    ...hyps.flatMap((h) => [h, ...(h.vms ?? []).filter(vmVisible)]),
+    ...disps,
+  ];
 
   return (
     <section className="overflow-hidden rounded-xl border bg-card">
@@ -230,6 +245,7 @@ export function Inventory({
               { valor: "riesgo", etiqueta: "En riesgo" },
               { valor: "fisico", etiqueta: "Servidores" },
               { valor: "hipervisor", etiqueta: "Hipervisores" },
+              { valor: "dispositivo", etiqueta: "Dispositivos" },
             ]}
           />
           <Segmented
@@ -333,6 +349,9 @@ export function Inventory({
                   .filter(vmVisible)
                   .map((v) => <TreeRow key={"v" + v.id} a={v} depth={1} onOpen={onOpen} />)}
             </div>
+          ))}
+          {disps.map((d) => (
+            <TreeRow key={"d" + d.id} a={d} onOpen={onOpen} />
           ))}
         </div>
       )}

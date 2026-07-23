@@ -8,6 +8,8 @@ import type {
   CredencialDetalle,
   CredencialInput,
   Dashboard,
+  DispositivoDetalle,
+  DispositivoInput,
   HipervisorDetalle,
   HipervisorInput,
   Metricas,
@@ -154,6 +156,14 @@ export const api = {
     request<{ id: number }>(`/hipervisores/${id}`, { method: "PUT", body: b, csrf: true }),
   eliminarHipervisor: (id: number) =>
     request<{ ok: boolean }>(`/hipervisores/${id}`, { method: "DELETE", csrf: true }),
+
+  dispositivoDetalle: (id: number) => request<DispositivoDetalle>(`/dispositivos/${id}`),
+  crearDispositivo: (b: DispositivoInput) =>
+    request<{ id: number }>("/dispositivos", { method: "POST", body: b, csrf: true }),
+  editarDispositivo: (id: number, b: DispositivoInput) =>
+    request<{ id: number }>(`/dispositivos/${id}`, { method: "PUT", body: b, csrf: true }),
+  eliminarDispositivo: (id: number) =>
+    request<{ ok: boolean }>(`/dispositivos/${id}`, { method: "DELETE", csrf: true }),
 
   vm: (id: number) => request<VmDetalle>(`/vms/${id}`),
   crearVm: (hipervisorId: number, b: VmInput) =>

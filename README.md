@@ -8,22 +8,25 @@ controles alineados con **CIS Controls v8.1** e **ISO/IEC 27003**.
 
 ## Inventario segmentado y relacional
 
-El inventario refleja la realidad física y lógica de la infraestructura con **dos tipos de
+El inventario refleja la realidad física y lógica de la infraestructura con **tres tipos de
 activo de nivel superior**:
 
 ```
 🖥️ Servidor físico dedicado            función única (p. ej. la base de datos de nómina)
 ⚙️ Hipervisor (Proxmox VE, ESXi…)      máquina física con su hardware que aloja VMs
    └── 🗔 Máquina virtual              cada una con su sistema y función descritos
+🔌 Dispositivo de red                  switch, router, firewall, punto de acceso, balanceador…
 ```
 
 El hipervisor **es** la propia máquina física (con su hardware) y contiene directamente sus
-máquinas virtuales; no se anida bajo un servidor físico. Cada nivel —servidor dedicado,
-hipervisor o máquina virtual— almacena sus **credenciales de
-acceso**: usuario, contraseña (cifrada en reposo), servicio/protocolo (SSH, RDP, iLO/IPMI,
-panel web…), puerto y una **descripción de a qué sistema da acceso**. Las relaciones se
-garantizan con claves foráneas y restricciones CHECK; el detalle está en
-[`docs/modelo-datos.md`](docs/modelo-datos.md).
+máquinas virtuales; no se anida bajo un servidor físico. Los **dispositivos de red** cubren
+la electrónica de red (con tipo, marca/modelo, firmware, puertos y ubicación), de modo que
+el sistema custodia las contraseñas de **toda** la infraestructura, no solo del cómputo.
+Cada nivel —servidor dedicado, hipervisor, máquina virtual o dispositivo de red— almacena
+sus **credenciales de acceso**: usuario, contraseña (cifrada en reposo), servicio/protocolo
+(SSH, RDP, iLO/IPMI, panel web, Telnet, SNMP…), puerto y una **descripción de a qué sistema
+da acceso**. Las relaciones se garantizan con claves foráneas y restricciones CHECK; el
+detalle está en [`docs/modelo-datos.md`](docs/modelo-datos.md).
 
 ## Seguridad implementada
 
