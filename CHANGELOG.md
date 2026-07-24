@@ -14,6 +14,17 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ### Añadido
 
+- **Módulo de configuración en tiempo de ejecución** (solo administradores, nuevo permiso
+  `configuracion.gestionar`): una pantalla de **Configuración** (y su API `/api/web/configuracion`)
+  permite ajustar en caliente —sin reiniciar ni editar el `.env`— los parámetros operativos de
+  sesión y comportamiento, política de cuentas, límites de tasa (anti-abuso), rotación/auditoría y
+  notificaciones por correo/SMTP. Los cambios se guardan en la tabla `configuracion`, **anulan** la
+  variable de entorno correspondiente, se aplican al instante, se propagan a otras instancias
+  (refresco periódico) y quedan **auditados** (`configuracion_cambiada`/`_restablecida`). La
+  contraseña SMTP se guarda **cifrada** y nunca se devuelve en claro; incluye **envío de correo de
+  prueba** (`correo_prueba_enviado`). Las claves criptográficas, la base de datos, el arranque y las
+  defensas de borde siguen siendo exclusivas de entorno (se muestran como solo lectura). Migración
+  Alembic `0007`.
 - **Restricción de activos a administradores**: un administrador (nuevo permiso
   `inventario.restringir`) puede marcar un servidor físico, hipervisor o dispositivo de red
   como *restringido*. El operador deja de verlo por completo (404, fuera de listados,

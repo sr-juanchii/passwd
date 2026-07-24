@@ -18,6 +18,7 @@
     {% if puede('usuarios.gestionar') %}<a href="/usuarios">Usuarios</a>{% endif %}
     {% if puede('tokens.gestionar') %}<a href="/tokens">API</a>{% endif %}
     {% if puede('auditoria.ver') %}<a href="/auditoria">Auditoría</a>{% endif %}
+    {% if puede('configuracion.gestionar') %}<a href="/configuracion">Configuración</a>{% endif %}
   </nav>
   <form method="get" action="/buscar" class="form-buscar" role="search">
     <input type="search" name="q" value="{{ q if q is defined else '' }}"

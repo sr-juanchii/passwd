@@ -25,7 +25,8 @@ export type Permiso =
   | "auditoria.ver"
   | "metricas.ver"
   | "accesos.gestionar"
-  | "tokens.gestionar";
+  | "tokens.gestionar"
+  | "configuracion.gestionar";
 
 export interface Usuario {
   id: number;
@@ -380,4 +381,37 @@ export interface VaultInput {
   url: string;
   categoria: CategoriaVault;
   notas: string;
+}
+
+// Configuración del sistema en tiempo de ejecución (solo administradores).
+export type TipoAjuste = "entero" | "booleano" | "texto" | "secreto";
+export type OrigenAjuste = "configurado" | "entorno" | "defecto";
+
+export interface AjusteConfig {
+  clave: string;
+  etiqueta: string;
+  ayuda: string;
+  tipo: TipoAjuste;
+  minimo: number | null;
+  maximo: number | null;
+  origen: OrigenAjuste;
+  // Los ajustes NO secretos traen `valor` (number|boolean|string según `tipo`).
+  valor?: number | boolean | string;
+  // Los secretos NO traen `valor`; solo `configurado` indica si hay uno guardado.
+  configurado?: boolean;
+}
+
+export interface GrupoConfig {
+  grupo: string;
+  ajustes: AjusteConfig[];
+}
+
+export interface InfoSistemaItem {
+  etiqueta: string;
+  valor: string | number;
+}
+
+export interface ConfiguracionResp {
+  grupos: GrupoConfig[];
+  info_sistema: InfoSistemaItem[];
 }

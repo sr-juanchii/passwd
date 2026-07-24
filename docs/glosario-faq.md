@@ -31,6 +31,7 @@ Términos del sistema y respuestas rápidas a dudas habituales. Para procedimien
 | **Anti-exfiltración** | Límite de revelados/copiados por usuario en una ventana de tiempo. |
 | **Bitácora / auditoría** | Registro de cada evento de seguridad y acceso, con usuario, IP, agente y resultado. |
 | **Token de API** | Credencial Bearer de solo lectura para SIEM/automatización (`/api/v1`). |
+| **Configuración (override)** | Ajuste operativo (sesión, cuentas, tasa, rotación, correo) cambiado en caliente por un admin; se guarda en la tabla `configuracion` y **prevalece** sobre la variable de entorno hasta restablecerlo. |
 | **Web Jinja** | Interfaz HTML servida por el propio backend. |
 | **Frontend** | Interfaz moderna en Next.js que consume la API JSON `/api/web`. |
 | **Overlay (Compose)** | Archivo `docker-compose.*.yml` adicional que se combina con el base para añadir nginx, frontend, MySQL o certbot. |

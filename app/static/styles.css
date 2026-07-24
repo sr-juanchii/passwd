@@ -164,6 +164,11 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
 .casilla { display: flex; align-items: center; gap: 0.5rem; font-weight: 500; cursor: pointer; }
 .casilla input { width: auto; margin: 0; }
 
+.campo-config { padding: 0.7rem 0; border-bottom: 1px solid var(--borde); }
+.campo-config:last-child { border-bottom: none; }
+.campo-config > label { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-weight: 600; margin-bottom: 0.3rem; }
+.campo-config small { display: block; margin-top: 0.25rem; }
+
 .arbol-fisico { border-left: 4px solid var(--primario); }
 .arbol-encabezado { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 .arbol-titulo { font-size: 1.05rem; font-weight: 700; color: var(--primario-oscuro); text-decoration: none; }

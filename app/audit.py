@@ -79,6 +79,10 @@ VAULT_ELIMINADA = "vault_entrada_eliminada"
 VAULT_REVELADA = "vault_entrada_revelada"
 VAULT_COPIADA = "vault_entrada_copiada"
 
+CONFIGURACION_CAMBIADA = "configuracion_cambiada"
+CONFIGURACION_RESTABLECIDA = "configuracion_restablecida"
+CORREO_PRUEBA = "correo_prueba_enviado"
+
 
 def _material(reg: RegistroAuditoria) -> str:
     """Representación canónica y estable de un registro, para su hash.

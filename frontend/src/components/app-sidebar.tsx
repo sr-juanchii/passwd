@@ -12,6 +12,7 @@ import {
   Search,
   ServerCog,
   ShieldCheck,
+  SlidersHorizontal,
   Upload,
   Users,
   Wallet,
@@ -54,6 +55,7 @@ const ADMINISTRACION: Item[] = [
   { titulo: "Usuarios", url: "/usuarios", icono: Users, permiso: "usuarios.gestionar" },
   { titulo: "Tokens API", url: "/tokens", icono: KeyRound, permiso: "tokens.gestionar" },
   { titulo: "Auditoría", url: "/auditoria", icono: ScrollText, permiso: "auditoria.ver" },
+  { titulo: "Configuración", url: "/configuracion", icono: SlidersHorizontal, permiso: "configuracion.gestionar" },
 ];
 
 function Grupo({

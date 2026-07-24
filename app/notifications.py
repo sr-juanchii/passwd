@@ -52,3 +52,35 @@ def enviar_alerta(asunto: str, cuerpo: str) -> bool:
     except Exception:  # noqa: BLE001 — el aviso es de mejor esfuerzo
         logger.exception("No se pudo enviar la alerta por correo: %s", asunto)
         return False
+
+
+class ErrorCorreo(Exception):
+    """Fallo al enviar un correo de prueba (mensaje apto para mostrar)."""
+
+
+def enviar_prueba(destinatario: str = "") -> list[str]:
+    """Envía un correo de prueba con la configuración SMTP vigente.
+
+    A diferencia de ``enviar_alerta`` (mejor esfuerzo, silenciosa), esta función
+    valida la configuración y **lanza ``ErrorCorreo``** con un mensaje claro si
+    falta algo o el envío falla, para que la interfaz de configuración informe al
+    administrador si el correo quedó bien configurado. Devuelve la lista de
+    destinatarios a los que se envió.
+    """
+    settings = get_settings()
+    if not settings.smtp_host:
+        raise ErrorCorreo("Configure primero el servidor SMTP.")
+    destino = [destinatario.strip()] if destinatario.strip() else _destinatarios(settings)
+    if not destino:
+        raise ErrorCorreo("Indique un destinatario o configure la lista de destinatarios.")
+    cuerpo = (
+        "Este es un correo de PRUEBA del Gestor de Contraseñas de Servidores.\n\n"
+        "Si lo recibe, la configuración SMTP de notificaciones es correcta. "
+        "Este mensaje no contiene ningún secreto."
+    )
+    try:
+        _enviar_smtp(settings, destino, "Correo de prueba de configuración", cuerpo)
+    except Exception as exc:  # noqa: BLE001 — se traduce a un error legible
+        logger.warning("Falló el correo de prueba: %s", exc)
+        raise ErrorCorreo(f"No se pudo enviar el correo: {exc}") from exc
+    return destino

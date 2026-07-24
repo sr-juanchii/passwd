@@ -165,6 +165,42 @@ VMs y credenciales, una referencia al activo padre (en credenciales, `activo_tip
 
 ---
 
+## 6 bis. Configuración del sistema (en caliente)
+
+Menú **Configuración** (solo administradores; requiere `configuracion.gestionar`). Permite ajustar
+parámetros operativos **sin reiniciar ni tocar el `.env`**. Los cambios se aplican al instante,
+anulan la variable de entorno correspondiente, se propagan a las demás instancias en pocos segundos
+y **quedan auditados**.
+
+Grupos de ajustes editables:
+
+- **Sesión y comportamiento:** inactividad máxima, vida máxima de sesión, amortiguación de actividad.
+- **Política de cuentas:** longitud mínima de contraseña (mín. 8), intentos antes de bloquear,
+  duración del bloqueo.
+- **Límites de tasa (anti-abuso):** límites y ventanas de inicio de sesión y de revelado/copiado.
+- **Inventario y auditoría:** días de rotación antes de alertar, historial de contraseñas, retención
+  de auditoría (mín. 90 días).
+- **Notificaciones por correo:** activación, servidor/puerto/usuario SMTP, contraseña SMTP (se guarda
+  **cifrada** y nunca se muestra; deje el campo vacío para conservarla), STARTTLS, remitente,
+  destinatarios y nombre/emisor.
+
+Utilidades de la pantalla:
+
+- **Origen de cada ajuste:** una insignia indica si el valor viene «por defecto», «por entorno» o si
+  está «configurado aquí». **Restablecer** un ajuste borra el override y vuelve al valor base.
+- **Enviar correo de prueba:** valida la configuración SMTP enviando un mensaje (sin secretos) a un
+  destinatario o a la lista configurada; informa si el envío falla.
+- **Información del sistema (solo lectura):** parámetros que **no** se editan aquí porque son
+  secretos de despliegue o exigen reinicio (claves criptográficas, base de datos, `COOKIE_SECURE`,
+  tamaño máximo de petición, proxies de confianza, backend del limitador). Estos siguen fijándose por
+  variable de entorno — ver [`referencia-configuracion.md`](referencia-configuracion.md).
+
+> La configuración inicial (y la de despliegue) sigue haciéndose por variables de entorno; esta
+> pantalla es para los ajustes operativos del día a día. Un cambio hecho aquí **prevalece** sobre la
+> variable de entorno hasta que se restablezca.
+
+---
+
 ## 7. Respaldo y restauración
 
 Operación de **CLI** (no desde la web). Referencia completa en

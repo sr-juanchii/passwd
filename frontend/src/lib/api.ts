@@ -5,6 +5,7 @@
 import type {
   AuditoriaPagina,
   Concesion,
+  ConfiguracionResp,
   CredencialDetalle,
   CredencialInput,
   Dashboard,
@@ -305,6 +306,31 @@ export const api = {
 
   // --- Métricas ---
   metricas: () => request<Metricas>("/metricas"),
+
+  // --- Configuración del sistema (solo administradores) ---
+  configuracion: () => request<ConfiguracionResp>("/configuracion"),
+  // Envía valores nativos: number (entero), boolean (booleano), string
+  // (texto/secreto). Un secreto solo debe incluirse si el usuario escribió uno
+  // nuevo (ausencia/vacío = «no cambiar»).
+  guardarConfiguracion: (cambios: Record<string, unknown>) =>
+    request<{ modificadas: string[] }>("/configuracion", {
+      method: "PUT",
+      body: { cambios },
+      csrf: true,
+    }),
+  restablecerAjuste: (clave: string) =>
+    request<{ restablecido: boolean }>("/configuracion/restablecer", {
+      method: "POST",
+      body: { clave },
+      csrf: true,
+    }),
+  // `destinatario` opcional: si va vacío, el backend usa la lista configurada.
+  probarCorreo: (destinatario: string) =>
+    request<{ ok: boolean; destinatarios: number }>("/configuracion/probar-correo", {
+      method: "POST",
+      body: { destinatario },
+      csrf: true,
+    }),
 
   // --- Importación ---
   importar: async (archivo: File): Promise<ResultadoImportacion> => {

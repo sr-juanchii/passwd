@@ -1,9 +1,18 @@
 # Referencia de configuración (variables de entorno)
 
-Toda la configuración se hace por **variables de entorno con prefijo `PASSWD_`** (más
+Toda la configuración **base** se hace por **variables de entorno con prefijo `PASSWD_`** (más
 `MYSQL_PASSWORD`, exclusiva del overlay de MySQL). Se leen en
 [`app/config.py`](../app/config.py) al arrancar. Salvo el administrador inicial, **todas tienen un
 valor por defecto razonable**.
+
+> **Configuración en caliente (sin reiniciar).** Un administrador puede modificar muchos de estos
+> parámetros operativos desde la pantalla **Configuración** de la propia aplicación (o la API
+> `/api/web/configuracion`), sin editar el `.env` ni redeplegar. Esos *overrides* se guardan en la
+> base de datos y **tienen prioridad** sobre la variable de entorno. Los parámetros que **no** son
+> editables en caliente (claves, base de datos, arranque, cabeceras/limite de petición…) siguen
+> siendo exclusivos de entorno. El detalle está en la sección
+> [«Configuración en tiempo de ejecución»](#12-configuración-en-tiempo-de-ejecución-editable-por-el-administrador)
+> al final de este documento.
 
 > Para empezar, copie la plantilla del ambiente que corresponda a `.env` y rellene los secretos:
 > [`.env.desarrollo.example`](../.env.desarrollo.example),
@@ -168,4 +177,44 @@ usuario y fallo de respaldo.
 | Auditoría | corta | 90 d | 365 d | 365 d |
 
 Detalle y plantillas listas para copiar en [`ambientes.md`](ambientes.md).
+
+---
+
+## 12. Configuración en tiempo de ejecución (editable por el administrador)
+
+Además de las variables de entorno (que fijan los valores **base** al arrancar), la aplicación
+incluye una pantalla de **Configuración** (menú superior, solo administradores; API
+`/api/web/configuracion`) que permite ajustar parámetros operativos **en caliente**, sin editar el
+`.env` ni reiniciar. Implementada en [`app/ajustes.py`](../app/ajustes.py) sobre la tabla
+`configuracion`.
+
+**Cómo funciona**
+
+- Cada ajuste editable parte de su valor **base** (variable de entorno si está definida, o el valor
+  por defecto). Si el administrador lo cambia, se guarda un *override* en la base de datos que
+  **tiene prioridad** sobre la variable de entorno. «Restablecer» borra el override y vuelve a la base.
+- Los cambios se **aplican al instante** en el proceso que los realiza y se propagan al resto de
+  *workers*/instancias en pocos segundos (refresco periódico). **Toda modificación queda auditada**
+  (`configuracion_cambiada` / `configuracion_restablecida`); el valor de los secretos nunca se
+  registra.
+- La **contraseña SMTP** se guarda **cifrada** (Fernet) y **nunca** se devuelve en claro a la
+  interfaz (solo se indica si está configurada). Dejar su campo vacío al guardar la **conserva**.
+- Hay un botón **«Enviar correo de prueba»** para validar la configuración SMTP (`correo_prueba_enviado`).
+
+**Parámetros editables en caliente** (por grupo). La columna indica la variable de entorno que
+fija su valor base:
+
+| Grupo | Ajuste (variable de entorno base) |
+|---|---|
+| Sesión y comportamiento | `SESSION_IDLE_MINUTES`, `SESSION_MAX_HOURS`, `ACTIVITY_THROTTLE_SECONDS` |
+| Política de cuentas | `PASSWORD_MIN_LENGTH` (mín. 8), `MAX_FAILED_ATTEMPTS`, `LOCKOUT_MINUTES` |
+| Límites de tasa | `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW_MINUTES`, `REVEAL_RATE_LIMIT`, `REVEAL_RATE_WINDOW_MINUTES` |
+| Inventario y auditoría | `ROTATION_MAX_DAYS`, `PASSWORD_HISTORY_MAX`, `AUDIT_RETENTION_DAYS` (mín. 90) |
+| Notificaciones por correo | `NOTIFY_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` (cifrada), `SMTP_FROM`, `SMTP_TLS`, `NOTIFY_TO`, `TOTP_ISSUER` |
+
+**NO editables en caliente** (exclusivos de entorno; requieren reinicio o son secretos de
+despliegue): claves criptográficas (`SECRET_KEY`, `ENCRYPTION_KEY`, `REQUIRE_ENV_KEYS`), base de
+datos (`DATABASE_URL`, pool), `COOKIE_SECURE`, `MAX_REQUEST_BYTES`, `TRUSTED_PROXIES`,
+`RATE_LIMIT_BACKEND`, `DATA_DIR` y el arranque del administrador. Se muestran como **información de
+solo lectura** en la misma pantalla.
 </content>

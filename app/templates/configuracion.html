@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block titulo %}Configuración — {{ app_name }}{% endblock %}
+{% block contenido %}
+<div class="encabezado-seccion">
+  <h1>Configuración del sistema</h1>
+</div>
+<p class="texto-suave">
+  Ajustes operativos que puedes cambiar sin reiniciar. Se aplican al instante y cada cambio
+  queda registrado en la auditoría. Las claves criptográficas, la base de datos y el arranque
+  se definen solo por entorno y aparecen abajo como información de solo lectura.
+</p>
+
+<form method="post" action="/configuracion" class="formulario">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  {% for grupo in grupos %}
+  <div class="tarjeta">
+    <h2>{{ grupo.grupo }}</h2>
+    {% for a in grupo.ajustes %}
+    <div class="campo-config">
+      <label for="cfg-{{ a.clave }}">
+        {{ a.etiqueta }}
+        {% if a.origen == 'configurado' %}<span class="insignia insignia-plataforma">configurado aquí</span>
+        {% elif a.origen == 'entorno' %}<span class="insignia insignia-etiqueta">por entorno</span>
+        {% else %}<span class="insignia insignia-estado-retirado">por defecto</span>{% endif %}
+      </label>
+
+      {% if a.tipo == 'booleano' %}
+      <label class="casilla">
+        <input type="checkbox" id="cfg-{{ a.clave }}" name="{{ a.clave }}" value="1" {{ 'checked' if a.valor }}>
+        {{ a.ayuda }}
+      </label>
+      {% elif a.tipo == 'entero' %}
+      <input id="cfg-{{ a.clave }}" name="{{ a.clave }}" type="number" value="{{ a.valor }}"
+             {% if a.minimo is not none %}min="{{ a.minimo }}"{% endif %}
+             {% if a.maximo is not none %}max="{{ a.maximo }}"{% endif %}>
+      <small class="texto-suave">{{ a.ayuda }}</small>
+      {% elif a.tipo == 'secreto' %}
+      <input id="cfg-{{ a.clave }}" name="{{ a.clave }}" type="password" autocomplete="new-password"
+             placeholder="{{ '•••••• (configurada — dejar vacío para conservar)' if a.configurado else 'sin configurar' }}">
+      <small class="texto-suave">{{ a.ayuda }}</small>
+      {% else %}
+      <input id="cfg-{{ a.clave }}" name="{{ a.clave }}" type="text" value="{{ a.valor }}" maxlength="255">
+      <small class="texto-suave">{{ a.ayuda }}</small>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <button type="submit" class="boton boton-primario">Guardar cambios</button>
+</form>
+
+<div class="tarjeta">
+  <h2>Probar el correo</h2>
+  <p class="texto-suave">
+    Envía un mensaje de prueba con la configuración SMTP guardada (guarda primero los cambios).
+    El correo no contiene ningún secreto.
+  </p>
+  <form method="post" action="/configuracion/probar-correo" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="destinatario">Destinatario (opcional; si se omite, usa la lista configurada)</label>
+    <input id="destinatario" name="destinatario" type="email" placeholder="prueba@empresa.local">
+    <button type="submit" class="boton">Enviar correo de prueba</button>
+  </form>
+</div>
+
+<div class="tarjeta">
+  <h2>Restablecer ajustes</h2>
+  <p class="texto-suave">Devuelve un ajuste a su valor base (por defecto o de variable de entorno).</p>
+  {% set hay_overrides = [] %}
+  {% for grupo in grupos %}{% for a in grupo.ajustes %}{% if a.origen == 'configurado' %}
+  {% set _ = hay_overrides.append(a) %}
+  <form method="post" action="/configuracion/restablecer" class="form-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="clave" value="{{ a.clave }}">
+    <button type="submit" class="boton boton-suave">Restablecer «{{ a.etiqueta }}»</button>
+  </form>
+  {% endif %}{% endfor %}{% endfor %}
+  {% if not hay_overrides %}<p class="texto-suave">No hay ningún ajuste sobrescrito; todo usa su valor base.</p>{% endif %}
+</div>
+
+<div class="tarjeta">
+  <h2>Información del sistema (solo lectura)</h2>
+  <p class="texto-suave">Definido por entorno o requiere reinicio; no editable aquí.</p>
+  <dl class="lista-datos">
+    {% for item in info_sistema %}
+    <dt>{{ item.etiqueta }}</dt><dd>{{ item.valor }}</dd>
+    {% endfor %}
+  </dl>
+</div>
+{% endblock %}

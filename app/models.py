@@ -743,6 +743,32 @@ class EntradaVault(Base):
         return max((ahora_utc() - self.password_rotada_en).days, 0)
 
 
+class Configuracion(Base):
+    """Ajuste de operación editable en tiempo de ejecución (capa de *overrides*).
+
+    Almacena, por clave, el valor que **anula** el valor base (por defecto o de
+    variable de entorno) definido en ``app/config.py``. Solo cubre una lista
+    blanca curada de parámetros operativos (sesión, política de cuentas, límites
+    de tasa, rotación/auditoría, correo/SMTP); las claves criptográficas, la URL
+    de la base de datos y el arranque **nunca** se guardan aquí, se definen solo
+    por entorno. Los valores marcados ``es_secreto`` (p. ej. la contraseña SMTP)
+    se guardan **cifrados** (Fernet) y jamás se devuelven en claro a la interfaz.
+    """
+
+    __tablename__ = "configuracion"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    clave: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    valor: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    es_secreto: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+    actualizado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+
+    actualizado_por: Mapped[Usuario | None] = relationship()
+
+
 class EventoTasa(Base):
     """Marca temporal de un intento, para el limitador de tasa con backend en BD.
 

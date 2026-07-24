@@ -179,6 +179,37 @@ nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`. `tipo` pued
 
 | GET | `/metricas` | metricas.ver | `{ rotacion_vencida:[], logins_fallidos_24h, logins_fallidos_7d, bloqueados:[], sin_mfa:[], top_accesos:[], concesiones_por_caducar:[] }` (mismos datos que `metricas.html`) |
 
+## Configuración del sistema
+
+Ajustes operativos en tiempo de ejecución (se aplican al instante, sin reiniciar). Solo
+administradores. Cada cambio se audita; los secretos se guardan cifrados y **nunca** se devuelven
+en claro.
+
+| Método | Path | Permiso | Notas |
+|---|---|---|---|
+| GET | `/configuracion` | configuracion.gestionar | `{ grupos: GrupoConfig[], info_sistema: InfoSistemaItem[] }` |
+| PUT | `/configuracion` | configuracion.gestionar | `{ cambios: { clave: valor, … } }` → `{ modificadas: string[] }`. 400 `{detail}` si un valor es inválido (fuera de rango, etc.) |
+| POST | `/configuracion/restablecer` | configuracion.gestionar | `{ clave }` → `{ restablecido: bool }` (borra el override; el ajuste vuelve a su valor base) |
+| POST | `/configuracion/probar-correo` | configuracion.gestionar | `{ destinatario? }` → `{ ok: true, destinatarios: number }` o 400 `{detail}` con el error SMTP |
+
+`GrupoConfig`: `{ grupo: string, ajustes: AjusteConfig[] }`. Grupos en orden fijo:
+`Sesión y comportamiento`, `Política de cuentas`, `Límites de tasa (anti-abuso)`,
+`Inventario y auditoría`, `Notificaciones por correo`.
+
+`AjusteConfig`: `{ clave, etiqueta, ayuda, tipo('entero'|'booleano'|'texto'|'secreto'),
+minimo: number|null, maximo: number|null, origen('configurado'|'entorno'|'defecto') }`.
+Además: los ajustes **no secretos** traen `valor` (number/boolean/string según `tipo`); los
+**secretos** no traen `valor` sino `configurado: bool` (si hay uno guardado). `origen`:
+`configurado` = override en la BD, `entorno` = fijado por variable de entorno, `defecto` = valor base.
+
+`InfoSistemaItem`: `{ etiqueta: string, valor: string|number }` (solo lectura; definido por entorno
+o requiere reinicio — nunca incluye el valor de las claves criptográficas).
+
+**PUT `/configuracion`**: envía valores nativos (`number` para entero, `boolean` para booleano,
+`string` para texto/secreto). Para los **secretos**, incluye la clave **solo si** el usuario escribió
+un valor nuevo; un secreto vacío o ausente significa «no cambiar». Un valor que iguale su base no
+crea override (y elimina el existente); `modificadas` solo lista los cambios reales.
+
 ## Vault personal (privado del usuario)
 
 | Método | Path | Permiso | Notas |

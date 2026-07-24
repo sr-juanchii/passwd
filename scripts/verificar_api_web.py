@@ -85,7 +85,7 @@ admin = TestClient(app)
 tok, recovery_admin = login_completo(admin, "admin", "ClaveInicialRobusta!9", nueva="Cl4veMaestra!Segura26")
 s = admin.get("/api/web/session").json()
 check("auth admin -> sesión activa", s["stage"] == "activa" and s["authenticated"])
-check("admin tiene 13 permisos", sum(1 for v in s["permisos"].values() if v) == 13)
+check("admin tiene 14 permisos", sum(1 for v in s["permisos"].values() if v) == 14)
 H = {"X-CSRF-Token": tok}
 
 # === 2. Inventario: servidor dedicado + hipervisor de nivel superior -> vm + credenciales ===
@@ -212,6 +212,25 @@ check("export CSV", r.status_code == 200 and "fecha" in r.text.splitlines()[0])
 # === 11. Métricas ===
 r = admin.get("/api/web/metricas"); m = r.json()
 check("métricas", r.status_code == 200 and all(k in m for k in ["rotacion_vencida","logins_fallidos_24h","sin_mfa","top_accesos","concesiones_por_caducar"]))
+
+# === 11 bis. Configuración en tiempo de ejecución ===
+r = admin.get("/api/web/configuracion"); cfg = r.json()
+check("configuración: grupos e info", r.status_code == 200 and len(cfg["grupos"]) >= 5 and len(cfg["info_sistema"]) > 0)
+r = admin.put("/api/web/configuracion", headers=H, json={"cambios": {"session_idle_minutes": 20, "reveal_rate_limit": 25}})
+check("configuración: guardar override", r.status_code == 200 and "session_idle_minutes" in r.json()["modificadas"])
+_todos = [a for g in admin.get("/api/web/configuracion").json()["grupos"] for a in g["ajustes"]]
+_idle = next(a for a in _todos if a["clave"] == "session_idle_minutes")
+check("configuración: valor y origen efectivos", _idle["valor"] == 20 and _idle["origen"] == "configurado")
+r = admin.put("/api/web/configuracion", headers=H, json={"cambios": {"smtp_host": "smtp.local", "smtp_password": "Secreto-SMTP!2026"}})
+check("configuración: guardar secreto SMTP", r.status_code == 200)
+_smtp = next(a for a in [a for g in admin.get("/api/web/configuracion").json()["grupos"] for a in g["ajustes"]] if a["clave"] == "smtp_password")
+check("configuración: secreto no se filtra", "Secreto-SMTP!2026" not in admin.get("/api/web/configuracion").text and _smtp["configurado"] is True and "valor" not in _smtp)
+r = admin.post("/api/web/configuracion/restablecer", headers=H, json={"clave": "session_idle_minutes"})
+check("configuración: restablecer", r.status_code == 200 and r.json()["restablecido"] is True)
+r = admin.put("/api/web/configuracion", headers=H, json={"cambios": {"audit_retention_days": 10}})
+check("configuración: validación de rango (piso 90)", r.status_code == 400)
+r = admin.post("/api/web/configuracion/probar-correo", headers=H, json={"destinatario": ""})
+check("configuración: probar correo sin destinatario -> 400", r.status_code == 400)
 
 # === 12. Búsqueda global ===
 r = admin.get("/api/web/buscar?q=dedicado"); b = r.json()
