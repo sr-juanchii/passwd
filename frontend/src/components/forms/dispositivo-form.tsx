@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DispositivoInput, TipoDispositivo } from "@/lib/types";
 import { ApiError } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import { ETIQUETAS_TIPO_DISPOSITIVO, TIPOS_DISPOSITIVO } from "@/lib/constants";
 import { Label } from "@/components/ui/label";
 import {
@@ -13,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CampoArea, CampoEstado, CampoTexto } from "./campos";
+import { CampoArea, CampoEstado, CampoRestringir, CampoTexto } from "./campos";
 import { FormAcciones, FormPanel } from "./form-shell";
 import { toast } from "sonner";
 
@@ -31,6 +32,7 @@ const VACIO: DispositivoInput = {
   proveedor: "",
   estado: "activo",
   etiquetas: "",
+  restringido: false,
 };
 
 function CampoTipoDispositivo({
@@ -62,13 +64,19 @@ function CampoTipoDispositivo({
 export function DispositivoForm({
   inicial,
   onGuardar,
+  puedeRestringir,
 }: {
   inicial?: Partial<DispositivoInput>;
   onGuardar: (v: DispositivoInput) => Promise<{ id: number }>;
+  // En "editar" llega desde `puede_restringir` del backend; en "nuevo" se omite
+  // y se decide por el rol de la sesión.
+  puedeRestringir?: boolean;
 }) {
   const router = useRouter();
+  const { usuario } = useSession();
   const [v, setV] = useState<DispositivoInput>({ ...VACIO, ...inicial });
   const [enviando, setEnviando] = useState(false);
+  const mostrarRestringir = puedeRestringir ?? usuario?.rol === "admin";
   const set = <K extends keyof DispositivoInput>(k: K, val: DispositivoInput[K]) =>
     setV((prev) => ({ ...prev, [k]: val }));
 
@@ -76,7 +84,10 @@ export function DispositivoForm({
     e.preventDefault();
     setEnviando(true);
     try {
-      const r = await onGuardar(v);
+      // Solo los administradores envían `restringido`; el resto lo deja sin
+      // definir para que la API lo omita del cuerpo.
+      const payload: DispositivoInput = mostrarRestringir ? v : { ...v, restringido: undefined };
+      const r = await onGuardar(payload);
       toast.success("Dispositivo guardado.");
       router.push(`/dispositivos/${r.id}`);
     } catch (err) {
@@ -101,6 +112,9 @@ export function DispositivoForm({
           <CampoEstado value={v.estado} onChange={(x) => set("estado", x)} />
           <CampoTexto id="etq" label="Etiquetas (separadas por coma)" value={v.etiquetas} onChange={(x) => set("etiquetas", x)} />
           <CampoArea id="desc" label="Descripción" value={v.descripcion} onChange={(x) => set("descripcion", x)} />
+          {mostrarRestringir && (
+            <CampoRestringir value={!!v.restringido} onChange={(x) => set("restringido", x)} />
+          )}
       </FormPanel>
       <FormAcciones enviando={enviando} onCancelar={() => router.back()} />
     </form>

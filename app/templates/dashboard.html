@@ -65,6 +65,7 @@
     <div>
       <a class="arbol-titulo" href="/servidores/{{ servidor.id }}">🖥️ {{ servidor.nombre }}</a>
       <span class="insignia insignia-unico">Servidor dedicado</span>
+      {% if servidor.restringido %}<span class="insignia insignia-peligro">🔒 Restringido</span>{% endif %}
       {% if servidor.ip_gestion %}<span class="texto-mono">{{ servidor.ip_gestion }}</span>{% endif %}
     </div>
     <span class="texto-suave">{{ servidor.credenciales|length }} credencial(es)</span>
@@ -83,6 +84,7 @@
     <div>
       <a class="arbol-titulo" href="/hipervisores/{{ hipervisor.id }}">⚙️ {{ hipervisor.nombre }}</a>
       <span class="insignia insignia-plataforma">{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</span>
+      {% if hipervisor.restringido %}<span class="insignia insignia-peligro">🔒 Restringido</span>{% endif %}
       {% if hipervisor.ip_gestion %}<span class="texto-mono">{{ hipervisor.ip_gestion }}</span>{% endif %}
     </div>
     <span class="texto-suave">{{ hipervisor.credenciales|length }} credencial(es) · {{ hipervisor.maquinas_virtuales|length }} VM(s)</span>
@@ -110,6 +112,7 @@
     <div>
       <a class="arbol-titulo" href="/dispositivos/{{ dispositivo.id }}">🔌 {{ dispositivo.nombre }}</a>
       <span class="insignia insignia-plataforma">{{ etiquetas_tipo_dispositivo.get(dispositivo.tipo_dispositivo, dispositivo.tipo_dispositivo) }}</span>
+      {% if dispositivo.restringido %}<span class="insignia insignia-peligro">🔒 Restringido</span>{% endif %}
       {% if dispositivo.ip_gestion %}<span class="texto-mono">{{ dispositivo.ip_gestion }}</span>{% endif %}
     </div>
     <span class="texto-suave">{{ dispositivo.credenciales|length }} credencial(es)</span>

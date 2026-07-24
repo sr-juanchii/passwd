@@ -85,7 +85,7 @@ admin = TestClient(app)
 tok, recovery_admin = login_completo(admin, "admin", "ClaveInicialRobusta!9", nueva="Cl4veMaestra!Segura26")
 s = admin.get("/api/web/session").json()
 check("auth admin -> sesión activa", s["stage"] == "activa" and s["authenticated"])
-check("admin tiene 12 permisos", sum(1 for v in s["permisos"].values() if v) == 12)
+check("admin tiene 13 permisos", sum(1 for v in s["permisos"].values() if v) == 13)
 H = {"X-CSRF-Token": tok}
 
 # === 2. Inventario: servidor dedicado + hipervisor de nivel superior -> vm + credenciales ===
@@ -267,6 +267,30 @@ r = admin.get("/api/web/plantilla.csv")
 check("plantilla CSV", r.status_code == 200 and all(c in r.text.splitlines()[0] for c in ("tipo","ram","cpu","almacenamiento","password")))
 # El operador (con gestión) puede exportar; el analista no
 r = ope_c.post("/api/web/exportar", headers=Ho); check("operador puede exportar", r.status_code == 200)
+
+# === 13 quater. Activos restringidos a administradores ===
+# El admin crea un servidor y lo marca restringido.
+r = admin.post("/api/web/servidores", headers=H, json={"nombre":"srv-restringido","sistema_operativo":"Debian","ip_gestion":"10.0.9.9","restringido":True})
+srv_restr = r.json()["id"]; check("crear servidor restringido", r.status_code == 200)
+r = admin.get(f"/api/web/servidores/{srv_restr}")
+check("detalle expone restringido/puede_restringir", r.json().get("restringido") is True and r.json().get("puede_restringir") is True)
+r = admin.post("/api/web/credenciales", headers=H, json={"activo":"fisico","activo_id":srv_restr,"usuario_acceso":"root","password":"RestrPwd!2026","servicio":"SSH","puerto":22,"descripcion":"secreto"})
+cred_restr = r.json()["id"]; check("credencial en activo restringido", r.status_code == 200)
+# El operador NO ve el activo restringido
+check("operador: detalle restringido -> 404", ope_c.get(f"/api/web/servidores/{srv_restr}").status_code == 404)
+check("operador: dashboard oculta restringido", all(s["nombre"]!="srv-restringido" for s in ope_c.get("/api/web/dashboard").json()["servidores"]))
+check("operador: revelar restringido -> 404", ope_c.post(f"/api/web/credenciales/{cred_restr}/revelar", headers=Ho).status_code == 404)
+check("operador: buscar no lo encuentra", all(s["nombre"]!="srv-restringido" for s in ope_c.get("/api/web/buscar?q=restringido").json()["servidores"]))
+# El auditor SÍ ve el activo pero no revela (auditor fresco: el «aud» inicial se
+# transformó en operador en la sección 8 de gestión de usuarios).
+r = crear_usuario("rev","rev@example.com","auditor"); rev_pwd = r.json()["password_temporal"]
+aud_c = TestClient(app)
+tok_aud, _ = login_completo(aud_c, "rev", rev_pwd, nueva="Sup3rv1sor-Clave-26!")
+check("auditor: sí ve el restringido", aud_c.get(f"/api/web/servidores/{srv_restr}").status_code == 200)
+check("auditor: no puede revelar", aud_c.post(f"/api/web/credenciales/{cred_restr}/revelar", headers={"X-CSRF-Token":tok_aud}).status_code == 403)
+# El operador no puede restringir (se ignora la marca)
+r = ope_c.post("/api/web/servidores", headers=Ho, json={"nombre":"srv-ope-restr","restringido":True})
+check("operador no puede restringir", r.status_code == 200 and admin.get(f"/api/web/servidores/{r.json()['id']}").json()["restringido"] is False)
 
 # === 14. Eliminaciones en cascada ===
 r = admin.delete(f"/api/web/servidores/{host_id}", headers=H); check("eliminar servidor dedicado", r.status_code == 200)

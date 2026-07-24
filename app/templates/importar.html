@@ -49,12 +49,12 @@
   <h2>Formato</h2>
   <p class="texto-suave">Cabecera con columnas; la columna <code>tipo</code> indica qué se crea. Se
      procesan por orden de dependencia (servidores → hipervisores → dispositivos → VMs → credenciales).</p>
-  <pre class="bloque-notas">tipo,nombre,padre,activo_tipo,plataforma,version,sistema_operativo,ip,tipo_dispositivo,puertos,descripcion,estado,etiquetas,marca_modelo,ubicacion,ram,cpu,almacenamiento,numero_serie,garantia_hasta,proveedor,usuario_acceso,password,servicio,puerto
-servidor,srv-bd,,,,,Debian 12,10.0.0.5,,,BD de nómina,activo,"producción,crítico",Dell R750,Sala 1,64 GB,2x Xeon,2x960 GB SSD,,,,,,,
-hipervisor,pve-01,,,Proxmox VE,8.2,,10.0.0.7,,,Nodo,activo,,Dell R650,Sala 1,256 GB,2x EPYC,4x1.92 TB,,,,,,,
-vm,vm-correo,pve-01,,,,Ubuntu 24.04,10.0.1.10,,,Correo,activo,correo,,,8 GB,4 vCPU,120 GB,,,,,,,
-dispositivo,sw-core-01,,,,IOS-XE 17.9,,10.0.0.2,switch,48x 1GbE + 4x SFP+,Switch de núcleo,activo,"red,crítico",Cisco C9300,Rack A1,,,,,,,,,,
-credencial,,srv-bd,servidor,,,,,,,Acceso root,,,,,,,,,,,root,S3cret!,SSH,22</pre>
+  <pre class="bloque-notas">tipo,nombre,padre,activo_tipo,plataforma,version,sistema_operativo,ip,tipo_dispositivo,puertos,descripcion,estado,etiquetas,restringido,marca_modelo,ubicacion,ram,cpu,almacenamiento,numero_serie,garantia_hasta,proveedor,usuario_acceso,password,servicio,puerto
+servidor,srv-bd,,,,,Debian 12,10.0.0.5,,,BD de nómina,activo,"producción,crítico",,Dell R750,Sala 1,64 GB,2x Xeon,2x960 GB SSD,,,,,,,
+hipervisor,pve-01,,,Proxmox VE,8.2,,10.0.0.7,,,Nodo,activo,,,Dell R650,Sala 1,256 GB,2x EPYC,4x1.92 TB,,,,,,,
+vm,vm-correo,pve-01,,,,Ubuntu 24.04,10.0.1.10,,,Correo,activo,correo,,,,8 GB,4 vCPU,120 GB,,,,,,,
+dispositivo,sw-core-01,,,,IOS-XE 17.9,,10.0.0.2,switch,48x 1GbE + 4x SFP+,Switch de núcleo,activo,"red,crítico",,Cisco C9300,Rack A1,,,,,,,,,,
+credencial,,srv-bd,servidor,,,,,,,Acceso root,,,,,,,,,,,,root,S3cret!,SSH,22</pre>
   <p class="texto-suave">El hipervisor y el dispositivo de red son activos de nivel superior (no requieren
      <code>padre</code>); las VMs usan <code>padre</code> = nombre del hipervisor. Las columnas de
      hardware (<code>marca_modelo, ubicacion, numero_serie, garantia_hasta, proveedor</code>) son opcionales
@@ -62,6 +62,8 @@ credencial,,srv-bd,servidor,,,,,,,Acceso root,,,,,,,,,,,root,S3cret!,SSH,22</pre
      (RAM/CPU/almacenamiento asignados). Los dispositivos usan <code>tipo_dispositivo</code>
      (<code>switch, router, firewall, access_point, balanceador, otro</code>), <code>version</code>
      (firmware) y <code>puertos</code>; las credenciales aceptan
-     <code>activo_tipo = servidor | hipervisor | vm | dispositivo</code>.</p>
+     <code>activo_tipo = servidor | hipervisor | vm | dispositivo</code>. La columna
+     <code>restringido</code> (<code>si</code>) marca un activo como visible solo para
+     administradores; solo tiene efecto si quien importa es administrador.</p>
 </div>
 {% endblock %}

@@ -70,6 +70,8 @@ def notas_estado(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     activo = _resolver(db, tipo, activo_id)
+    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
+        raise HTTPException(status_code=404, detail="El activo no existe.")
     return {"tiene_notas": activo.notas_cifradas is not None}
 
 
@@ -83,6 +85,8 @@ def notas_guardar(
     cuerpo: NotasInput,
 ):
     activo = _resolver(db, tipo, activo_id)
+    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
+        raise HTTPException(status_code=404, detail="El activo no existe.")
     activo.notas_cifradas = cifrar(cuerpo.contenido) if cuerpo.contenido.strip() else None
     audit.registrar(db, audit.NOTA_ACTUALIZADA, request=request, usuario=usuario,
                     objeto_tipo=tipo, objeto_id=activo_id,

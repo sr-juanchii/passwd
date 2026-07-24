@@ -33,6 +33,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -172,6 +173,11 @@ class ServidorFisico(Base):
     proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Restringido a administradores: los OPERADORES lo tratan como inexistente
+    # (404); el auditor sí lo ve (supervisión, nunca revela contraseñas) y el
+    # analista solo con concesión explícita. Cambiar la marca exige el permiso
+    # `inventario.restringir` (solo administradores).
+    restringido: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
     # Notas sensibles cifradas en reposo (instrucciones de acceso, tokens, etc.)
     notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
@@ -212,6 +218,9 @@ class Hipervisor(Base):
     proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Restringido a administradores; sus VMs heredan la restricción (deny hereda,
+    # a diferencia de las concesiones, que nunca heredan).
+    restringido: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
     notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
@@ -325,6 +334,8 @@ class DispositivoRed(Base):
     proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Restringido a administradores (ver ServidorFisico.restringido).
+    restringido: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
     notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)

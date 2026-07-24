@@ -43,6 +43,7 @@ USUARIO_REACTIVADO = "usuario_reactivado"
 ACTIVO_CREADO = "activo_creado"
 ACTIVO_ACTUALIZADO = "activo_actualizado"
 ACTIVO_ELIMINADO = "activo_eliminado"
+ACTIVO_RESTRICCION_CAMBIADA = "activo_restriccion_cambiada"
 
 CREDENCIAL_CREADA = "credencial_creada"
 CREDENCIAL_ACTUALIZADA = "credencial_actualizada"

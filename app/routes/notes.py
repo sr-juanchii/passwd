@@ -67,6 +67,8 @@ def notas_form(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     activo, url_volver = _resolver(db, tipo, activo_id)
+    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
+        raise HTTPException(status_code=404, detail="El activo no existe.")
     contenido = descifrar(activo.notas_cifradas) if activo.notas_cifradas else ""
     return render(request, "notas_form.html", {
         "usuario_actual": usuario, "activo": activo, "tipo_activo": tipo,
@@ -84,6 +86,8 @@ def notas_guardar(
     contenido: Annotated[str, Form()] = "",
 ):
     activo, url_volver = _resolver(db, tipo, activo_id)
+    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
+        raise HTTPException(status_code=404, detail="El activo no existe.")
     activo.notas_cifradas = cifrar(contenido) if contenido.strip() else None
     audit.registrar(db, audit.NOTA_ACTUALIZADA, request=request, usuario=usuario,
                     objeto_tipo=tipo, objeto_id=activo_id,

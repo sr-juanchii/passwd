@@ -43,7 +43,11 @@ export default function EditarDispositivoPage() {
           { label: "Editar" },
         ]}
       />
-      <DispositivoForm inicial={data} onGuardar={(v) => api.editarDispositivo(did, v)} />
+      <DispositivoForm
+        inicial={data}
+        puedeRestringir={data.puede_restringir}
+        onGuardar={(v) => api.editarDispositivo(did, v)}
+      />
     </>
   );
 }

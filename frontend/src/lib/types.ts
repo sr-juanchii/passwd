@@ -77,6 +77,9 @@ export interface HipervisorNodo {
   etiquetas: string[];
   credenciales: Credencial[];
   vms: VmNodo[];
+  // Restringido a administradores: los operadores no reciben este nodo (ni sus
+  // VMs) del backend; admin y auditor sí, para distinguirlo en el listado.
+  restringido?: boolean;
 }
 
 export interface ServidorNodo {
@@ -86,6 +89,7 @@ export interface ServidorNodo {
   ip_gestion: string;
   etiquetas: string[];
   credenciales: Credencial[];
+  restringido?: boolean;
 }
 
 export interface DispositivoNodo {
@@ -97,6 +101,7 @@ export interface DispositivoNodo {
   ip_gestion: string;
   etiquetas: string[];
   credenciales: Credencial[];
+  restringido?: boolean;
 }
 
 export interface Resumen {
@@ -156,6 +161,9 @@ export interface ServidorInput {
   proveedor: string;
   estado: EstadoActivo;
   etiquetas: string;
+  // Marca "restringido a administradores". Solo la envían los administradores al
+  // crear/editar; el backend la ignora para el resto de roles.
+  restringido?: boolean;
 }
 
 export interface ServidorDetalle extends ServidorInput {
@@ -164,6 +172,8 @@ export interface ServidorDetalle extends ServidorInput {
   credenciales: Credencial[];
   puede_gestionar: boolean;
   puede_gestionar_accesos: boolean;
+  // true solo para administradores: habilita el control de restricción.
+  puede_restringir?: boolean;
   tiene_notas: boolean;
   accesos?: Concesion[];
   analistas?: AnalistaRef[];
@@ -185,6 +195,7 @@ export interface HipervisorInput {
   proveedor: string;
   estado: EstadoActivo;
   etiquetas: string;
+  restringido?: boolean;
 }
 
 export interface HipervisorDetalle extends HipervisorInput {
@@ -194,6 +205,7 @@ export interface HipervisorDetalle extends HipervisorInput {
   vms: { id: number; nombre: string; sistema_operativo: string; estado: EstadoActivo }[];
   puede_gestionar: boolean;
   puede_gestionar_accesos: boolean;
+  puede_restringir?: boolean;
   tiene_notas: boolean;
   accesos?: Concesion[];
   analistas?: AnalistaRef[];
@@ -237,6 +249,7 @@ export interface DispositivoInput {
   proveedor: string;
   estado: EstadoActivo;
   etiquetas: string;
+  restringido?: boolean;
 }
 
 export interface DispositivoDetalle extends DispositivoInput {
@@ -246,6 +259,7 @@ export interface DispositivoDetalle extends DispositivoInput {
   credenciales: Credencial[];
   puede_gestionar: boolean;
   puede_gestionar_accesos: boolean;
+  puede_restringir?: boolean;
   tiene_notas: boolean;
   accesos?: Concesion[];
   analistas?: AnalistaRef[];

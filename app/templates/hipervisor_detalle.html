@@ -5,6 +5,7 @@
 <div class="encabezado-seccion">
   <h1>⚙️ {{ hipervisor.nombre }}
     <span class="insignia insignia-plataforma">{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</span>
+    {% if hipervisor.restringido %}<span class="insignia insignia-peligro">🔒 Restringido a administradores</span>{% endif %}
   </h1>
   {% if puede('inventario.gestionar') %}
   <div class="celda-acciones">

@@ -34,6 +34,7 @@ erDiagram
         string ubicacion
         string ip_gestion
         string ram_cpu_almacenamiento "hardware"
+        bool restringido "solo administradores"
     }
     HIPERVISOR {
         int id PK
@@ -43,6 +44,7 @@ erDiagram
         string ip_gestion
         text descripcion
         string ram_cpu_almacenamiento "hardware propio"
+        bool restringido "solo admins (las VMs lo heredan)"
     }
     MAQUINA_VIRTUAL {
         int id PK
@@ -64,6 +66,7 @@ erDiagram
         string ip_gestion
         string ubicacion
         string puertos "p. ej. 48x 1GbE + 4x SFP+"
+        bool restringido "solo administradores"
         text descripcion
     }
     CREDENCIAL {
@@ -163,6 +166,12 @@ erDiagram
    desde el usuario y desde el activo: al eliminar cualquiera, sus concesiones
    desaparecen. No hay herencia entre niveles del inventario.
    Detalle del modelo de acceso en [`control-acceso.md`](control-acceso.md).
+8. **Restricción a administradores** (`restringido`): bandera booleana en servidor físico,
+   hipervisor y dispositivo de red (las VMs la heredan de su hipervisor, por eso no llevan
+   columna propia). Un activo restringido es invisible para los operadores (404) y visible
+   para los auditores sin poder revelar contraseñas; el analista solo lo ve con concesión
+   explícita, que prevalece sobre la restricción. Solo el administrador la cambia
+   (`inventario.restringir`). Ver [`control-acceso.md`](control-acceso.md).
 8. **Vault personal** (`ENTRADA_VAULT`): pertenece a **un** usuario (`usuario_id`,
    `ON DELETE CASCADE`) y es **privado** —solo el dueño la ve, edita y revela; ni el
    administrador accede a su contenido—. `password_cifrada` (Fernet) nunca en claro;

@@ -20,6 +20,7 @@ Términos del sistema y respuestas rápidas a dudas habituales. Para procedimien
 | **Acceso por objeto** | Capa extra para el analista: sobre **qué activos concretos** puede operar, según concesiones ([`control-acceso.md`](control-acceso.md)). |
 | **Concesión** | Permiso de un administrador a un analista sobre un activo, con nivel (`ver` / `ver_credenciales`) y caducidad opcional. |
 | **Default-deny** | El analista no ve nada hasta que se le concede acceso explícito. |
+| **Activo restringido** | Activo marcado por un administrador como visible solo para administradores: el operador no lo ve (404), el auditor sí pero sin revelar contraseñas, el analista solo con concesión. Las VMs lo heredan del hipervisor. |
 | **MFA / TOTP** | Segundo factor de autenticación: código de 6 dígitos que cambia cada 30 s (RFC 6238), obligatorio para todos. |
 | **Códigos de recuperación** | 8 códigos de un solo uso para entrar si se pierde el dispositivo MFA. |
 | **Etapa de sesión** | Fase del login: `cambio_password`, `mfa_enrolamiento`, `mfa_pendiente`, `activa`. |

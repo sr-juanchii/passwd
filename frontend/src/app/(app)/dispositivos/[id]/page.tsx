@@ -14,6 +14,7 @@ import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
 import { ErrorRecurso } from "@/components/error-recurso";
 import { TituloActivo } from "@/components/inventario/titulo-activo";
+import { RestringidoBadge } from "@/components/restringido-badge";
 import { Chip } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
@@ -66,6 +67,7 @@ export default function DispositivoDetallePage() {
             nombre={d.nombre}
             estado={d.estado}
             nivel={nivelActivo({ credenciales: d.credenciales })}
+            extra={d.restringido ? <RestringidoBadge /> : undefined}
           />
         }
         descripcion={d.descripcion}

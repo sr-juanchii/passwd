@@ -132,13 +132,21 @@ def buscar(
         _like(Credencial.usuario_acceso, patron),
         _like(Credencial.servicio, patron),
     ))
-    if ids_fisicos is not None:
-        consulta_credenciales = consulta_credenciales.where(or_(
-            Credencial.servidor_fisico_id.in_(ids_fisicos),
-            Credencial.hipervisor_id.in_(ids_hipervisores or []),
-            Credencial.maquina_virtual_id.in_(ids_vms or []),
-            Credencial.dispositivo_red_id.in_(ids_dispositivos or []),
-        ))
+    # Cada tipo se filtra por su lista de visibles; ``None`` = ese tipo no se
+    # filtra (todas sus credenciales entran). Así el prefiltro sirve tanto al
+    # analista (cuatro listas) como al operador/auditor (mezcla None/lista
+    # cuando hay activos restringidos).
+    ids_por_columna = (
+        (Credencial.servidor_fisico_id, ids_fisicos),
+        (Credencial.hipervisor_id, ids_hipervisores),
+        (Credencial.maquina_virtual_id, ids_vms),
+        (Credencial.dispositivo_red_id, ids_dispositivos),
+    )
+    if any(ids is not None for _, ids in ids_por_columna):
+        consulta_credenciales = consulta_credenciales.where(or_(*[
+            columna.in_(ids) if ids is not None else columna.is_not(None)
+            for columna, ids in ids_por_columna
+        ]))
     credenciales = db.scalars(consulta_credenciales.limit(LIMITE_POR_TIPO)).all()
 
     # Filtrado por acceso a nivel de objeto (clave para no filtrar el inventario).

@@ -54,6 +54,7 @@ from app.models import (
     Usuario,
     normalizar_etiquetas,
 )
+from app.rbac import tiene_permiso
 from app.security.crypto import cifrar
 
 router = APIRouter()
@@ -92,10 +93,15 @@ def exportar(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, EXPORTAR],
 ):
-    """Export EN CLARO del inventario para migración (CSV round-trip con importar)."""
-    texto = exportar_csv(db)
+    """Export EN CLARO del inventario para migración (CSV round-trip con importar).
+
+    El operador no exporta los activos restringidos a administradores.
+    """
+    incluir = tiene_permiso(usuario.rol, "inventario.restringir")
+    texto = exportar_csv(db, incluir_restringidos=incluir)
     audit.registrar(db, audit.INVENTARIO_EXPORTADO, request=request, usuario=usuario,
-                    detalle="Export en claro del inventario (CSV de migración).")
+                    detalle="Export en claro del inventario (CSV de migración)."
+                            + ("" if incluir else " Sin activos restringidos."))
     return _csv_descarga(texto, "inventario-passwd.csv")
 
 
@@ -120,7 +126,18 @@ def _hardware(fila: dict) -> dict:
     }
 
 
-def _procesar_fila(db: Session, fila: dict) -> str:
+def _restringido(fila: dict, puede_restringir: bool) -> bool:
+    """Lee la columna ``restringido`` del CSV, solo si el usuario puede fijarla.
+
+    Un operador que importe un CSV con la columna marcada NO crea activos
+    restringidos: el valor se ignora salvo que tenga ``inventario.restringir``.
+    """
+    if not puede_restringir:
+        return False
+    return (fila.get("restringido") or "").strip().lower() in ("si", "sí", "true", "1", "x")
+
+
+def _procesar_fila(db: Session, fila: dict, puede_restringir: bool = False) -> str:
     """Crea el activo/credencial de una fila. Devuelve un mensaje; lanza ValueError."""
     tipo = (fila.get("tipo") or "").strip().lower()
     nombre = (fila.get("nombre") or "").strip()
@@ -137,6 +154,7 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             descripcion=(fila.get("descripcion") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            restringido=_restringido(fila, puede_restringir),
             **_hardware(fila),
         ))
         return f"servidor «{nombre}» creado"
@@ -154,6 +172,7 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             descripcion=(fila.get("descripcion") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            restringido=_restringido(fila, puede_restringir),
             **_hardware(fila),
         ))
         return f"hipervisor «{nombre}» creado"
@@ -182,6 +201,7 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             proveedor=(fila.get("proveedor") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            restringido=_restringido(fila, puede_restringir),
         ))
         return f"dispositivo «{nombre}» creado"
 
@@ -259,12 +279,13 @@ def importar(
     # credenciales, conservando el número de fila original para los mensajes.
     indexadas = sorted(enumerate(filas, start=2), key=_clave_orden)
 
+    puede_restringir = tiene_permiso(usuario.rol, "inventario.restringir")
     creados = 0
     errores: list[str] = []
     for numero, fila in indexadas:
         try:
             with db.begin_nested():
-                _procesar_fila(db, fila)
+                _procesar_fila(db, fila, puede_restringir)
             creados += 1
         except Exception as exc:  # noqa: BLE001 (se informa por fila, no aborta)
             errores.append(f"Fila {numero}: {exc}")

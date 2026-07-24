@@ -5,6 +5,7 @@
 <div class="encabezado-seccion">
   <h1>🖥️ {{ servidor.nombre }}
     <span class="insignia insignia-unico">Servidor dedicado</span>
+    {% if servidor.restringido %}<span class="insignia insignia-peligro">🔒 Restringido a administradores</span>{% endif %}
   </h1>
   {% if puede('inventario.gestionar') %}
   <div class="celda-acciones">

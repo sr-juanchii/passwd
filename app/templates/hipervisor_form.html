@@ -76,6 +76,13 @@
     <input id="etiquetas" name="etiquetas" type="text" maxlength="255"
            value="{{ hipervisor.etiquetas if hipervisor else '' }}" placeholder="Ej.: clúster-a, producción">
 
+    {% if puede('inventario.restringir') %}
+    <label class="casilla">
+      <input type="checkbox" name="restringido" value="1" {{ 'checked' if hipervisor and hipervisor.restringido }}>
+      Restringir a administradores (los operadores no verán este hipervisor ni sus VMs)
+    </label>
+    {% endif %}
+
     <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if hipervisor else 'Registrar hipervisor' }}</button>
   </form>
 </div>

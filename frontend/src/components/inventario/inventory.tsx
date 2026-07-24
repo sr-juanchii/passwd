@@ -23,6 +23,7 @@ import { Eyebrow, Mono } from "@/components/ui/mono";
 import { Segmented } from "@/components/ui/segmented";
 import { RiskDot } from "@/components/risk-dot";
 import { EstadoBadge } from "@/components/estado-badge";
+import { RestringidoBadge } from "@/components/restringido-badge";
 import {
   Table,
   TableBody,
@@ -109,6 +110,7 @@ function TreeRow({
         {a.so && <Chip>{a.so}</Chip>}
         {a.tipoDispositivo && <Chip>{a.tipoDispositivo}</Chip>}
         {a.estado !== "activo" && <EstadoBadge estado={a.estado} />}
+        {a.restringido && <RestringidoBadge compacto />}
       </div>
       <div className="hidden md:block">
         {a.ip ? (
@@ -168,6 +170,7 @@ function AssetCard({ a, onOpen }: { a: ActivoInv; onOpen: (a: ActivoInv) => void
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {a.estado !== "activo" && <EstadoBadge estado={a.estado} />}
+        {a.restringido && <RestringidoBadge compacto />}
         {a.ip && (
           <Chip mono tono="outline">
             {a.ip}
@@ -299,6 +302,7 @@ export function Inventory({
                           {a.parent && <span className="text-muted-foreground">{a.parent}/</span>}
                           {a.nombre}
                         </Mono>
+                        {a.restringido && <RestringidoBadge compacto />}
                       </span>
                     </TableCell>
                     <TableCell>{ETIQUETAS_TIPO_ACTIVO[a.tipo]}</TableCell>

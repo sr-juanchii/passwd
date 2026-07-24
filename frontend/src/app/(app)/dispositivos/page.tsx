@@ -12,6 +12,7 @@ import { rutaActivo } from "@/lib/constants";
 import { PageHeader } from "@/components/page-header";
 import { AssetDrawer } from "@/components/inventario/asset-drawer";
 import { EstadoBadge } from "@/components/estado-badge";
+import { RestringidoBadge } from "@/components/restringido-badge";
 import { RiskDot } from "@/components/risk-dot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -181,6 +182,7 @@ export default function DispositivosPage() {
                           <RiskDot nivel={nivelActivo(d)} size={7} />
                           <Network className="size-4 text-muted-foreground" />
                           <Mono className="font-medium">{d.nombre}</Mono>
+                          {d.restringido && <RestringidoBadge compacto />}
                         </span>
                       </TableCell>
                       <TableCell>

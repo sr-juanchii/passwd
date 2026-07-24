@@ -28,6 +28,7 @@ export interface ActivoInv {
   credenciales: Credencial[];
   vms?: ActivoInv[];
   parent?: string; // nombre del hipervisor (para la vista de tabla)
+  restringido?: boolean; // restringido a administradores (las VMs lo heredan)
 }
 
 export function deServidor(s: ServidorNodo): ActivoInv {
@@ -39,10 +40,11 @@ export function deServidor(s: ServidorNodo): ActivoInv {
     ip: s.ip_gestion || undefined,
     etiquetas: s.etiquetas,
     credenciales: s.credenciales,
+    restringido: s.restringido,
   };
 }
 
-export function deVm(v: VmNodo, parent?: string): ActivoInv {
+export function deVm(v: VmNodo, parent?: string, restringido?: boolean): ActivoInv {
   return {
     tipo: "vm",
     id: v.id,
@@ -51,6 +53,8 @@ export function deVm(v: VmNodo, parent?: string): ActivoInv {
     so: v.sistema_operativo || undefined,
     credenciales: v.credenciales,
     parent,
+    // Las VMs no tienen marca propia: heredan la del hipervisor.
+    restringido,
   };
 }
 
@@ -64,6 +68,7 @@ export function deDispositivo(d: DispositivoNodo): ActivoInv {
     tipoDispositivo: d.tipo_dispositivo_label || undefined,
     etiquetas: d.etiquetas,
     credenciales: d.credenciales,
+    restringido: d.restringido,
   };
 }
 
@@ -77,7 +82,8 @@ export function deHipervisor(h: HipervisorNodo): ActivoInv {
     plataforma: h.plataforma || undefined,
     etiquetas: h.etiquetas,
     credenciales: h.credenciales,
-    vms: h.vms.map((v) => deVm(v, h.nombre)),
+    vms: h.vms.map((v) => deVm(v, h.nombre, h.restringido)),
+    restringido: h.restringido,
   };
 }
 

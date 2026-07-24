@@ -1,7 +1,9 @@
 "use client";
 
+import { Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -75,6 +77,40 @@ export function CampoArea({
     <div className="space-y-2 sm:col-span-2">
       <Label htmlFor={id}>{label}</Label>
       <Textarea id={id} rows={3} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+// Interruptor "Restringir a administradores". Solo debe montarlo el formulario
+// cuando el usuario actual es administrador. Ocupa las dos columnas de la rejilla
+// para que el texto explicativo respire.
+export function CampoRestringir({
+  value,
+  onChange,
+  incluyeVms = false,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+  incluyeVms?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-dashed p-4 sm:col-span-2">
+      <div className="space-y-1">
+        <Label htmlFor="restringido" className="flex items-center gap-1.5">
+          <Lock className="size-3.5" /> Restringir a administradores
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          Los operadores no verán este activo
+          {incluyeVms ? " ni sus máquinas virtuales" : ""}. Los auditores lo verán sin poder
+          revelar contraseñas; los analistas, solo con una concesión explícita.
+        </p>
+      </div>
+      <Switch
+        id="restringido"
+        checked={value}
+        onCheckedChange={onChange}
+        aria-label="Restringir a administradores"
+      />
     </div>
   );
 }

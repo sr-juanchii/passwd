@@ -35,15 +35,20 @@ iLO/IPMI, panel web, Telnet, SNMP…) y, opcionalmente, una **nota segura cifrad
 
 | Permiso | admin | operador | auditor | analista |
 |---|:-:|:-:|:-:|:-:|
-| Ver inventario y credenciales (sin contraseña) | ✔ | ✔ | ✔ | solo concedidos |
-| Gestionar inventario y credenciales | ✔ | ✔ | ✘ | ✘ |
-| Revelar/copiar contraseñas (auditado) | ✔ | ✔ | ✘ | solo concedidas |
+| Ver inventario y credenciales (sin contraseña) | ✔ | ✔ (salvo restringidos) | ✔ | solo concedidos |
+| Gestionar inventario y credenciales | ✔ | ✔ (salvo restringidos) | ✘ | ✘ |
+| Revelar/copiar contraseñas (auditado) | ✔ | ✔ (salvo restringidos) | ✘ | solo concedidas |
 | Gestionar usuarios | ✔ | ✘ | ✘ | ✘ |
 | Conceder/revocar accesos por activo | ✔ | ✘ | ✘ | ✘ |
+| Restringir activos a administradores | ✔ | ✘ | ✘ | ✘ |
 | Ver bitácora y métricas | ✔ | ✘ | ✔ | ✘ |
 
 El rol **analista** parte de cero (*default-deny*): no ve ningún activo hasta que un administrador
 le **concede** acceso a activos concretos (ver [`control-acceso.md`](control-acceso.md)).
+
+Un administrador puede además **restringir** ciertos activos: quedan ocultos para los operadores
+(como si no existieran), mientras que los auditores los siguen viendo sin poder revelar sus
+contraseñas. Las máquinas virtuales heredan la restricción de su hipervisor.
 
 ---
 

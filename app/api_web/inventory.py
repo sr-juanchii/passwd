@@ -9,7 +9,6 @@ analista solo ve activos concedidos).
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -42,15 +41,14 @@ from app.models import (
     ESTADO_ACTIVO,
     ESTADOS_ACTIVO,
     ROL_ANALISTA,
+    ROL_OPERADOR,
     TIPO_DISPOSITIVO_SWITCH,
     TIPOS_DISPOSITIVO,
-    Credencial,
     DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
     Usuario,
-    ahora_utc,
     normalizar_etiquetas,
 )
 from app.rbac import tiene_permiso
@@ -77,6 +75,8 @@ class ServidorInput(BaseModel):
     proveedor: str = ""
     estado: str = ESTADO_ACTIVO
     etiquetas: str = ""
+    # None = no tocar la marca; solo el admin (inventario.restringir) la cambia.
+    restringido: bool | None = None
 
 
 class HipervisorInput(BaseModel):
@@ -95,6 +95,7 @@ class HipervisorInput(BaseModel):
     proveedor: str = ""
     estado: str = ESTADO_ACTIVO
     etiquetas: str = ""
+    restringido: bool | None = None
 
 
 class VmInput(BaseModel):
@@ -123,6 +124,7 @@ class DispositivoInput(BaseModel):
     proveedor: str = ""
     estado: str = ESTADO_ACTIVO
     etiquetas: str = ""
+    restringido: bool | None = None
 
 
 def _estado_valido(estado: str) -> str:
@@ -131,6 +133,27 @@ def _estado_valido(estado: str) -> str:
 
 def _tipo_dispositivo_valido(tipo: str) -> str:
     return tipo if tipo in TIPOS_DISPOSITIVO else TIPO_DISPOSITIVO_SWITCH
+
+
+def _aplicar_restriccion(
+    request: Request, db: Session, usuario: Usuario,
+    activo, objeto_tipo: str, marcado: bool | None,
+) -> None:
+    """Fija la marca «restringido» si el usuario tiene el permiso y cambió.
+
+    ``None`` significa «no tocar». Solo el administrador (permiso
+    ``inventario.restringir``) puede cambiarla; para el resto el campo se
+    ignora en silencio. Cada cambio queda auditado con una acción propia.
+    """
+    if marcado is None or not tiene_permiso(usuario.rol, "inventario.restringir"):
+        return
+    if marcado == activo.restringido:
+        return
+    activo.restringido = marcado
+    detalle = "restringido a administradores" if marcado else "visible para operadores"
+    audit.registrar(db, audit.ACTIVO_RESTRICCION_CAMBIADA, request=request, usuario=usuario,
+                    objeto_tipo=objeto_tipo, objeto_id=activo.id,
+                    detalle=f"{activo.nombre}: {detalle}")
 
 
 def _obtener_o_404(db: Session, modelo, objeto_id: int):
@@ -187,34 +210,42 @@ def dashboard(
             "concesiones": [serializar_concesion(c) for c in concesiones],
         }
 
-    servidores = db.scalars(
-        select(ServidorFisico)
-        .options(selectinload(ServidorFisico.credenciales))
-        .order_by(ServidorFisico.nombre)
-    ).all()
-    hipervisores = db.scalars(
-        select(Hipervisor)
-        .options(
-            selectinload(Hipervisor.maquinas_virtuales).selectinload(MaquinaVirtual.credenciales),
-            selectinload(Hipervisor.credenciales),
-        )
-        .order_by(Hipervisor.nombre)
-    ).all()
-    dispositivos = db.scalars(
-        select(DispositivoRed)
-        .options(selectinload(DispositivoRed.credenciales))
-        .order_by(DispositivoRed.nombre)
-    ).all()
-    limite_rotacion = ahora_utc() - timedelta(days=get_settings().rotation_max_days)
+    # El operador no ve los activos restringidos a administradores (ni en el
+    # listado ni en los totales); las VMs heredan la restricción del hipervisor
+    # al quedar fuera junto con él. El auditor sí ve el inventario completo
+    # (supervisión), aunque nunca puede revelar contraseñas.
+    consulta_servidores = select(ServidorFisico).options(
+        selectinload(ServidorFisico.credenciales)
+    ).order_by(ServidorFisico.nombre)
+    consulta_hipervisores = select(Hipervisor).options(
+        selectinload(Hipervisor.maquinas_virtuales).selectinload(MaquinaVirtual.credenciales),
+        selectinload(Hipervisor.credenciales),
+    ).order_by(Hipervisor.nombre)
+    consulta_dispositivos = select(DispositivoRed).options(
+        selectinload(DispositivoRed.credenciales)
+    ).order_by(DispositivoRed.nombre)
+    if usuario.rol == ROL_OPERADOR:
+        consulta_servidores = consulta_servidores.where(ServidorFisico.restringido.is_(False))
+        consulta_hipervisores = consulta_hipervisores.where(Hipervisor.restringido.is_(False))
+        consulta_dispositivos = consulta_dispositivos.where(DispositivoRed.restringido.is_(False))
+    servidores = db.scalars(consulta_servidores).all()
+    hipervisores = db.scalars(consulta_hipervisores).all()
+    dispositivos = db.scalars(consulta_dispositivos).all()
+
+    credenciales_visibles = (
+        [c for s in servidores for c in s.credenciales]
+        + [c for h in hipervisores for c in h.credenciales]
+        + [c for h in hipervisores for v in h.maquinas_virtuales for c in v.credenciales]
+        + [c for d in dispositivos for c in d.credenciales]
+    )
+    max_dias = get_settings().rotation_max_days
     resumen = {
         "servidores": len(servidores),
         "hipervisores": len(hipervisores),
-        "vms": db.scalar(select(func.count(MaquinaVirtual.id))) or 0,
+        "vms": sum(len(h.maquinas_virtuales) for h in hipervisores),
         "dispositivos": len(dispositivos),
-        "credenciales": db.scalar(select(func.count(Credencial.id))) or 0,
-        "rotacion_vencida": db.scalar(
-            select(func.count(Credencial.id)).where(Credencial.password_rotada_en < limite_rotacion)
-        ) or 0,
+        "credenciales": len(credenciales_visibles),
+        "rotacion_vencida": sum(1 for c in credenciales_visibles if c.dias_sin_rotar > max_dias),
     }
     return {
         "es_analista": False,
@@ -244,6 +275,7 @@ def servidor_detalle(
     datos["puede_gestionar"] = tiene_permiso(usuario.rol, "inventario.gestionar")
     datos["puede_gestionar_accesos"] = tiene_permiso(usuario.rol, "accesos.gestionar")
     datos["tiene_notas"] = servidor.notas_cifradas is not None
+    datos["puede_restringir"] = tiene_permiso(usuario.rol, "inventario.restringir")
     datos.update(_accesos_admin(db, usuario, ACTIVO_FISICO, servidor_id))
     return datos
 
@@ -274,6 +306,7 @@ def servidor_crear(
     db.flush()
     audit.registrar(db, audit.ACTIVO_CREADO, request=request, usuario=usuario,
                     objeto_tipo="servidor_fisico", objeto_id=servidor.id, detalle=nombre)
+    _aplicar_restriccion(request, db, usuario, servidor, "servidor_fisico", cuerpo.restringido)
     return {"id": servidor.id}
 
 
@@ -286,6 +319,7 @@ def servidor_editar(
     cuerpo: ServidorInput,
 ):
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_FISICO, servidor_id)
     nombre = cuerpo.nombre.strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio.")
@@ -307,6 +341,7 @@ def servidor_editar(
     servidor.proveedor = cuerpo.proveedor.strip()
     servidor.estado = _estado_valido(cuerpo.estado)
     servidor.etiquetas = normalizar_etiquetas(cuerpo.etiquetas)
+    _aplicar_restriccion(request, db, usuario, servidor, "servidor_fisico", cuerpo.restringido)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
                     objeto_tipo="servidor_fisico", objeto_id=servidor.id, detalle=nombre)
     return {"id": servidor.id}
@@ -320,6 +355,7 @@ def servidor_eliminar(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     servidor = _obtener_o_404(db, ServidorFisico, servidor_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_FISICO, servidor_id)
     nombre = servidor.nombre
     db.delete(servidor)  # cascada: credenciales del servidor
     audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,
@@ -360,6 +396,7 @@ def hipervisor_crear(
     audit.registrar(db, audit.ACTIVO_CREADO, request=request, usuario=usuario,
                     objeto_tipo="hipervisor", objeto_id=hipervisor.id,
                     detalle=f"{nombre} ({cuerpo.plataforma.strip()})")
+    _aplicar_restriccion(request, db, usuario, hipervisor, "hipervisor", cuerpo.restringido)
     return {"id": hipervisor.id}
 
 
@@ -378,6 +415,7 @@ def hipervisor_detalle(
     datos["puede_gestionar"] = tiene_permiso(usuario.rol, "inventario.gestionar")
     datos["puede_gestionar_accesos"] = tiene_permiso(usuario.rol, "accesos.gestionar")
     datos["tiene_notas"] = hipervisor.notas_cifradas is not None
+    datos["puede_restringir"] = tiene_permiso(usuario.rol, "inventario.restringir")
     datos.update(_accesos_admin(db, usuario, ACTIVO_HIPERVISOR, hipervisor_id))
     return datos
 
@@ -391,6 +429,7 @@ def hipervisor_editar(
     cuerpo: HipervisorInput,
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_HIPERVISOR, hipervisor_id)
     nombre = cuerpo.nombre.strip()
     if not nombre or not cuerpo.plataforma.strip():
         raise HTTPException(status_code=400, detail="Nombre y plataforma son obligatorios.")
@@ -412,6 +451,7 @@ def hipervisor_editar(
     hipervisor.proveedor = cuerpo.proveedor.strip()
     hipervisor.estado = _estado_valido(cuerpo.estado)
     hipervisor.etiquetas = normalizar_etiquetas(cuerpo.etiquetas)
+    _aplicar_restriccion(request, db, usuario, hipervisor, "hipervisor", cuerpo.restringido)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
                     objeto_tipo="hipervisor", objeto_id=hipervisor.id, detalle=nombre)
     return {"id": hipervisor.id}
@@ -425,6 +465,7 @@ def hipervisor_eliminar(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_HIPERVISOR, hipervisor_id)
     nombre = hipervisor.nombre
     db.delete(hipervisor)
     audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,
@@ -447,6 +488,7 @@ def vm_crear(
     cuerpo: VmInput,
 ):
     hipervisor = _obtener_o_404(db, Hipervisor, hipervisor_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_HIPERVISOR, hipervisor_id)
     nombre = cuerpo.nombre.strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio.")
@@ -492,6 +534,7 @@ def vm_editar(
     cuerpo: VmInput,
 ):
     vm = _obtener_o_404(db, MaquinaVirtual, vm_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_VM, vm_id)
     nombre = cuerpo.nombre.strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio.")
@@ -517,6 +560,7 @@ def vm_eliminar(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     vm = _obtener_o_404(db, MaquinaVirtual, vm_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_VM, vm_id)
     nombre = vm.nombre
     hipervisor_id = vm.hipervisor_id
     db.delete(vm)
@@ -544,6 +588,7 @@ def dispositivo_detalle(
     datos["puede_gestionar"] = tiene_permiso(usuario.rol, "inventario.gestionar")
     datos["puede_gestionar_accesos"] = tiene_permiso(usuario.rol, "accesos.gestionar")
     datos["tiene_notas"] = dispositivo.notas_cifradas is not None
+    datos["puede_restringir"] = tiene_permiso(usuario.rol, "inventario.restringir")
     datos.update(_accesos_admin(db, usuario, ACTIVO_DISPOSITIVO, dispositivo_id))
     return datos
 
@@ -575,6 +620,7 @@ def dispositivo_crear(
     audit.registrar(db, audit.ACTIVO_CREADO, request=request, usuario=usuario,
                     objeto_tipo="dispositivo_red", objeto_id=dispositivo.id,
                     detalle=f"{nombre} ({dispositivo.tipo_dispositivo})")
+    _aplicar_restriccion(request, db, usuario, dispositivo, "dispositivo_red", cuerpo.restringido)
     return {"id": dispositivo.id}
 
 
@@ -587,6 +633,7 @@ def dispositivo_editar(
     cuerpo: DispositivoInput,
 ):
     dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_DISPOSITIVO, dispositivo_id)
     nombre = cuerpo.nombre.strip()
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre es obligatorio.")
@@ -607,6 +654,7 @@ def dispositivo_editar(
     dispositivo.proveedor = cuerpo.proveedor.strip()
     dispositivo.estado = _estado_valido(cuerpo.estado)
     dispositivo.etiquetas = normalizar_etiquetas(cuerpo.etiquetas)
+    _aplicar_restriccion(request, db, usuario, dispositivo, "dispositivo_red", cuerpo.restringido)
     audit.registrar(db, audit.ACTIVO_ACTUALIZADO, request=request, usuario=usuario,
                     objeto_tipo="dispositivo_red", objeto_id=dispositivo.id, detalle=nombre)
     return {"id": dispositivo.id}
@@ -620,6 +668,7 @@ def dispositivo_eliminar(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     dispositivo = _obtener_o_404(db, DispositivoRed, dispositivo_id)
+    _exigir_ver_activo(request, db, usuario, ACTIVO_DISPOSITIVO, dispositivo_id)
     nombre = dispositivo.nombre
     db.delete(dispositivo)  # cascada: credenciales del dispositivo
     audit.registrar(db, audit.ACTIVO_ELIMINADO, request=request, usuario=usuario,

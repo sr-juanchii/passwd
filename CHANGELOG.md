@@ -14,6 +14,15 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ### Añadido
 
+- **Restricción de activos a administradores**: un administrador (nuevo permiso
+  `inventario.restringir`) puede marcar un servidor físico, hipervisor o dispositivo de red
+  como *restringido*. El operador deja de verlo por completo (404, fuera de listados,
+  búsqueda y export); el auditor sí lo ve pero nunca revela contraseñas; el analista solo con
+  concesión explícita (que prevalece sobre la restricción). Las máquinas virtuales heredan la
+  restricción de su hipervisor. Aplicado en ambas interfaces (checkbox/switch solo para
+  administradores, badge «Restringido»), export/import CSV (columna `restringido`, honrada
+  solo si quien importa es admin), respaldo cifrado y auditoría (`activo_restriccion_cambiada`).
+  Migración Alembic `0006` (columna aditiva `restringido`).
 - **Dispositivos de red** como tercer activo de nivel superior del inventario: switches,
   routers, firewalls, puntos de acceso, balanceadores y otros, con tipo, marca/modelo,
   firmware, IP de gestión, ubicación, puertos, número de serie, garantía, proveedor, estado,

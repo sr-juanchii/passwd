@@ -42,7 +42,11 @@ export default function EditarHipervisorPage() {
           { label: "Editar" },
         ]}
       />
-      <HipervisorForm inicial={data} onGuardar={(v) => api.editarHipervisor(hid, v)} />
+      <HipervisorForm
+        inicial={data}
+        puedeRestringir={data.puede_restringir}
+        onGuardar={(v) => api.editarHipervisor(hid, v)}
+      />
     </>
   );
 }

@@ -70,16 +70,21 @@ tokens.gestionar`.
 
 `ServidorInput`: `{ nombre, tipo('funcion_unica'|'host_virtualizacion'), descripcion, sistema_operativo,
 marca_modelo, ubicacion, ip_gestion, ram, cpu, almacenamiento, numero_serie, garantia_hasta,
-proveedor, estado('activo'|'mantenimiento'|'retirado'), etiquetas }`.
+proveedor, estado('activo'|'mantenimiento'|'retirado'), etiquetas, restringido?: bool }`.
 
-`HipervisorInput`: `{ nombre, plataforma, version, ip_gestion, descripcion, estado, etiquetas }`.
+`HipervisorInput`: `{ nombre, plataforma, version, ip_gestion, descripcion, estado, etiquetas, restringido?: bool }`.
+
+`restringido` (opcional en `ServidorInput`, `HipervisorInput` y `DispositivoInput`): marca el activo
+como **restringido a administradores**. Solo se aplica cuando el usuario tiene `inventario.restringir`
+(administrador); para el resto de roles el backend **ignora** el campo. Envíalo únicamente cuando el
+usuario pueda restringir. Las VMs **heredan** la restricción de su hipervisor y no tienen marca propia.
 
 `VmInput`: `{ nombre, sistema_operativo, ip, descripcion, ram, cpu, almacenamiento, estado, etiquetas }`
 (`ram`/`cpu`/`almacenamiento` = recursos asignados a la VM). `VmDetalle` los incluye.
 
 `DispositivoInput`: `{ nombre, tipo_dispositivo('switch'|'router'|'firewall'|'access_point'|'balanceador'|'otro'),
 marca_modelo, version (firmware), ip_gestion, ubicacion, puertos (texto libre), descripcion,
-numero_serie, garantia_hasta, proveedor, estado, etiquetas }`. Etiquetas en español del tipo
+numero_serie, garantia_hasta, proveedor, estado, etiquetas, restringido?: bool }`. Etiquetas en español del tipo
 (`tipo_dispositivo_label`): Switch, Router, Firewall, Punto de acceso, Balanceador, Otro.
 
 `Credencial` (serializada, **nunca** la contraseña): `{ id, usuario_acceso, servicio, puerto,
@@ -87,21 +92,32 @@ descripcion, dias_sin_rotar, rotacion_vencida, puede_revelar, tipo_activo, activ
 `tipo_activo`: `'fisico'|'hipervisor'|'vm'|'dispositivo'` (`activo_id` = id del activo dueño).
 
 `ServidorNodo` (árbol): `{ id, nombre, tipo, etiqueta_tipo, estado, ip_gestion, etiquetas:string[],
-credenciales: Credencial[], hipervisores: HipervisorNodo[] }`.
-`HipervisorNodo`: `{ id, nombre, plataforma, estado, credenciales, vms: VmNodo[] }`.
-`VmNodo`: `{ id, nombre, sistema_operativo, estado, credenciales }`.
+credenciales: Credencial[], hipervisores: HipervisorNodo[], restringido: bool }`.
+`HipervisorNodo`: `{ id, nombre, plataforma, estado, credenciales, vms: VmNodo[], restringido: bool }`.
+`VmNodo`: `{ id, nombre, sistema_operativo, estado, credenciales }` (sin `restringido`: hereda el del hipervisor).
 `DispositivoNodo`: `{ id, nombre, tipo_dispositivo, tipo_dispositivo_label, estado, ip_gestion,
-etiquetas: string[], credenciales: Credencial[] }` (solo cuando `es_analista` es false).
+etiquetas: string[], credenciales: Credencial[], restringido: bool }` (solo cuando `es_analista` es false).
+
+Cada nodo servidor/hipervisor/dispositivo del dashboard incluye `restringido: bool`. El dashboard del
+**administrador** y del **auditor** devuelve los activos restringidos (con la marca a true); el del
+**operador** ya viene filtrado por el backend, así que los restringidos no aparecen (ni las VMs de un
+hipervisor restringido). El **analista** solo ve los activos que tenga concedidos.
 
 `ServidorDetalle` = todos los campos del servidor + `etiqueta_tipo`, `lista_etiquetas`,
 `credenciales: Credencial[]`, `hipervisores: {id,nombre,plataforma,estado}[]`,
-`puede_gestionar: bool`, `puede_gestionar_accesos: bool`, `tiene_notas: bool`,
+`puede_gestionar: bool`, `puede_gestionar_accesos: bool`, `restringido: bool`,
+`puede_restringir: bool`, `tiene_notas: bool`,
 `accesos?: Concesion[]` (si admin), `analistas?: {id,username,nombre_completo}[]` (si admin).
 Análogo para `HipervisorDetalle` (incluye `servidor_fisico_id`, `servidor_fisico_nombre`,
 `vms: {...}[]`), `VmDetalle` (incluye `hipervisor_id`, `hipervisor_nombre`) y
 `DispositivoDetalle` (= `DispositivoInput` + `tipo_dispositivo_label`, `lista_etiquetas`,
-`credenciales`, `puede_gestionar`, `puede_gestionar_accesos`, `tiene_notas`, `accesos?`,
-`analistas?`).
+`credenciales`, `puede_gestionar`, `puede_gestionar_accesos`, `restringido`, `puede_restringir`,
+`tiene_notas`, `accesos?`, `analistas?`).
+
+Los detalles de servidor, hipervisor y dispositivo incluyen `restringido: bool` (estado actual de la
+marca) y `puede_restringir: bool` (true solo para administradores; habilita el control para cambiarla).
+El detalle de un activo restringido devuelve 404 al operador. `VmDetalle` no lleva estos campos: la VM
+hereda la restricción de su hipervisor.
 
 `Concesion`: `{ id, usuario_id, username, nombre_completo, nivel('ver'|'ver_credenciales'),
 nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`. `tipo` puede ser también

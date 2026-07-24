@@ -21,6 +21,7 @@ import { Mono } from "@/components/ui/mono";
 import { SectionHeader } from "@/components/ui/section-header";
 import { RiskDot } from "@/components/risk-dot";
 import { EstadoBadge } from "@/components/estado-badge";
+import { RestringidoBadge } from "@/components/restringido-badge";
 import { CredItem } from "@/components/inventario/cred-item";
 import type { ActivoInv } from "@/lib/inventario";
 import { alertas, nivelActivo } from "@/lib/riesgo";
@@ -70,6 +71,7 @@ export function AssetDrawer({
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <EstadoBadge estado={asset.estado} />
+            {asset.restringido && <RestringidoBadge compacto />}
             {(asset.etiquetas ?? []).map((t) => (
               <Chip key={t} tono="outline">
                 {t}

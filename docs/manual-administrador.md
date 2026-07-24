@@ -77,6 +77,26 @@ operativo del rol **analista** (*default-deny*: no ve nada hasta que se le conce
 - La traza de quién concedió/revocó qué y cuándo vive en la **bitácora** (`acceso_concedido` /
   `acceso_revocado`).
 
+### 2.3 Ocultar activos a los operadores (restringir)
+
+Mientras las concesiones **abren** acceso a un analista, la marca **restringido** lo **cierra**
+para los operadores. Úsela con los activos más sensibles (p. ej. los servidores de dirección o
+seguridad) que solo la administración debe manejar.
+
+1. Al crear o editar un servidor físico, hipervisor o dispositivo de red, marque la casilla
+   **«Restringir a administradores»** (solo visible para administradores).
+2. Efecto inmediato:
+   - El **operador** deja de ver el activo por completo: no aparece en el inventario, la
+     búsqueda ni la exportación, y su detalle responde **404**. Tampoco puede gestionar ni
+     revelar sus credenciales o notas.
+   - El **auditor sí lo ve** (para su labor de supervisión) pero, como siempre, **no revela
+     contraseñas**.
+   - Un **analista** solo lo ve si usted le concede acceso explícito (la concesión prevalece
+     sobre la restricción).
+   - Si restringe un **hipervisor**, sus **máquinas virtuales** quedan igualmente ocultas.
+3. Para volver a hacerlo visible, desmarque la casilla. Cada cambio queda auditado
+   (`activo_restriccion_cambiada`).
+
 ---
 
 ## 3. Auditoría (bitácora)

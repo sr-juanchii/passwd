@@ -104,7 +104,8 @@ def exportar(db: Session, frase: str) -> bytes:
              "ubicacion": s.ubicacion, "ip_gestion": s.ip_gestion, "ram": s.ram, "cpu": s.cpu,
              "almacenamiento": s.almacenamiento, "numero_serie": s.numero_serie,
              "garantia_hasta": s.garantia_hasta, "proveedor": s.proveedor,
-             "estado": s.estado, "etiquetas": s.etiquetas, "creado_en": _fecha(s.creado_en)}
+             "estado": s.estado, "etiquetas": s.etiquetas, "restringido": s.restringido,
+             "creado_en": _fecha(s.creado_en)}
             for s in db.scalars(select(ServidorFisico)).all()
         ],
         "hipervisores": [
@@ -112,7 +113,8 @@ def exportar(db: Session, frase: str) -> bytes:
              "ip_gestion": h.ip_gestion, "descripcion": h.descripcion, "marca_modelo": h.marca_modelo,
              "ubicacion": h.ubicacion, "ram": h.ram, "cpu": h.cpu, "almacenamiento": h.almacenamiento,
              "numero_serie": h.numero_serie, "garantia_hasta": h.garantia_hasta, "proveedor": h.proveedor,
-             "estado": h.estado, "etiquetas": h.etiquetas, "creado_en": _fecha(h.creado_en)}
+             "estado": h.estado, "etiquetas": h.etiquetas, "restringido": h.restringido,
+             "creado_en": _fecha(h.creado_en)}
             for h in db.scalars(select(Hipervisor)).all()
         ],
         "maquinas_virtuales": [
@@ -129,7 +131,7 @@ def exportar(db: Session, frase: str) -> bytes:
              "ubicacion": d.ubicacion, "puertos": d.puertos, "descripcion": d.descripcion,
              "numero_serie": d.numero_serie, "garantia_hasta": d.garantia_hasta,
              "proveedor": d.proveedor, "estado": d.estado, "etiquetas": d.etiquetas,
-             "creado_en": _fecha(d.creado_en)}
+             "restringido": d.restringido, "creado_en": _fecha(d.creado_en)}
             for d in db.scalars(select(DispositivoRed)).all()
         ],
         "credenciales": [
@@ -258,7 +260,7 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             ram=s.get("ram", ""), cpu=s.get("cpu", ""), almacenamiento=s.get("almacenamiento", ""),
             numero_serie=s.get("numero_serie", ""), garantia_hasta=s.get("garantia_hasta", ""),
             proveedor=s.get("proveedor", ""), estado=s.get("estado", ESTADO_ACTIVO),
-            etiquetas=s.get("etiquetas", ""),
+            etiquetas=s.get("etiquetas", ""), restringido=s.get("restringido", False),
             creado_en=_parse_fecha(s["creado_en"]) or ahora_utc(),
         ))
     db.flush()
@@ -271,6 +273,7 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             almacenamiento=h.get("almacenamiento", ""), numero_serie=h.get("numero_serie", ""),
             garantia_hasta=h.get("garantia_hasta", ""), proveedor=h.get("proveedor", ""),
             estado=h.get("estado", ESTADO_ACTIVO), etiquetas=h.get("etiquetas", ""),
+            restringido=h.get("restringido", False),
             creado_en=_parse_fecha(h["creado_en"]) or ahora_utc(),
         ))
     db.flush()
@@ -293,7 +296,7 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             puertos=d.get("puertos", ""), descripcion=d.get("descripcion", ""),
             numero_serie=d.get("numero_serie", ""), garantia_hasta=d.get("garantia_hasta", ""),
             proveedor=d.get("proveedor", ""), estado=d.get("estado", ESTADO_ACTIVO),
-            etiquetas=d.get("etiquetas", ""),
+            etiquetas=d.get("etiquetas", ""), restringido=d.get("restringido", False),
             creado_en=_parse_fecha(d.get("creado_en")) or ahora_utc(),
         ))
     db.flush()

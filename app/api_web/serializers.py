@@ -147,6 +147,7 @@ def serializar_hipervisor_nodo(db: Session, usuario: Usuario, hipervisor: Hiperv
         "estado": hipervisor.estado,
         "ip_gestion": hipervisor.ip_gestion,
         "etiquetas": hipervisor.lista_etiquetas,
+        "restringido": hipervisor.restringido,
         "credenciales": _credenciales_de(db, usuario, hipervisor.credenciales),
         "vms": [serializar_vm_nodo(db, usuario, v) for v in hipervisor.maquinas_virtuales],
     }
@@ -159,6 +160,7 @@ def serializar_servidor_nodo(db: Session, usuario: Usuario, servidor: ServidorFi
         "estado": servidor.estado,
         "ip_gestion": servidor.ip_gestion,
         "etiquetas": servidor.lista_etiquetas,
+        "restringido": servidor.restringido,
         "credenciales": _credenciales_de(db, usuario, servidor.credenciales),
     }
 
@@ -174,6 +176,7 @@ def serializar_dispositivo_nodo(db: Session, usuario: Usuario, dispositivo: Disp
         "estado": dispositivo.estado,
         "ip_gestion": dispositivo.ip_gestion,
         "etiquetas": dispositivo.lista_etiquetas,
+        "restringido": dispositivo.restringido,
         "credenciales": _credenciales_de(db, usuario, dispositivo.credenciales),
     }
 
@@ -201,6 +204,7 @@ def serializar_servidor_detalle(servidor: ServidorFisico) -> dict:
         "estado": servidor.estado,
         "etiquetas": servidor.etiquetas,
         "lista_etiquetas": servidor.lista_etiquetas,
+        "restringido": servidor.restringido,
     }
 
 
@@ -223,6 +227,7 @@ def serializar_hipervisor_detalle(hipervisor: Hipervisor) -> dict:
         "estado": hipervisor.estado,
         "etiquetas": hipervisor.etiquetas,
         "lista_etiquetas": hipervisor.lista_etiquetas,
+        "restringido": hipervisor.restringido,
     }
 
 
@@ -264,6 +269,7 @@ def serializar_dispositivo_detalle(dispositivo: DispositivoRed) -> dict:
         "estado": dispositivo.estado,
         "etiquetas": dispositivo.etiquetas,
         "lista_etiquetas": dispositivo.lista_etiquetas,
+        "restringido": dispositivo.restringido,
     }
 
 

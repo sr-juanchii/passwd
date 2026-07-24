@@ -5,6 +5,7 @@
 <div class="encabezado-seccion">
   <h1>🔌 {{ dispositivo.nombre }}
     <span class="insignia insignia-plataforma">{{ etiquetas_tipo_dispositivo.get(dispositivo.tipo_dispositivo, dispositivo.tipo_dispositivo) }}</span>
+    {% if dispositivo.restringido %}<span class="insignia insignia-peligro">🔒 Restringido a administradores</span>{% endif %}
   </h1>
   {% if puede('inventario.gestionar') %}
   <div class="celda-acciones">

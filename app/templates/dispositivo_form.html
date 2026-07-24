@@ -64,6 +64,13 @@
     <input id="etiquetas" name="etiquetas" type="text" maxlength="255"
            value="{{ dispositivo.etiquetas if dispositivo else '' }}" placeholder="Ej.: red, núcleo, crítico">
 
+    {% if puede('inventario.restringir') %}
+    <label class="casilla">
+      <input type="checkbox" name="restringido" value="1" {{ 'checked' if dispositivo and dispositivo.restringido }}>
+      Restringir a administradores (los operadores no verán este dispositivo)
+    </label>
+    {% endif %}
+
     <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if dispositivo else 'Registrar dispositivo' }}</button>
   </form>
 </div>

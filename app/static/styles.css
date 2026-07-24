@@ -159,6 +159,10 @@ h2 { font-size: 1.1rem; margin: 0.2rem 0 0.6rem; }
 .insignia-estado-activo { background: #e6f4ea; color: #1e7e34; border: 1px solid #b7dec2; }
 .insignia-estado-mantenimiento { background: #fdf3e0; color: #8a5a00; border: 1px solid #ecd9ae; }
 .insignia-estado-retirado { background: #f0f0f3; color: #5b6478; border: 1px solid #d9deea; }
+.insignia-peligro { background: var(--error-fondo); color: var(--peligro); border: 1px solid #f0b9b4; }
+
+.casilla { display: flex; align-items: center; gap: 0.5rem; font-weight: 500; cursor: pointer; }
+.casilla input { width: auto; margin: 0; }
 
 .arbol-fisico { border-left: 4px solid var(--primario); }
 .arbol-encabezado { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
