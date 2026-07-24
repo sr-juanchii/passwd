@@ -12,10 +12,12 @@
     {% for c in concesiones %}
     {% set url = ('/servidores/' ~ c.servidor_fisico_id) if c.tipo_activo == 'fisico'
                  else ('/hipervisores/' ~ c.hipervisor_id) if c.tipo_activo == 'hipervisor'
+                 else ('/dispositivos/' ~ c.dispositivo_red_id) if c.tipo_activo == 'dispositivo'
                  else ('/vms/' ~ c.maquina_virtual_id) %}
     <tr>
       <td><a href="{{ url }}">{{ c.nombre_activo }}</a></td>
-      <td>{{ {'fisico': 'Servidor físico', 'hipervisor': 'Hipervisor', 'vm': 'Máquina virtual'}[c.tipo_activo] }}</td>
+      <td>{{ {'fisico': 'Servidor físico', 'hipervisor': 'Hipervisor', 'vm': 'Máquina virtual',
+              'dispositivo': 'Dispositivo de red'}[c.tipo_activo] }}</td>
       <td>{{ 'Ver + usar credenciales' if c.nivel == 'ver_credenciales' else 'Solo ver' }}</td>
       <td>{{ c.expira_en.strftime('%d/%m/%Y') if c.expira_en else '—' }}</td>
     </tr>
@@ -34,6 +36,7 @@
   <div class="acciones">
     <a class="boton boton-primario" href="/servidores/nuevo">+ Servidor dedicado</a>
     <a class="boton boton-primario" href="/hipervisores/nuevo">+ Hipervisor</a>
+    <a class="boton boton-primario" href="/dispositivos/nuevo">+ Dispositivo de red</a>
   </div>
   {% endif %}
 </div>
@@ -42,6 +45,7 @@
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.fisicos }}</span> Servidores dedicados</div>
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.hipervisores }}</span> Hipervisores</div>
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.vms }}</span> Máquinas virtuales</div>
+  <div class="tarjeta-resumen"><span class="cifra">{{ totales.dispositivos }}</span> Dispositivos de red</div>
   <div class="tarjeta-resumen"><span class="cifra">{{ totales.credenciales }}</span> Credenciales</div>
   {% if totales.rotacion_vencida > 0 %}
   <div class="tarjeta-resumen tarjeta-resumen-alerta">
@@ -61,6 +65,7 @@
     <div>
       <a class="arbol-titulo" href="/servidores/{{ servidor.id }}">🖥️ {{ servidor.nombre }}</a>
       <span class="insignia insignia-unico">Servidor dedicado</span>
+      {% if servidor.restringido %}<span class="insignia insignia-peligro">🔒 Restringido</span>{% endif %}
       {% if servidor.ip_gestion %}<span class="texto-mono">{{ servidor.ip_gestion }}</span>{% endif %}
     </div>
     <span class="texto-suave">{{ servidor.credenciales|length }} credencial(es)</span>
@@ -79,6 +84,7 @@
     <div>
       <a class="arbol-titulo" href="/hipervisores/{{ hipervisor.id }}">⚙️ {{ hipervisor.nombre }}</a>
       <span class="insignia insignia-plataforma">{{ hipervisor.plataforma }}{% if hipervisor.version %} {{ hipervisor.version }}{% endif %}</span>
+      {% if hipervisor.restringido %}<span class="insignia insignia-peligro">🔒 Restringido</span>{% endif %}
       {% if hipervisor.ip_gestion %}<span class="texto-mono">{{ hipervisor.ip_gestion }}</span>{% endif %}
     </div>
     <span class="texto-suave">{{ hipervisor.credenciales|length }} credencial(es) · {{ hipervisor.maquinas_virtuales|length }} VM(s)</span>
@@ -93,6 +99,25 @@
   {% else %}
   <div class="arbol-vm texto-suave">Sin máquinas virtuales registradas.</div>
   {% endfor %}
+</div>
+{% endfor %}
+
+<h2>Dispositivos de red</h2>
+{% if not dispositivos %}
+<div class="tarjeta"><p class="texto-suave">No hay dispositivos de red registrados.</p></div>
+{% endif %}
+{% for dispositivo in dispositivos %}
+<div class="tarjeta arbol-fisico">
+  <div class="arbol-encabezado">
+    <div>
+      <a class="arbol-titulo" href="/dispositivos/{{ dispositivo.id }}">🔌 {{ dispositivo.nombre }}</a>
+      <span class="insignia insignia-plataforma">{{ etiquetas_tipo_dispositivo.get(dispositivo.tipo_dispositivo, dispositivo.tipo_dispositivo) }}</span>
+      {% if dispositivo.restringido %}<span class="insignia insignia-peligro">🔒 Restringido</span>{% endif %}
+      {% if dispositivo.ip_gestion %}<span class="texto-mono">{{ dispositivo.ip_gestion }}</span>{% endif %}
+    </div>
+    <span class="texto-suave">{{ dispositivo.credenciales|length }} credencial(es)</span>
+  </div>
+  {% if dispositivo.descripcion %}<p class="texto-suave">{{ dispositivo.descripcion }}</p>{% endif %}
 </div>
 {% endfor %}
 {% endif %}

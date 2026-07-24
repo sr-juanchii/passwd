@@ -2,7 +2,14 @@
 
 export type Rol = "admin" | "operador" | "auditor" | "analista";
 export type EstadoActivo = "activo" | "mantenimiento" | "retirado";
-export type TipoActivo = "fisico" | "hipervisor" | "vm";
+export type TipoActivo = "fisico" | "hipervisor" | "vm" | "dispositivo";
+export type TipoDispositivo =
+  | "switch"
+  | "router"
+  | "firewall"
+  | "access_point"
+  | "balanceador"
+  | "otro";
 export type NivelAcceso = "ver" | "ver_credenciales";
 export type Etapa = "cambio_password" | "mfa_enrolamiento" | "mfa_pendiente" | "activa";
 
@@ -18,7 +25,8 @@ export type Permiso =
   | "auditoria.ver"
   | "metricas.ver"
   | "accesos.gestionar"
-  | "tokens.gestionar";
+  | "tokens.gestionar"
+  | "configuracion.gestionar";
 
 export interface Usuario {
   id: number;
@@ -70,6 +78,9 @@ export interface HipervisorNodo {
   etiquetas: string[];
   credenciales: Credencial[];
   vms: VmNodo[];
+  // Restringido a administradores: los operadores no reciben este nodo (ni sus
+  // VMs) del backend; admin y auditor sí, para distinguirlo en el listado.
+  restringido?: boolean;
 }
 
 export interface ServidorNodo {
@@ -79,12 +90,26 @@ export interface ServidorNodo {
   ip_gestion: string;
   etiquetas: string[];
   credenciales: Credencial[];
+  restringido?: boolean;
+}
+
+export interface DispositivoNodo {
+  id: number;
+  nombre: string;
+  tipo_dispositivo: TipoDispositivo;
+  tipo_dispositivo_label: string;
+  estado: EstadoActivo;
+  ip_gestion: string;
+  etiquetas: string[];
+  credenciales: Credencial[];
+  restringido?: boolean;
 }
 
 export interface Resumen {
   servidores: number;
   hipervisores: number;
   vms: number;
+  dispositivos: number;
   credenciales: number;
   rotacion_vencida: number;
 }
@@ -108,6 +133,7 @@ export interface DashboardAdmin {
   resumen: Resumen;
   servidores: ServidorNodo[];
   hipervisores: HipervisorNodo[];
+  dispositivos: DispositivoNodo[];
 }
 export interface DashboardAnalista {
   es_analista: true;
@@ -136,6 +162,9 @@ export interface ServidorInput {
   proveedor: string;
   estado: EstadoActivo;
   etiquetas: string;
+  // Marca "restringido a administradores". Solo la envían los administradores al
+  // crear/editar; el backend la ignora para el resto de roles.
+  restringido?: boolean;
 }
 
 export interface ServidorDetalle extends ServidorInput {
@@ -144,6 +173,8 @@ export interface ServidorDetalle extends ServidorInput {
   credenciales: Credencial[];
   puede_gestionar: boolean;
   puede_gestionar_accesos: boolean;
+  // true solo para administradores: habilita el control de restricción.
+  puede_restringir?: boolean;
   tiene_notas: boolean;
   accesos?: Concesion[];
   analistas?: AnalistaRef[];
@@ -165,6 +196,7 @@ export interface HipervisorInput {
   proveedor: string;
   estado: EstadoActivo;
   etiquetas: string;
+  restringido?: boolean;
 }
 
 export interface HipervisorDetalle extends HipervisorInput {
@@ -174,6 +206,7 @@ export interface HipervisorDetalle extends HipervisorInput {
   vms: { id: number; nombre: string; sistema_operativo: string; estado: EstadoActivo }[];
   puede_gestionar: boolean;
   puede_gestionar_accesos: boolean;
+  puede_restringir?: boolean;
   tiene_notas: boolean;
   accesos?: Concesion[];
   analistas?: AnalistaRef[];
@@ -198,6 +231,36 @@ export interface VmDetalle extends VmInput {
   credenciales: Credencial[];
   puede_gestionar: boolean;
   puede_gestionar_accesos: boolean;
+  tiene_notas: boolean;
+  accesos?: Concesion[];
+  analistas?: AnalistaRef[];
+}
+
+export interface DispositivoInput {
+  nombre: string;
+  tipo_dispositivo: TipoDispositivo;
+  marca_modelo: string;
+  version: string; // firmware / versión
+  ip_gestion: string;
+  ubicacion: string;
+  puertos: string; // texto libre
+  descripcion: string;
+  numero_serie: string;
+  garantia_hasta: string;
+  proveedor: string;
+  estado: EstadoActivo;
+  etiquetas: string;
+  restringido?: boolean;
+}
+
+export interface DispositivoDetalle extends DispositivoInput {
+  id: number;
+  tipo_dispositivo_label: string;
+  lista_etiquetas: string[];
+  credenciales: Credencial[];
+  puede_gestionar: boolean;
+  puede_gestionar_accesos: boolean;
+  puede_restringir?: boolean;
   tiene_notas: boolean;
   accesos?: Concesion[];
   analistas?: AnalistaRef[];
@@ -234,6 +297,14 @@ export interface ResultadoBusqueda {
   servidores: { id: number; nombre: string; ip_gestion: string; ubicacion: string; estado: EstadoActivo }[];
   hipervisores: { id: number; nombre: string; plataforma: string; ip_gestion: string; estado: EstadoActivo }[];
   vms: { id: number; nombre: string; ip: string; sistema_operativo: string; estado: EstadoActivo }[];
+  dispositivos: {
+    id: number;
+    nombre: string;
+    tipo_dispositivo: TipoDispositivo;
+    tipo_dispositivo_label: string;
+    ip_gestion: string;
+    estado: EstadoActivo;
+  }[];
   credenciales: Credencial[];
 }
 
@@ -310,4 +381,37 @@ export interface VaultInput {
   url: string;
   categoria: CategoriaVault;
   notas: string;
+}
+
+// Configuración del sistema en tiempo de ejecución (solo administradores).
+export type TipoAjuste = "entero" | "booleano" | "texto" | "secreto";
+export type OrigenAjuste = "configurado" | "entorno" | "defecto";
+
+export interface AjusteConfig {
+  clave: string;
+  etiqueta: string;
+  ayuda: string;
+  tipo: TipoAjuste;
+  minimo: number | null;
+  maximo: number | null;
+  origen: OrigenAjuste;
+  // Los ajustes NO secretos traen `valor` (number|boolean|string según `tipo`).
+  valor?: number | boolean | string;
+  // Los secretos NO traen `valor`; solo `configurado` indica si hay uno guardado.
+  configurado?: boolean;
+}
+
+export interface GrupoConfig {
+  grupo: string;
+  ajustes: AjusteConfig[];
+}
+
+export interface InfoSistemaItem {
+  etiqueta: string;
+  valor: string | number;
+}
+
+export interface ConfiguracionResp {
+  grupos: GrupoConfig[];
+  info_sistema: InfoSistemaItem[];
 }

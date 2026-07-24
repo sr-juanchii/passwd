@@ -43,6 +43,7 @@ USUARIO_REACTIVADO = "usuario_reactivado"
 ACTIVO_CREADO = "activo_creado"
 ACTIVO_ACTUALIZADO = "activo_actualizado"
 ACTIVO_ELIMINADO = "activo_eliminado"
+ACTIVO_RESTRICCION_CAMBIADA = "activo_restriccion_cambiada"
 
 CREDENCIAL_CREADA = "credencial_creada"
 CREDENCIAL_ACTUALIZADA = "credencial_actualizada"
@@ -77,6 +78,10 @@ VAULT_ACTUALIZADA = "vault_entrada_actualizada"
 VAULT_ELIMINADA = "vault_entrada_eliminada"
 VAULT_REVELADA = "vault_entrada_revelada"
 VAULT_COPIADA = "vault_entrada_copiada"
+
+CONFIGURACION_CAMBIADA = "configuracion_cambiada"
+CONFIGURACION_RESTABLECIDA = "configuracion_restablecida"
+CORREO_PRUEBA = "correo_prueba_enviado"
 
 
 def _material(reg: RegistroAuditoria) -> str:

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Cpu, KeyRound, MonitorSmartphone, Search, SearchX, Server } from "lucide-react";
+import { Cpu, KeyRound, MonitorSmartphone, Network, Search, SearchX, Server } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ResultadoBusqueda, TipoActivo } from "@/lib/types";
 import { ETIQUETAS_TIPO_ACTIVO, rutaActivo } from "@/lib/constants";
@@ -21,6 +21,7 @@ const ICONO: Record<TipoActivo, typeof Server> = {
   fisico: Server,
   hipervisor: Cpu,
   vm: MonitorSmartphone,
+  dispositivo: Network,
 };
 
 function TarjetaActivo({
@@ -102,6 +103,7 @@ function BuscarContenido() {
     (resultado?.servidores.length ?? 0) +
     (resultado?.hipervisores.length ?? 0) +
     (resultado?.vms.length ?? 0) +
+    (resultado?.dispositivos.length ?? 0) +
     (resultado?.credenciales.length ?? 0);
 
   return (
@@ -175,6 +177,30 @@ function BuscarContenido() {
                     estado={v.estado}
                   />
                 ))}
+              </div>
+            )}
+
+            {resultado.dispositivos.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <SectionHeader
+                  titulo="Dispositivos de red"
+                  contador={resultado.dispositivos.length}
+                />
+                <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(248px,1fr))]">
+                  {resultado.dispositivos.map((d) => (
+                    <TarjetaActivo
+                      key={`d${d.id}`}
+                      tipo="dispositivo"
+                      id={d.id}
+                      nombre={d.nombre}
+                      meta={
+                        d.tipo_dispositivo_label +
+                        (d.ip_gestion ? ` · ${d.ip_gestion}` : "")
+                      }
+                      estado={d.estado}
+                    />
+                  ))}
+                </div>
               </div>
             )}
 

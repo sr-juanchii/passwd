@@ -87,6 +87,18 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
+def sesion_efimera() -> Session:
+    """Crea una sesión suelta (el llamador debe cerrarla).
+
+    Para trabajos fuera del ciclo petición→respuesta (p. ej. el refresco de la
+    configuración desde un middleware) que no pueden usar la dependencia
+    ``get_db``. No hace commit ni cierre automáticos.
+    """
+    get_engine()
+    assert _session_factory is not None
+    return _session_factory()
+
+
 def reset_engine() -> None:
     """Libera el motor (uso exclusivo en pruebas)."""
     global _engine, _session_factory

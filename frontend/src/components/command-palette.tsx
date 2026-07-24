@@ -7,6 +7,7 @@ import {
   Cpu,
   KeyRound,
   MonitorSmartphone,
+  Network,
   ScrollText,
   Search,
   Server,
@@ -32,6 +33,7 @@ import type { Permiso, ResultadoBusqueda, TipoActivo } from "@/lib/types";
 
 const NAV: { titulo: string; url: string; icono: typeof Search; permiso: Permiso }[] = [
   { titulo: "Ir a Inventario", url: "/", icono: ServerCog, permiso: "inventario.ver" },
+  { titulo: "Ir a Dispositivos de red", url: "/dispositivos", icono: Network, permiso: "inventario.ver" },
   { titulo: "Ir a Mi vault", url: "/vault", icono: Wallet, permiso: "vault.usar" },
   { titulo: "Ir a Buscar", url: "/buscar", icono: Search, permiso: "inventario.ver" },
   { titulo: "Importar CSV", url: "/importar", icono: Upload, permiso: "inventario.gestionar" },
@@ -45,6 +47,7 @@ const ICONO_TIPO: Record<TipoActivo, typeof Server> = {
   fisico: Server,
   hipervisor: Cpu,
   vm: MonitorSmartphone,
+  dispositivo: Network,
 };
 
 interface ActivoRef {
@@ -77,6 +80,13 @@ function aplanar(r: ResultadoBusqueda): ActivoRef[] {
       id: v.id,
       nombre: v.nombre,
       meta: v.sistema_operativo,
+    })),
+    ...(r.dispositivos ?? []).map((d) => ({
+      key: `d${d.id}`,
+      tipo: "dispositivo" as const,
+      id: d.id,
+      nombre: d.nombre,
+      meta: d.tipo_dispositivo_label || d.ip_gestion,
     })),
   ];
 }

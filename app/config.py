@@ -181,6 +181,75 @@ class Settings:
         self.smtp_password = _secreto_entorno("SMTP_PASSWORD") or ""
 
 
+# ---------------------------------------------------------------------------
+# Ajustes editables en tiempo de ejecución (módulo `app/ajustes.py`)
+# ---------------------------------------------------------------------------
+#
+# Lista blanca de parámetros que un administrador puede modificar en caliente:
+# cada override se persiste en la tabla `configuracion` y anula el valor base
+# (por defecto o de variable de entorno). Cada entrada mapea el atributo de
+# ``Settings`` a (sufijo de env, tipo, valor por defecto). Los tipos rigen el
+# parseo/serialización. Deliberadamente EXCLUIDOS (solo por entorno, nunca
+# editables en caliente): claves criptográficas, URL/pool de BD, cookie_secure,
+# max_request_bytes, trusted_proxies, rate_limit_backend y el arranque admin —
+# afectan al arranque o son secretos de despliegue.
+OVERRIDABLES: dict[str, tuple[str, str, object]] = {
+    "session_idle_minutes": ("SESSION_IDLE_MINUTES", "entero", 15),
+    "session_max_hours": ("SESSION_MAX_HOURS", "entero", 8),
+    "activity_throttle_seconds": ("ACTIVITY_THROTTLE_SECONDS", "entero", 60),
+    "password_min_length": ("PASSWORD_MIN_LENGTH", "entero", 12),
+    "max_failed_attempts": ("MAX_FAILED_ATTEMPTS", "entero", 5),
+    "lockout_minutes": ("LOCKOUT_MINUTES", "entero", 15),
+    "login_rate_limit": ("LOGIN_RATE_LIMIT", "entero", 15),
+    "login_rate_window_minutes": ("LOGIN_RATE_WINDOW_MINUTES", "entero", 5),
+    "reveal_rate_limit": ("REVEAL_RATE_LIMIT", "entero", 20),
+    "reveal_rate_window_minutes": ("REVEAL_RATE_WINDOW_MINUTES", "entero", 5),
+    "rotation_max_days": ("ROTATION_MAX_DAYS", "entero", 90),
+    "password_history_max": ("PASSWORD_HISTORY_MAX", "entero", 5),
+    "audit_retention_days": ("AUDIT_RETENTION_DAYS", "entero", 365),
+    "totp_issuer": ("TOTP_ISSUER", "texto", "Gestor-Passwd"),
+    "notify_enabled": ("NOTIFY_ENABLED", "booleano", False),
+    "smtp_host": ("SMTP_HOST", "texto", ""),
+    "smtp_port": ("SMTP_PORT", "entero", 587),
+    "smtp_user": ("SMTP_USER", "texto", ""),
+    "smtp_password": ("SMTP_PASSWORD", "secreto", ""),
+    "smtp_from": ("SMTP_FROM", "texto", ""),
+    "smtp_tls": ("SMTP_TLS", "booleano", True),
+    "notify_to": ("NOTIFY_TO", "texto", ""),
+}
+
+
+def base_overridable(clave: str) -> object:
+    """Valor BASE (por defecto o de entorno) de una clave editable, sin overrides.
+
+    No tiene efectos secundarios (no toca disco ni la BD): reutiliza los mismos
+    lectores de entorno que ``Settings``. Sirve de línea base sobre la que la
+    capa de configuración aplica los overrides guardados.
+    """
+    sufijo, tipo, defecto = OVERRIDABLES[clave]
+    if tipo == "entero":
+        return _env_int(sufijo, int(defecto))  # type: ignore[arg-type]
+    if tipo == "booleano":
+        return _env_bool(sufijo, bool(defecto))
+    if tipo == "secreto":
+        return _secreto_entorno(sufijo) or ""
+    return _env(sufijo, str(defecto))
+
+
+def base_overridables() -> dict[str, object]:
+    """Todos los valores base de las claves editables (sin overrides de BD)."""
+    return {clave: base_overridable(clave) for clave in OVERRIDABLES}
+
+
+def env_definida(clave: str) -> bool:
+    """¿La clave editable está fijada por variable de entorno (o su *_FILE)?"""
+    sufijo = OVERRIDABLES[clave][0]
+    return bool(
+        os.environ.get(f"{_PREFIX}{sufijo}")
+        or os.environ.get(f"{_PREFIX}{sufijo}_FILE")
+    )
+
+
 _settings: Settings | None = None
 
 

@@ -18,10 +18,12 @@ from app import access
 from app.database import get_db
 from app.deps import render, requiere_permiso
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -60,6 +62,7 @@ def buscar(
     ids_fisicos = access.ids_activos_concedidos(db, usuario, ACTIVO_FISICO)
     ids_hipervisores = access.ids_activos_concedidos(db, usuario, ACTIVO_HIPERVISOR)
     ids_vms = access.ids_activos_concedidos(db, usuario, ACTIVO_VM)
+    ids_dispositivos = access.ids_activos_concedidos(db, usuario, ACTIVO_DISPOSITIVO)
 
     consulta_fisicos = select(ServidorFisico).where(or_(
         _like(ServidorFisico.nombre, patron),
@@ -98,16 +101,39 @@ def buscar(
         consulta_vms.order_by(MaquinaVirtual.nombre).limit(LIMITE_POR_TIPO)
     ).all()
 
+    consulta_dispositivos = select(DispositivoRed).where(or_(
+        _like(DispositivoRed.nombre, patron),
+        _like(DispositivoRed.tipo_dispositivo, patron),
+        _like(DispositivoRed.marca_modelo, patron),
+        _like(DispositivoRed.ip_gestion, patron),
+        _like(DispositivoRed.ubicacion, patron),
+        _like(DispositivoRed.etiquetas, patron),
+    ))
+    if ids_dispositivos is not None:
+        consulta_dispositivos = consulta_dispositivos.where(DispositivoRed.id.in_(ids_dispositivos))
+    dispositivos = db.scalars(
+        consulta_dispositivos.order_by(DispositivoRed.nombre).limit(LIMITE_POR_TIPO)
+    ).all()
+
     consulta_credenciales = select(Credencial).where(or_(
         _like(Credencial.usuario_acceso, patron),
         _like(Credencial.servicio, patron),
     ))
-    if ids_fisicos is not None:
-        consulta_credenciales = consulta_credenciales.where(or_(
-            Credencial.servidor_fisico_id.in_(ids_fisicos),
-            Credencial.hipervisor_id.in_(ids_hipervisores or []),
-            Credencial.maquina_virtual_id.in_(ids_vms or []),
-        ))
+    # Cada tipo se filtra por su lista de visibles; ``None`` = ese tipo no se
+    # filtra (todas sus credenciales entran). Así el prefiltro sirve tanto al
+    # analista (cuatro listas) como al operador/auditor (mezcla None/lista
+    # cuando hay activos restringidos).
+    ids_por_columna = (
+        (Credencial.servidor_fisico_id, ids_fisicos),
+        (Credencial.hipervisor_id, ids_hipervisores),
+        (Credencial.maquina_virtual_id, ids_vms),
+        (Credencial.dispositivo_red_id, ids_dispositivos),
+    )
+    if any(ids is not None for _, ids in ids_por_columna):
+        consulta_credenciales = consulta_credenciales.where(or_(*[
+            columna.in_(ids) if ids is not None else columna.is_not(None)
+            for columna, ids in ids_por_columna
+        ]))
     credenciales = db.scalars(consulta_credenciales.limit(LIMITE_POR_TIPO)).all()
 
     # Filtrado por acceso a nivel de objeto (clave para no filtrar el inventario).
@@ -117,9 +143,10 @@ def buscar(
     contexto["fisicos"] = visibles(fisicos, ACTIVO_FISICO)
     contexto["hipervisores"] = visibles(hipervisores, ACTIVO_HIPERVISOR)
     contexto["vms"] = visibles(vms, ACTIVO_VM)
+    contexto["dispositivos"] = visibles(dispositivos, ACTIVO_DISPOSITIVO)
     contexto["credenciales"] = [c for c in credenciales if access.puede_ver_credencial(db, usuario, c)]
     contexto["total"] = (
         len(contexto["fisicos"]) + len(contexto["hipervisores"])
-        + len(contexto["vms"]) + len(contexto["credenciales"])
+        + len(contexto["vms"]) + len(contexto["dispositivos"]) + len(contexto["credenciales"])
     )
     return render(request, "buscar.html", contexto)

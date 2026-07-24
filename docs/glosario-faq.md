@@ -12,6 +12,7 @@ Términos del sistema y respuestas rápidas a dudas habituales. Para procedimien
 | **Activo** | Elemento del inventario: servidor físico, hipervisor o máquina virtual. |
 | **Servidor físico** | Máquina dedicada a una función única (activo de nivel superior). |
 | **Hipervisor** | Máquina física que aloja máquinas virtuales (Proxmox, ESXi, Hyper-V…); activo de nivel superior, no se anida bajo un servidor físico. |
+| **Dispositivo de red** | Equipo de red de la infraestructura (switch, router, firewall, punto de acceso, balanceador u otro); activo de nivel superior con sus credenciales de gestión. |
 | **Máquina virtual (VM)** | Sistema virtual que corre dentro de un hipervisor. |
 | **Credencial** | Usuario + contraseña (cifrada) de acceso a un activo, con servicio, puerto y descripción. |
 | **Rol** | Conjunto de permisos: `admin`, `operador`, `auditor`, `analista`. |
@@ -19,6 +20,7 @@ Términos del sistema y respuestas rápidas a dudas habituales. Para procedimien
 | **Acceso por objeto** | Capa extra para el analista: sobre **qué activos concretos** puede operar, según concesiones ([`control-acceso.md`](control-acceso.md)). |
 | **Concesión** | Permiso de un administrador a un analista sobre un activo, con nivel (`ver` / `ver_credenciales`) y caducidad opcional. |
 | **Default-deny** | El analista no ve nada hasta que se le concede acceso explícito. |
+| **Activo restringido** | Activo marcado por un administrador como visible solo para administradores: el operador no lo ve (404), el auditor sí pero sin revelar contraseñas, el analista solo con concesión. Las VMs lo heredan del hipervisor. |
 | **MFA / TOTP** | Segundo factor de autenticación: código de 6 dígitos que cambia cada 30 s (RFC 6238), obligatorio para todos. |
 | **Códigos de recuperación** | 8 códigos de un solo uso para entrar si se pierde el dispositivo MFA. |
 | **Etapa de sesión** | Fase del login: `cambio_password`, `mfa_enrolamiento`, `mfa_pendiente`, `activa`. |
@@ -29,6 +31,7 @@ Términos del sistema y respuestas rápidas a dudas habituales. Para procedimien
 | **Anti-exfiltración** | Límite de revelados/copiados por usuario en una ventana de tiempo. |
 | **Bitácora / auditoría** | Registro de cada evento de seguridad y acceso, con usuario, IP, agente y resultado. |
 | **Token de API** | Credencial Bearer de solo lectura para SIEM/automatización (`/api/v1`). |
+| **Configuración (override)** | Ajuste operativo (sesión, cuentas, tasa, rotación, correo) cambiado en caliente por un admin; se guarda en la tabla `configuracion` y **prevalece** sobre la variable de entorno hasta restablecerlo. |
 | **Web Jinja** | Interfaz HTML servida por el propio backend. |
 | **Frontend** | Interfaz moderna en Next.js que consume la API JSON `/api/web`. |
 | **Overlay (Compose)** | Archivo `docker-compose.*.yml` adicional que se combina con el base para añadir nginx, frontend, MySQL o certbot. |

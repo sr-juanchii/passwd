@@ -16,6 +16,7 @@ import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
 import { ErrorRecurso } from "@/components/error-recurso";
 import { TituloActivo } from "@/components/inventario/titulo-activo";
+import { RestringidoBadge } from "@/components/restringido-badge";
 import { RiskDot } from "@/components/risk-dot";
 import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -88,7 +89,12 @@ export default function HipervisorDetallePage() {
             nombre={d.nombre}
             estado={d.estado}
             nivel={nivelActivo({ credenciales: d.credenciales })}
-            extra={d.plataforma ? <Chip>{d.plataforma}</Chip> : undefined}
+            extra={
+              <>
+                {d.plataforma && <Chip>{d.plataforma}</Chip>}
+                {d.restringido && <RestringidoBadge />}
+              </>
+            }
           />
         }
         descripcion={d.descripcion}

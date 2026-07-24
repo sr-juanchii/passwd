@@ -21,6 +21,7 @@ from app import audit
 from app.database import get_db
 from app.deps import requiere_permiso, verificar_csrf
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
@@ -28,6 +29,7 @@ from app.models import (
     NIVELES_CONCESION,
     ROL_ANALISTA,
     ConcesionAcceso,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -44,6 +46,7 @@ _ACTIVOS = {
     ACTIVO_FISICO: (ServidorFisico, "/servidores", "servidor_fisico_id"),
     ACTIVO_HIPERVISOR: (Hipervisor, "/hipervisores", "hipervisor_id"),
     ACTIVO_VM: (MaquinaVirtual, "/vms", "maquina_virtual_id"),
+    ACTIVO_DISPOSITIVO: (DispositivoRed, "/dispositivos", "dispositivo_red_id"),
 }
 
 
@@ -136,5 +139,6 @@ def _id_activo(concesion: ConcesionAcceso) -> int:
     return (
         concesion.servidor_fisico_id
         or concesion.hipervisor_id
-        or concesion.maquina_virtual_id  # type: ignore[return-value]
+        or concesion.maquina_virtual_id
+        or concesion.dispositivo_red_id  # type: ignore[return-value]
     )

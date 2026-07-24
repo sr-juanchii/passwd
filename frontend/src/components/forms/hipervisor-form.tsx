@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { HipervisorInput } from "@/lib/types";
 import { ApiError } from "@/lib/api";
-import { CampoArea, CampoEstado, CampoTexto } from "./campos";
+import { useSession } from "@/lib/session";
+import { CampoArea, CampoEstado, CampoRestringir, CampoTexto } from "./campos";
 import { FormAcciones, FormPanel } from "./form-shell";
 import { toast } from "sonner";
 
@@ -24,20 +25,27 @@ const VACIO: HipervisorInput = {
   proveedor: "",
   estado: "activo",
   etiquetas: "",
+  restringido: false,
 };
 
 export function HipervisorForm({
   inicial,
   onGuardar,
   destinoOk,
+  puedeRestringir,
 }: {
   inicial?: Partial<HipervisorInput>;
   onGuardar: (v: HipervisorInput) => Promise<{ id: number }>;
   destinoOk?: (id: number) => string;
+  // En "editar" llega desde `puede_restringir` del backend; en "nuevo" se omite
+  // y se decide por el rol de la sesión.
+  puedeRestringir?: boolean;
 }) {
   const router = useRouter();
+  const { usuario } = useSession();
   const [v, setV] = useState<HipervisorInput>({ ...VACIO, ...inicial });
   const [enviando, setEnviando] = useState(false);
+  const mostrarRestringir = puedeRestringir ?? usuario?.rol === "admin";
   const set = <K extends keyof HipervisorInput>(k: K, val: HipervisorInput[K]) =>
     setV((prev) => ({ ...prev, [k]: val }));
 
@@ -45,7 +53,10 @@ export function HipervisorForm({
     e.preventDefault();
     setEnviando(true);
     try {
-      const r = await onGuardar(v);
+      // Solo los administradores envían `restringido`; el resto lo deja sin
+      // definir para que la API lo omita del cuerpo.
+      const payload: HipervisorInput = mostrarRestringir ? v : { ...v, restringido: undefined };
+      const r = await onGuardar(payload);
       toast.success("Hipervisor guardado.");
       router.push(destinoOk ? destinoOk(r.id) : `/hipervisores/${r.id}`);
     } catch (err) {
@@ -72,6 +83,13 @@ export function HipervisorForm({
           <CampoEstado value={v.estado} onChange={(x) => set("estado", x)} />
           <CampoTexto id="etq" label="Etiquetas (separadas por coma)" value={v.etiquetas} onChange={(x) => set("etiquetas", x)} />
           <CampoArea id="desc" label="Descripción" value={v.descripcion} onChange={(x) => set("descripcion", x)} />
+          {mostrarRestringir && (
+            <CampoRestringir
+              incluyeVms
+              value={!!v.restringido}
+              onChange={(x) => set("restringido", x)}
+            />
+          )}
       </FormPanel>
       <FormAcciones enviando={enviando} onCancelar={() => router.back()} />
     </form>

@@ -17,7 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app import __version__, audit
+from app import __version__, ajustes, audit
 from app.config import get_settings
 from app.database import get_db, init_db
 from app.deps import RedirigirLogin, render
@@ -27,6 +27,7 @@ from app.routes import (
     api,
     audit_view,
     auth,
+    configuracion,
     credentials,
     importer,
     inventory,
@@ -41,6 +42,21 @@ from app.security.passwords import hashear_password
 from app.security.sessions import purgar_sesiones_expiradas
 
 logger = logging.getLogger(__name__)
+
+
+class RefrescoConfiguracionMiddleware(BaseHTTPMiddleware):
+    """Propaga los cambios de configuración a este proceso (multi-worker).
+
+    Refresca el singleton de ``Settings`` desde la tabla ``configuracion`` como
+    máximo una vez por TTL (ver ``app/ajustes.py``): la mayoría de peticiones
+    solo comparan un reloj monótono. Los cambios hechos en este mismo proceso ya
+    se aplican al instante en ``ajustes.guardar``; esto cubre los cambios de
+    OTROS workers/instancias.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        ajustes.refrescar_singleton()
+        return await call_next(request)
 
 
 class CabecerasSeguridadMiddleware(BaseHTTPMiddleware):
@@ -208,11 +224,19 @@ def create_app() -> FastAPI:
     # pone CabecerasSeguridad de último para que decore TODAS las respuestas,
     # incluidas las cortocircuitadas por el límite de tamaño (p. ej. un 413).
     app.add_middleware(LimiteTamanoPeticionMiddleware)
+    app.add_middleware(RefrescoConfiguracionMiddleware)
     app.add_middleware(CabecerasSeguridadMiddleware)
 
     init_db()
     _bootstrap_admin()
     _mantenimiento_arranque()
+    # Aplica los overrides de configuración persistidos sobre el singleton, para
+    # que este worker arranque ya con los ajustes vigentes (no solo los de env).
+    _db = next(get_db())
+    try:
+        ajustes.inicializar(_db)
+    finally:
+        _db.close()
 
     app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
@@ -227,6 +251,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(metrics.router)
     app.include_router(tokens.router)
+    app.include_router(configuracion.router)
     app.include_router(api.router)
     app.include_router(audit_view.router)
 

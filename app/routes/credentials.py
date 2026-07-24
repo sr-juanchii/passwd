@@ -21,11 +21,13 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     ROL_ANALISTA,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     HistorialCredencial,
     MaquinaVirtual,
@@ -58,9 +60,11 @@ _MODELOS_ACTIVO = {
     ACTIVO_FISICO: (ServidorFisico, "servidor físico", "/servidores/{id}"),
     ACTIVO_HIPERVISOR: (Hipervisor, "hipervisor", "/hipervisores/{id}"),
     ACTIVO_VM: (MaquinaVirtual, "máquina virtual", "/vms/{id}"),
+    ACTIVO_DISPOSITIVO: (DispositivoRed, "dispositivo de red", "/dispositivos/{id}"),
 }
 
-SERVICIOS_SUGERIDOS = ("SSH", "RDP", "iLO/IPMI", "Panel web", "Consola hipervisor", "Base de datos", "Otro")
+SERVICIOS_SUGERIDOS = ("SSH", "RDP", "iLO/IPMI", "Panel web", "Consola hipervisor",
+                       "Base de datos", "Telnet", "SNMP", "Otro")
 
 
 def _resolver_activo(db: Session, tipo: str, activo_id: int):
@@ -72,6 +76,16 @@ def _resolver_activo(db: Session, tipo: str, activo_id: int):
     if activo is None:
         raise HTTPException(status_code=404, detail=f"No existe el {etiqueta} indicado.")
     return activo, etiqueta, plantilla_url.format(id=activo_id)
+
+
+def _exigir_ver(db: Session, usuario: Usuario, tipo: str, activo_id: int) -> None:
+    """Gestionar una credencial exige poder ver su activo (respeta la restricción).
+
+    Impide que un operador cree/edite/elimine credenciales en un activo que un
+    administrador restringió: responde 404 igual que si el activo no existiera.
+    """
+    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
+        raise HTTPException(status_code=404, detail="El recurso solicitado no existe.")
 
 
 def _ctx_form(usuario: Usuario, credencial: Credencial | None, tipo: str, activo, url_volver: str) -> dict:
@@ -94,6 +108,7 @@ def credencial_nueva_form(
     activo_id: int = 0,
 ):
     instancia, _, url_volver = _resolver_activo(db, activo, activo_id)
+    _exigir_ver(db, usuario, activo, activo_id)
     return render(request, "credencial_form.html", _ctx_form(usuario, None, activo, instancia, url_volver))
 
 
@@ -111,6 +126,7 @@ def credencial_crear(
     descripcion: Annotated[str, Form()] = "",
 ):
     instancia, etiqueta, url_volver = _resolver_activo(db, activo, activo_id)
+    _exigir_ver(db, usuario, activo, activo_id)
     error = ""
     if not usuario_acceso.strip():
         error = "El usuario de acceso es obligatorio."
@@ -137,6 +153,7 @@ def credencial_crear(
         servidor_fisico_id=activo_id if activo == ACTIVO_FISICO else None,
         hipervisor_id=activo_id if activo == ACTIVO_HIPERVISOR else None,
         maquina_virtual_id=activo_id if activo == ACTIVO_VM else None,
+        dispositivo_red_id=activo_id if activo == ACTIVO_DISPOSITIVO else None,
     )
     db.add(credencial)
     db.flush()
@@ -157,8 +174,10 @@ def credencial_editar_form(
     if credencial is None:
         raise HTTPException(status_code=404, detail="La credencial no existe.")
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     instancia, _, url_volver = _resolver_activo(db, tipo, activo_id)
+    _exigir_ver(db, usuario, tipo, activo_id)
     return render(request, "credencial_form.html",
                   {**_ctx_form(usuario, credencial, tipo, instancia, url_volver),
                    "historial": credencial.historial})
@@ -180,8 +199,10 @@ def credencial_editar(
     if credencial is None:
         raise HTTPException(status_code=404, detail="La credencial no existe.")
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     instancia, etiqueta, url_volver = _resolver_activo(db, tipo, activo_id)
+    _exigir_ver(db, usuario, tipo, activo_id)
 
     error = ""
     if not usuario_acceso.strip():
@@ -230,8 +251,10 @@ def credencial_eliminar(
     if credencial is None:
         raise HTTPException(status_code=404, detail="La credencial no existe.")
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     _, _, url_volver = _resolver_activo(db, tipo, activo_id)
+    _exigir_ver(db, usuario, tipo, activo_id)
     detalle = f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio})"
     db.delete(credencial)
     audit.registrar(db, audit.CREDENCIAL_ELIMINADA, request=request, usuario=usuario,
@@ -326,6 +349,10 @@ def historial_revelar(
     """Revela una contraseña anterior (solo gestores; auditado y limitado)."""
     entrada = db.get(HistorialCredencial, historial_id)
     if entrada is None or entrada.credencial_id != credencial_id:
+        raise HTTPException(status_code=404, detail="La entrada de historial no existe.")
+    credencial = db.get(Credencial, credencial_id)
+    if credencial is None or not access.puede_revelar_credencial(db, usuario, credencial):
+        # El operador no revela historial de activos restringidos.
         raise HTTPException(status_code=404, detail="La entrada de historial no existe.")
 
     settings = get_settings()

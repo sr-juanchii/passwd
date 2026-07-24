@@ -20,12 +20,14 @@ from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.database import get_db
 from app.models import (
     Credencial,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
     Usuario,
     normalizar_etiquetas,
 )
+from app.rbac import tiene_permiso
 from app.security.crypto import cifrar
 
 router = APIRouter()
@@ -33,7 +35,7 @@ router = APIRouter()
 GESTIONAR = Depends(requiere_permiso_json("inventario.gestionar"))
 CSRF = Depends(verificar_csrf_json)
 IMPORTACION_REALIZADA = "importacion_realizada"
-_ORDEN = {"servidor": 0, "hipervisor": 1, "vm": 2, "credencial": 3}
+_ORDEN = {"servidor": 0, "hipervisor": 1, "dispositivo": 2, "vm": 3, "credencial": 4}
 
 
 def _estado(valor: str) -> str:
@@ -57,7 +59,14 @@ def _hardware(fila: dict) -> dict:
     }
 
 
-def _procesar_fila(db: Session, fila: dict) -> str:
+def _restringido(fila: dict, puede_restringir: bool) -> bool:
+    """Lee la columna ``restringido`` del CSV, solo si el usuario puede fijarla."""
+    if not puede_restringir:
+        return False
+    return (fila.get("restringido") or "").strip().lower() in ("si", "sí", "true", "1", "x")
+
+
+def _procesar_fila(db: Session, fila: dict, puede_restringir: bool = False) -> str:
     """Crea el activo/credencial de una fila y devuelve su tipo. Lanza ValueError."""
     tipo = (fila.get("tipo") or "").strip().lower()
     nombre = (fila.get("nombre") or "").strip()
@@ -74,6 +83,7 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             descripcion=(fila.get("descripcion") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            restringido=_restringido(fila, puede_restringir),
             **_hardware(fila),
         ))
         return "servidor"
@@ -91,9 +101,38 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             descripcion=(fila.get("descripcion") or "").strip(),
             estado=_estado(fila.get("estado")),
             etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            restringido=_restringido(fila, puede_restringir),
             **_hardware(fila),
         ))
         return "hipervisor"
+
+    if tipo == "dispositivo":
+        from app.models import TIPO_DISPOSITIVO_SWITCH, TIPOS_DISPOSITIVO
+
+        if not nombre:
+            raise ValueError("nombre obligatorio")
+        if db.scalar(select(DispositivoRed).where(func.lower(DispositivoRed.nombre) == nombre.lower())):
+            raise ValueError(f"ya existe el dispositivo «{nombre}»")
+        tipo_dispositivo = (fila.get("tipo_dispositivo") or "").strip().lower()
+        if tipo_dispositivo and tipo_dispositivo not in TIPOS_DISPOSITIVO:
+            raise ValueError(f"tipo_dispositivo inválido: {tipo_dispositivo}")
+        db.add(DispositivoRed(
+            nombre=nombre,
+            tipo_dispositivo=tipo_dispositivo or TIPO_DISPOSITIVO_SWITCH,
+            marca_modelo=(fila.get("marca_modelo") or "").strip(),
+            version=(fila.get("version") or "").strip(),
+            ip_gestion=(fila.get("ip") or "").strip(),
+            ubicacion=(fila.get("ubicacion") or "").strip(),
+            puertos=(fila.get("puertos") or "").strip(),
+            descripcion=(fila.get("descripcion") or "").strip(),
+            numero_serie=(fila.get("numero_serie") or "").strip(),
+            garantia_hasta=(fila.get("garantia_hasta") or "").strip(),
+            proveedor=(fila.get("proveedor") or "").strip(),
+            estado=_estado(fila.get("estado")),
+            etiquetas=normalizar_etiquetas(fila.get("etiquetas") or ""),
+            restringido=_restringido(fila, puede_restringir),
+        ))
+        return "dispositivo"
 
     if tipo == "vm":
         padre = db.scalar(select(Hipervisor).where(
@@ -122,7 +161,8 @@ def _procesar_fila(db: Session, fila: dict) -> str:
         password = fila.get("password") or ""
         if not usuario_acceso or not password:
             raise ValueError("usuario_acceso y password obligatorios")
-        modelo = {"servidor": ServidorFisico, "hipervisor": Hipervisor, "vm": MaquinaVirtual}.get(activo_tipo)
+        modelo = {"servidor": ServidorFisico, "hipervisor": Hipervisor,
+                  "vm": MaquinaVirtual, "dispositivo": DispositivoRed}.get(activo_tipo)
         if modelo is None:
             raise ValueError(f"activo_tipo inválido: {activo_tipo}")
         activo = db.scalar(select(modelo).where(func.lower(modelo.nombre) == padre_nombre.lower()))
@@ -137,6 +177,7 @@ def _procesar_fila(db: Session, fila: dict) -> str:
             servidor_fisico_id=activo.id if activo_tipo == "servidor" else None,
             hipervisor_id=activo.id if activo_tipo == "hipervisor" else None,
             maquina_virtual_id=activo.id if activo_tipo == "vm" else None,
+            dispositivo_red_id=activo.id if activo_tipo == "dispositivo" else None,
         ))
         return "credencial"
 
@@ -163,12 +204,13 @@ def importar(
 
     indexadas = sorted(enumerate(filas, start=2), key=_clave_orden)
 
-    creados = {"servidor": 0, "hipervisor": 0, "vm": 0, "credencial": 0}
+    puede_restringir = tiene_permiso(usuario.rol, "inventario.restringir")
+    creados = {"servidor": 0, "hipervisor": 0, "dispositivo": 0, "vm": 0, "credencial": 0}
     errores: list[str] = []
     for numero, fila in indexadas:
         try:
             with db.begin_nested():
-                tipo_creado = _procesar_fila(db, fila)
+                tipo_creado = _procesar_fila(db, fila, puede_restringir)
             creados[tipo_creado] += 1
         except Exception as exc:  # noqa: BLE001 (se informa por fila, no aborta)
             errores.append(f"Fila {numero}: {exc}")

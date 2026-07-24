@@ -21,11 +21,13 @@ from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.config import get_settings
 from app.database import get_db
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     ROL_ANALISTA,
     Credencial,
+    DispositivoRed,
     Hipervisor,
     HistorialCredencial,
     MaquinaVirtual,
@@ -47,6 +49,7 @@ _MODELOS_ACTIVO = {
     ACTIVO_FISICO: (ServidorFisico, "servidor físico"),
     ACTIVO_HIPERVISOR: (Hipervisor, "hipervisor"),
     ACTIVO_VM: (MaquinaVirtual, "máquina virtual"),
+    ACTIVO_DISPOSITIVO: (DispositivoRed, "dispositivo de red"),
 }
 
 
@@ -89,6 +92,12 @@ def _resolver_activo(db: Session, tipo: str, activo_id: int):
     return activo, etiqueta
 
 
+def _exigir_ver(db: Session, usuario: Usuario, tipo: str, activo_id: int) -> None:
+    """Gestionar una credencial exige poder ver su activo (respeta la restricción)."""
+    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
+        raise HTTPException(status_code=404, detail="El recurso solicitado no existe.")
+
+
 def _obtener_credencial(db: Session, credencial_id: int) -> Credencial:
     credencial = db.get(Credencial, credencial_id)
     if credencial is None:
@@ -109,6 +118,7 @@ def credencial_crear(
     cuerpo: CredencialCrear,
 ):
     instancia, etiqueta = _resolver_activo(db, cuerpo.activo, cuerpo.activo_id)
+    _exigir_ver(db, usuario, cuerpo.activo, cuerpo.activo_id)
     if not cuerpo.usuario_acceso.strip():
         raise HTTPException(status_code=400, detail="El usuario de acceso es obligatorio.")
     if not cuerpo.password:
@@ -125,6 +135,7 @@ def credencial_crear(
         servidor_fisico_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_FISICO else None,
         hipervisor_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_HIPERVISOR else None,
         maquina_virtual_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_VM else None,
+        dispositivo_red_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_DISPOSITIVO else None,
     )
     db.add(credencial)
     db.flush()
@@ -144,7 +155,9 @@ def credencial_editar_datos(
 ):
     credencial = _obtener_credencial(db, credencial_id)
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
+    _exigir_ver(db, usuario, tipo, activo_id)
     return {
         "id": credencial.id,
         "usuario_acceso": credencial.usuario_acceso,
@@ -176,7 +189,9 @@ def credencial_editar(
 ):
     credencial = _obtener_credencial(db, credencial_id)
     tipo = credencial.tipo_activo
-    activo_id = credencial.servidor_fisico_id or credencial.hipervisor_id or credencial.maquina_virtual_id
+    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
+                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
+    _exigir_ver(db, usuario, tipo, activo_id)
     instancia, _ = _resolver_activo(db, tipo, activo_id)
 
     if not cuerpo.usuario_acceso.strip():
@@ -211,6 +226,9 @@ def credencial_eliminar(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     credencial = _obtener_credencial(db, credencial_id)
+    _exigir_ver(db, usuario, credencial.tipo_activo,
+                credencial.servidor_fisico_id or credencial.hipervisor_id
+                or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
     detalle = f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio})"
     db.delete(credencial)
     audit.registrar(db, audit.CREDENCIAL_ELIMINADA, request=request, usuario=usuario,
@@ -305,6 +323,9 @@ def historial_revelar(
 ):
     entrada = db.get(HistorialCredencial, historial_id)
     if entrada is None or entrada.credencial_id != credencial_id:
+        raise HTTPException(status_code=404, detail="La entrada de historial no existe.")
+    credencial = db.get(Credencial, credencial_id)
+    if credencial is None or not access.puede_revelar_credencial(db, usuario, credencial):
         raise HTTPException(status_code=404, detail="La entrada de historial no existe.")
 
     settings = get_settings()

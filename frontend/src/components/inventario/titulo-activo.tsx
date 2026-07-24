@@ -1,4 +1,4 @@
-import { Cpu, MonitorSmartphone, Server } from "lucide-react";
+import { Cpu, MonitorSmartphone, Network, Server } from "lucide-react";
 import { Mono } from "@/components/ui/mono";
 import { Chip } from "@/components/ui/chip";
 import { RiskDot } from "@/components/risk-dot";
@@ -7,7 +7,7 @@ import { ETIQUETAS_TIPO_ACTIVO } from "@/lib/constants";
 import type { NivelRiesgo } from "@/lib/riesgo";
 import type { EstadoActivo, TipoActivo } from "@/lib/types";
 
-const ICONO = { fisico: Server, hipervisor: Cpu, vm: MonitorSmartphone } as const;
+const ICONO = { fisico: Server, hipervisor: Cpu, vm: MonitorSmartphone, dispositivo: Network } as const;
 
 // Título de ficha de activo: tile de icono + punto de riesgo + nombre en mono +
 // chip de tipo + estado. Se usa como `titulo` del PageHeader en las páginas de

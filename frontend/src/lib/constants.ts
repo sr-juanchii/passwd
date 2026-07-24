@@ -1,4 +1,11 @@
-import type { CategoriaVault, EstadoActivo, NivelAcceso, Rol, TipoActivo } from "./types";
+import type {
+  CategoriaVault,
+  EstadoActivo,
+  NivelAcceso,
+  Rol,
+  TipoActivo,
+  TipoDispositivo,
+} from "./types";
 
 export const ETIQUETAS_ROL: Record<Rol, string> = {
   admin: "Administrador",
@@ -22,7 +29,26 @@ export const ETIQUETAS_TIPO_ACTIVO: Record<TipoActivo, string> = {
   fisico: "Servidor físico",
   hipervisor: "Hipervisor",
   vm: "Máquina virtual",
+  dispositivo: "Dispositivo de red",
 };
+
+export const ETIQUETAS_TIPO_DISPOSITIVO: Record<TipoDispositivo, string> = {
+  switch: "Switch",
+  router: "Router",
+  firewall: "Firewall",
+  access_point: "Punto de acceso",
+  balanceador: "Balanceador",
+  otro: "Otro",
+};
+
+export const TIPOS_DISPOSITIVO: TipoDispositivo[] = [
+  "switch",
+  "router",
+  "firewall",
+  "access_point",
+  "balanceador",
+  "otro",
+];
 
 export const SERVICIOS = ["SSH", "RDP", "iLO/IPMI", "Web", "VNC", "WinRM", "Telnet", "Otro"];
 
@@ -48,6 +74,7 @@ export const ESTADOS: EstadoActivo[] = ["activo", "mantenimiento", "retirado"];
 export function rutaActivo(tipo: TipoActivo, id: number): string {
   if (tipo === "fisico") return `/servidores/${id}`;
   if (tipo === "hipervisor") return `/hipervisores/${id}`;
+  if (tipo === "dispositivo") return `/dispositivos/${id}`;
   return `/vms/${id}`;
 }
 

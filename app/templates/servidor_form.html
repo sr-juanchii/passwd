@@ -65,6 +65,13 @@
     <input id="etiquetas" name="etiquetas" type="text" maxlength="255"
            value="{{ servidor.etiquetas if servidor else '' }}" placeholder="Ej.: producción, crítico, dmz">
 
+    {% if puede('inventario.restringir') %}
+    <label class="casilla">
+      <input type="checkbox" name="restringido" value="1" {{ 'checked' if servidor and servidor.restringido }}>
+      Restringir a administradores (los operadores no verán este servidor)
+    </label>
+    {% endif %}
+
     <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if servidor else 'Registrar servidor' }}</button>
   </form>
 </div>

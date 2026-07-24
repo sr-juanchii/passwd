@@ -18,31 +18,37 @@ el [`manual-administrador.md`](manual-administrador.md).
 
 ## 1. Conceptos básicos
 
-El sistema custodia las **credenciales** (usuario + contraseña) de la infraestructura de
-servidores, organizadas en un **inventario** de tres niveles:
+El sistema custodia las **credenciales** (usuario + contraseña) de toda la infraestructura,
+organizadas en un **inventario** de cuatro tipos de activo:
 
 | Activo | Qué representa |
 |---|---|
 | 🖥️ **Servidor físico** | Máquina dedicada a una función única (p. ej. la BD de nómina). |
 | ⚙️ **Hipervisor** | Máquina física que aloja máquinas virtuales (Proxmox, ESXi, Hyper-V…). |
 | 🗔 **Máquina virtual (VM)** | Sistema virtual que corre dentro de un hipervisor. |
+| 🔌 **Dispositivo de red** | Switch, router, firewall, punto de acceso, balanceador u otro equipo de red. |
 
 Cada uno de estos activos puede tener **varias credenciales** (una por servicio: SSH, RDP,
-iLO/IPMI, panel web…) y, opcionalmente, una **nota segura cifrada**.
+iLO/IPMI, panel web, Telnet, SNMP…) y, opcionalmente, una **nota segura cifrada**.
 
 ### Su rol determina lo que puede hacer
 
 | Permiso | admin | operador | auditor | analista |
 |---|:-:|:-:|:-:|:-:|
-| Ver inventario y credenciales (sin contraseña) | ✔ | ✔ | ✔ | solo concedidos |
-| Gestionar inventario y credenciales | ✔ | ✔ | ✘ | ✘ |
-| Revelar/copiar contraseñas (auditado) | ✔ | ✔ | ✘ | solo concedidas |
+| Ver inventario y credenciales (sin contraseña) | ✔ | ✔ (salvo restringidos) | ✔ | solo concedidos |
+| Gestionar inventario y credenciales | ✔ | ✔ (salvo restringidos) | ✘ | ✘ |
+| Revelar/copiar contraseñas (auditado) | ✔ | ✔ (salvo restringidos) | ✘ | solo concedidas |
 | Gestionar usuarios | ✔ | ✘ | ✘ | ✘ |
 | Conceder/revocar accesos por activo | ✔ | ✘ | ✘ | ✘ |
+| Restringir activos a administradores | ✔ | ✘ | ✘ | ✘ |
 | Ver bitácora y métricas | ✔ | ✘ | ✔ | ✘ |
 
 El rol **analista** parte de cero (*default-deny*): no ve ningún activo hasta que un administrador
 le **concede** acceso a activos concretos (ver [`control-acceso.md`](control-acceso.md)).
+
+Un administrador puede además **restringir** ciertos activos: quedan ocultos para los operadores
+(como si no existieran), mientras que los auditores los siguen viendo sin poder revelar sus
+contraseñas. Las máquinas virtuales heredan la restricción de su hipervisor.
 
 ---
 
@@ -133,10 +139,10 @@ Notas de seguridad:
 
 El **panel principal** (inicio) muestra el inventario:
 
-- Un **resumen** de cuántos servidores, hipervisores, VMs y credenciales hay y cuántas
-  credenciales tienen la **rotación vencida**.
-- El **árbol** de activos: servidores físicos e hipervisores; los hipervisores se despliegan para
-  mostrar sus máquinas virtuales.
+- Un **resumen** de cuántos servidores, hipervisores, VMs, dispositivos de red y credenciales
+  hay y cuántas credenciales tienen la **rotación vencida**.
+- El **árbol** de activos: servidores físicos, hipervisores (que se despliegan para mostrar sus
+  máquinas virtuales) y dispositivos de red.
 - En el frontend moderno, una **«postura de seguridad»** y una **cola de riesgo** que ordena las
   credenciales que más necesitan rotarse.
 

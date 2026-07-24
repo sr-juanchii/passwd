@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block titulo %}{{ dispositivo.nombre }} — {{ app_name }}{% endblock %}
+{% block contenido %}
+<p><a class="enlace-suave" href="/">← Volver al inventario</a></p>
+<div class="encabezado-seccion">
+  <h1>🔌 {{ dispositivo.nombre }}
+    <span class="insignia insignia-plataforma">{{ etiquetas_tipo_dispositivo.get(dispositivo.tipo_dispositivo, dispositivo.tipo_dispositivo) }}</span>
+    {% if dispositivo.restringido %}<span class="insignia insignia-peligro">🔒 Restringido a administradores</span>{% endif %}
+  </h1>
+  {% if puede('inventario.gestionar') %}
+  <div class="celda-acciones">
+    <a class="boton" href="/dispositivos/{{ dispositivo.id }}/editar">Editar</a>
+    <form method="post" action="/dispositivos/{{ dispositivo.id }}/eliminar" class="form-inline"
+          data-confirmar="¿Eliminar el dispositivo {{ dispositivo.nombre }} con TODAS sus credenciales?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="boton boton-peligro">Eliminar</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="tarjeta">
+  <dl class="lista-datos">
+    <dt>Estado</dt><dd><span class="insignia insignia-estado-{{ dispositivo.estado }}">{{ etiquetas_estado.get(dispositivo.estado, dispositivo.estado) }}</span></dd>
+    <dt>Descripción / función</dt><dd>{{ dispositivo.descripcion or '—' }}</dd>
+    <dt>Marca y modelo</dt><dd>{{ dispositivo.marca_modelo or '—' }}</dd>
+    <dt>Firmware / versión</dt><dd>{{ dispositivo.version or '—' }}</dd>
+    <dt>IP de gestión</dt><dd class="texto-mono">{{ dispositivo.ip_gestion or '—' }}</dd>
+    <dt>Ubicación</dt><dd>{{ dispositivo.ubicacion or '—' }}</dd>
+    <dt>Puertos</dt><dd>{{ dispositivo.puertos or '—' }}</dd>
+    <dt>Número de serie</dt><dd class="texto-mono">{{ dispositivo.numero_serie or '—' }}</dd>
+    <dt>Garantía hasta</dt><dd>{{ dispositivo.garantia_hasta or '—' }}</dd>
+    <dt>Proveedor</dt><dd>{{ dispositivo.proveedor or '—' }}</dd>
+    <dt>Etiquetas</dt><dd>
+      {% for t in dispositivo.lista_etiquetas %}<span class="insignia insignia-etiqueta">{{ t }}</span> {% else %}—{% endfor %}
+    </dd>
+    <dt>Registrado</dt><dd>{{ dispositivo.creado_en.strftime('%d/%m/%Y %H:%M') }} UTC</dd>
+  </dl>
+</div>
+
+<div class="tarjeta">
+  {% with credenciales = dispositivo.credenciales, tipo_activo = 'dispositivo', activo_id = dispositivo.id %}
+    {% include "_credenciales.html" %}
+  {% endwith %}
+</div>
+
+{% include "_notas.html" %}
+{% if puede('accesos.gestionar') %}{% include "_accesos.html" %}{% endif %}
+{% endblock %}

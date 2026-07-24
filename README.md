@@ -8,22 +8,25 @@ controles alineados con **CIS Controls v8.1** e **ISO/IEC 27003**.
 
 ## Inventario segmentado y relacional
 
-El inventario refleja la realidad física y lógica de la infraestructura con **dos tipos de
+El inventario refleja la realidad física y lógica de la infraestructura con **tres tipos de
 activo de nivel superior**:
 
 ```
 🖥️ Servidor físico dedicado            función única (p. ej. la base de datos de nómina)
 ⚙️ Hipervisor (Proxmox VE, ESXi…)      máquina física con su hardware que aloja VMs
    └── 🗔 Máquina virtual              cada una con su sistema y función descritos
+🔌 Dispositivo de red                  switch, router, firewall, punto de acceso, balanceador…
 ```
 
 El hipervisor **es** la propia máquina física (con su hardware) y contiene directamente sus
-máquinas virtuales; no se anida bajo un servidor físico. Cada nivel —servidor dedicado,
-hipervisor o máquina virtual— almacena sus **credenciales de
-acceso**: usuario, contraseña (cifrada en reposo), servicio/protocolo (SSH, RDP, iLO/IPMI,
-panel web…), puerto y una **descripción de a qué sistema da acceso**. Las relaciones se
-garantizan con claves foráneas y restricciones CHECK; el detalle está en
-[`docs/modelo-datos.md`](docs/modelo-datos.md).
+máquinas virtuales; no se anida bajo un servidor físico. Los **dispositivos de red** cubren
+la electrónica de red (con tipo, marca/modelo, firmware, puertos y ubicación), de modo que
+el sistema custodia las contraseñas de **toda** la infraestructura, no solo del cómputo.
+Cada nivel —servidor dedicado, hipervisor, máquina virtual o dispositivo de red— almacena
+sus **credenciales de acceso**: usuario, contraseña (cifrada en reposo), servicio/protocolo
+(SSH, RDP, iLO/IPMI, panel web, Telnet, SNMP…), puerto y una **descripción de a qué sistema
+da acceso**. Las relaciones se garantizan con claves foráneas y restricciones CHECK; el
+detalle está en [`docs/modelo-datos.md`](docs/modelo-datos.md).
 
 ## Seguridad implementada
 
@@ -32,7 +35,7 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Autenticación | Contraseña (hash **Argon2id**) + **MFA TOTP obligatorio** (RFC 6238) con QR de enrolamiento generado localmente; anti-replay del último código usado; **códigos de recuperación de un solo uso** (8 por usuario, solo hashes en BD) por si se pierde el dispositivo |
 | Sesiones | Gestionadas en servidor (revocables), token rotado al elevar privilegios, cookie `HttpOnly` + `Secure` + `SameSite=Strict`, expiración por inactividad (15 min) y absoluta (8 h) |
 | Cuentas | Bloqueo tras 5 intentos fallidos, límite de tasa por IP, contraseñas temporales de un solo uso con cambio forzado, política de contraseñas (mín. 12, lista empaquetada de 10 000 comunes prohibidas), desactivación con revocación inmediata |
-| Autorización | RBAC con cuatro roles (**admin**, **operador**, **auditor**, **analista**) más **control de acceso por objeto**: el analista solo ve y usa los activos que un administrador le concede (con nivel y caducidad) — matriz en [`app/rbac.py`](app/rbac.py), concesiones en [`app/access.py`](app/access.py) |
+| Autorización | RBAC con cuatro roles (**admin**, **operador**, **auditor**, **analista**) más **control de acceso por objeto** en dos sentidos: el analista solo ve y usa los activos que un administrador le concede (con nivel y caducidad), y el administrador puede **restringir** activos sensibles para ocultarlos a los operadores (el auditor los ve pero no revela contraseñas; las VMs heredan la restricción del hipervisor) — matriz en [`app/rbac.py`](app/rbac.py), concesiones y restricciones en [`app/access.py`](app/access.py) |
 | Datos | Contraseñas de activos y semillas TOTP **cifradas con Fernet (AES)** antes de tocar la base de datos; claves criptográficas fuera del repositorio; **generador de contraseñas robustas** (CSPRNG, 20 caracteres) en el formulario |
 | Exposición mínima | Botón **«Copiar» sin visualización**: la contraseña va directo al portapapeles sin mostrarse en pantalla y se limpia a los 30 s; «Revelar» se re-oculta solo; **límite anti-exfiltración** por usuario (20 accesos/5 min configurables) compartido entre ambas vías |
 | Rotación | **Alerta visual** en el panel y en cada activo cuando una credencial supera los 90 días (configurable) sin rotarse; el contador se reinicia al cambiar la contraseña |
@@ -44,6 +47,7 @@ garantizan con claves foráneas y restricciones CHECK; el detalle está en
 | Migración | **Export en claro a CSV** (admin/operador, auditado) en el **mismo formato del importador** para editar y migrar entre versiones (round-trip), más **plantilla CSV** descargable; los vaults personales quedan fuera |
 | Operación proactiva | **Alertas por correo** opt-in (cuenta bloqueada, posible exfiltración, alta de usuario, fallo de respaldo; sin secretos); **respaldos programados** con retención y aviso de fallo; **limitador de tasa** opcional en BD para despliegues multi-instancia |
 | Integración | **API REST de solo lectura** con tokens Bearer para SIEM/automatización (`/api/v1/auditoria`, `/api/v1/inventario`; nunca expone secretos); tokens gestionados y revocables |
+| Configuración | **Módulo de configuración en caliente** (solo admin): ajusta sesión, política de cuentas, límites de tasa, rotación/auditoría y correo/SMTP sin reiniciar; los cambios anulan las variables de entorno, se auditan y se propagan entre instancias. Contraseña SMTP cifrada y **prueba de correo** integrada. Las claves criptográficas, la BD y el arranque siguen siendo solo por entorno — detalle en [`docs/referencia-configuracion.md`](docs/referencia-configuracion.md) |
 | Interfaz | Modo claro/oscuro persistente, compatible con la CSP estricta (sin código embebido) |
 | Aplicación | CSP estricta sin código embebido, anti-CSRF en todos los formularios, cabeceras endurecidas (HSTS, X-Frame-Options, nosniff, COOP/CORP), límite de tamaño de petición (OWASP API4), mensajes genéricos anti enumeración, API docs deshabilitadas, **pip-audit** en CI contra dependencias vulnerables |
 

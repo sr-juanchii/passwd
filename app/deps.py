@@ -14,7 +14,13 @@ from app import audit
 from app.config import get_settings
 from app.database import get_db
 from app.exceptions import RedirigirLogin
-from app.models import ETAPA_ACTIVA, ETIQUETAS_ESTADO, SesionWeb, Usuario
+from app.models import (
+    ETAPA_ACTIVA,
+    ETIQUETAS_ESTADO,
+    ETIQUETAS_TIPO_DISPOSITIVO,
+    SesionWeb,
+    Usuario,
+)
 from app.rbac import ETIQUETAS_ROL, tiene_permiso
 from app.security.sessions import COOKIE_SESION, buscar_sesion_valida
 
@@ -114,6 +120,7 @@ def render(request: Request, plantilla: str, contexto: dict | None = None, statu
         "puede": lambda _p: False,
         "etiquetas_rol": ETIQUETAS_ROL,
         "etiquetas_estado": ETIQUETAS_ESTADO,
+        "etiquetas_tipo_dispositivo": ETIQUETAS_TIPO_DISPOSITIVO,
         "rotacion_max_dias": settings.rotation_max_days,
     }
     if contexto:

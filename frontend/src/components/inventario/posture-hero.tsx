@@ -5,6 +5,7 @@ import {
   GitCommitHorizontal,
   KeyRound,
   MonitorSmartphone,
+  Network,
   Server,
   ShieldCheck,
 } from "lucide-react";
@@ -93,6 +94,7 @@ export function PostureHero({
     [<Server key="s" className="size-4" />, postura.servidores, "Servidores"],
     [<Cpu key="h" className="size-4" />, postura.hipervisores, "Hipervisores"],
     [<MonitorSmartphone key="v" className="size-4" />, postura.vms, "VMs"],
+    [<Network key="d" className="size-4" />, postura.dispositivos, "Dispositivos"],
     [<KeyRound key="c" className="size-4" />, postura.total, "Credenciales"],
   ];
 
@@ -118,7 +120,7 @@ export function PostureHero({
           </span>
         </div>
         <BarraPostura p={postura} />
-        <div className="mt-auto grid grid-cols-4 gap-px overflow-hidden rounded-lg border bg-border">
+        <div className="mt-auto grid grid-cols-5 gap-px overflow-hidden rounded-lg border bg-border">
           {micro.map(([icono, v, l]) => (
             <div key={l} className="flex flex-col gap-1.5 bg-card px-3.5 py-3">
               <span className="text-muted-foreground">{icono}</span>

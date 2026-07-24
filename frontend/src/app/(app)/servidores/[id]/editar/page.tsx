@@ -42,7 +42,11 @@ export default function EditarServidorPage() {
           { label: "Editar" },
         ]}
       />
-      <ServidorForm inicial={data} onGuardar={(v) => api.editarServidor(sid, v)} />
+      <ServidorForm
+        inicial={data}
+        puedeRestringir={data.puede_restringir}
+        onGuardar={(v) => api.editarServidor(sid, v)}
+      />
     </>
   );
 }

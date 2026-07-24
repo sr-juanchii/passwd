@@ -8,12 +8,13 @@ Matriz de permisos (a nivel de ruta):
 
     Permiso                  admin  operador  auditor  analista
     ----------------------   -----  --------  -------  --------
-    inventario.ver             ✔       ✔         ✔        ✔ (*)
-    inventario.gestionar       ✔       ✔         ✘        ✘
-    credenciales.ver_lista     ✔       ✔         ✔        ✔ (*)
-    credenciales.revelar       ✔       ✔         ✘        ✔ (*)
-    credenciales.gestionar     ✔       ✔         ✘        ✘
-    inventario.exportar        ✔       ✔         ✘        ✘
+    inventario.ver             ✔       ✔ (†)     ✔        ✔ (*)
+    inventario.gestionar       ✔       ✔ (†)     ✘        ✘
+    inventario.restringir      ✔       ✘         ✘        ✘
+    credenciales.ver_lista     ✔       ✔ (†)     ✔        ✔ (*)
+    credenciales.revelar       ✔       ✔ (†)     ✘        ✔ (*)
+    credenciales.gestionar     ✔       ✔ (†)     ✘        ✘
+    inventario.exportar        ✔       ✔ (†)     ✘        ✘
     vault.usar                 ✔       ✔         ✔        ✔
     usuarios.gestionar         ✔       ✘         ✘        ✘
     auditoria.ver              ✔       ✘         ✔        ✘
@@ -21,6 +22,11 @@ Matriz de permisos (a nivel de ruta):
 
 (*) El analista alcanza la ruta, pero ``app/access.py`` restringe la operación
     a los activos que tenga concedidos (default-deny: sin concesiones no ve nada).
+(†) Los activos marcados como **restringidos** (``inventario.restringir``, solo
+    administradores) quedan fuera para el OPERADOR, que los trata como
+    inexistentes (404) en toda operación. El auditor sí ve que existen
+    (supervisión del inventario completo) pero, como siempre, no revela
+    contraseñas; ver ``app/access.py``.
 
 ``vault.usar`` habilita el vault PERSONAL de cada usuario (todos los roles): no
 es un permiso sobre datos ajenos, cada quien solo accede al suyo (ver
@@ -35,6 +41,7 @@ from app.models import ROL_ADMIN, ROL_ANALISTA, ROL_AUDITOR, ROL_OPERADOR
 PERMISOS: dict[str, frozenset[str]] = {
     "inventario.ver": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA}),
     "inventario.gestionar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
+    "inventario.restringir": frozenset({ROL_ADMIN}),
     "credenciales.ver_lista": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA}),
     "credenciales.revelar": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_ANALISTA}),
     "credenciales.gestionar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
@@ -45,6 +52,7 @@ PERMISOS: dict[str, frozenset[str]] = {
     "metricas.ver": frozenset({ROL_ADMIN, ROL_AUDITOR}),
     "accesos.gestionar": frozenset({ROL_ADMIN}),
     "tokens.gestionar": frozenset({ROL_ADMIN}),
+    "configuracion.gestionar": frozenset({ROL_ADMIN}),
 }
 
 ETIQUETAS_ROL = {

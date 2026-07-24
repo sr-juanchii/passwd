@@ -6,7 +6,8 @@
   <h1>{{ 'Editar credencial' if credencial else 'Nueva credencial' }}</h1>
   <p class="texto-suave">Activo:
     <strong>{{ activo.nombre }}</strong>
-    ({{ {'fisico': 'servidor físico', 'hipervisor': 'hipervisor', 'vm': 'máquina virtual'}[tipo_activo] }})
+    ({{ {'fisico': 'servidor físico', 'hipervisor': 'hipervisor', 'vm': 'máquina virtual',
+         'dispositivo': 'dispositivo de red'}[tipo_activo] }})
   </p>
   <form method="post"
         action="{{ '/credenciales/' ~ credencial.id ~ '/editar' if credencial else '/credenciales/nueva' }}"

@@ -5,14 +5,17 @@ Jerarquía del inventario (segmentación lógica solicitada):
     ServidorFisico  → servidor físico dedicado a una sola función (con sus credenciales)
     Hipervisor      → máquina física que ejecuta un hipervisor (Proxmox, ESXi, Hyper-V…)
         └── MaquinaVirtual (cada una con su sistema y función)
+    DispositivoRed  → equipo de red (switch, router, firewall, punto de acceso…)
 
-Servidores dedicados e hipervisores son dos tipos de activo de **nivel superior**
-independientes: el hipervisor es la propia máquina física (con su hardware) y
-contiene directamente sus máquinas virtuales. Cada nivel (servidor, hipervisor o
-máquina virtual) puede tener una o varias credenciales (usuario + contraseña
-cifrada en reposo + descripción del sistema o servicio al que da acceso). La
-integridad se garantiza con claves foráneas y una restricción CHECK que obliga a
-que cada credencial pertenezca exactamente a un activo.
+Servidores dedicados, hipervisores y dispositivos de red son tipos de activo de
+**nivel superior** independientes: el hipervisor es la propia máquina física
+(con su hardware) y contiene directamente sus máquinas virtuales; el
+dispositivo de red cubre la electrónica de red de la infraestructura. Cada
+nivel (servidor, hipervisor, máquina virtual o dispositivo de red) puede tener
+una o varias credenciales (usuario + contraseña cifrada en reposo + descripción
+del sistema o servicio al que da acceso). La integridad se garantiza con claves
+foráneas y una restricción CHECK que obliga a que cada credencial pertenezca
+exactamente a un activo.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -169,6 +173,11 @@ class ServidorFisico(Base):
     proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Restringido a administradores: los OPERADORES lo tratan como inexistente
+    # (404); el auditor sí lo ve (supervisión, nunca revela contraseñas) y el
+    # analista solo con concesión explícita. Cambiar la marca exige el permiso
+    # `inventario.restringir` (solo administradores).
+    restringido: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
     # Notas sensibles cifradas en reposo (instrucciones de acceso, tokens, etc.)
     notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
@@ -209,6 +218,9 @@ class Hipervisor(Base):
     proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
     etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Restringido a administradores; sus VMs heredan la restricción (deny hereda,
+    # a diferencia de las concesiones, que nunca heredan).
+    restringido: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
     notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
@@ -257,16 +269,101 @@ class MaquinaVirtual(Base):
         return [e for e in (self.etiquetas or "").split(", ") if e]
 
 
+# Clase (rol funcional) de un dispositivo de red, validada en la aplicación
+# y con CHECK en la base de datos. «otro» admite equipos no catalogados
+# (módems, consolas de gestión OOB, SAN switches…) sin ampliar el esquema.
+TIPO_DISPOSITIVO_SWITCH = "switch"
+TIPO_DISPOSITIVO_ROUTER = "router"
+TIPO_DISPOSITIVO_FIREWALL = "firewall"
+TIPO_DISPOSITIVO_AP = "access_point"
+TIPO_DISPOSITIVO_BALANCEADOR = "balanceador"
+TIPO_DISPOSITIVO_OTRO = "otro"
+TIPOS_DISPOSITIVO = (
+    TIPO_DISPOSITIVO_SWITCH,
+    TIPO_DISPOSITIVO_ROUTER,
+    TIPO_DISPOSITIVO_FIREWALL,
+    TIPO_DISPOSITIVO_AP,
+    TIPO_DISPOSITIVO_BALANCEADOR,
+    TIPO_DISPOSITIVO_OTRO,
+)
+ETIQUETAS_TIPO_DISPOSITIVO = {
+    TIPO_DISPOSITIVO_SWITCH: "Switch",
+    TIPO_DISPOSITIVO_ROUTER: "Router",
+    TIPO_DISPOSITIVO_FIREWALL: "Firewall",
+    TIPO_DISPOSITIVO_AP: "Punto de acceso",
+    TIPO_DISPOSITIVO_BALANCEADOR: "Balanceador",
+    TIPO_DISPOSITIVO_OTRO: "Otro",
+}
+
+
+class DispositivoRed(Base):
+    """Dispositivo de red de la infraestructura (switch, router, firewall…).
+
+    Activo de nivel superior independiente, al mismo nivel que los servidores
+    dedicados y los hipervisores: así el inventario cubre TODA la
+    infraestructura (cómputo y electrónica de red) y cada equipo custodia sus
+    credenciales de gestión (SSH, consola, panel web…) con los mismos
+    controles: cifrado en reposo, RBAC, acceso por objeto y auditoría.
+    """
+
+    __tablename__ = "dispositivos_red"
+    __table_args__ = (
+        CheckConstraint(
+            "tipo_dispositivo IN ('switch', 'router', 'firewall', "
+            "'access_point', 'balanceador', 'otro')",
+            name="ck_dispositivos_red_tipo",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    tipo_dispositivo: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=TIPO_DISPOSITIVO_SWITCH,
+        server_default=TIPO_DISPOSITIVO_SWITCH,
+    )
+    marca_modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    # Versión de firmware/sistema del equipo (IOS, RouterOS, FortiOS…).
+    version: Mapped[str] = mapped_column(String(60), nullable=False, default="", server_default="")
+    ip_gestion: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+    ubicacion: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    # Texto libre para admitir configuraciones mixtas: "48x 1GbE + 4x SFP+".
+    puertos: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    numero_serie: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    garantia_hasta: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
+    proveedor: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default=ESTADO_ACTIVO, server_default=ESTADO_ACTIVO)
+    etiquetas: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    # Restringido a administradores (ver ServidorFisico.restringido).
+    restringido: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    notas_cifradas: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+
+    credenciales: Mapped[list[Credencial]] = relationship(
+        back_populates="dispositivo_red", cascade="all, delete-orphan"
+    )
+
+    @property
+    def lista_etiquetas(self) -> list[str]:
+        return [e for e in (self.etiquetas or "").split(", ") if e]
+
+    @property
+    def tipo_dispositivo_label(self) -> str:
+        return ETIQUETAS_TIPO_DISPOSITIVO.get(self.tipo_dispositivo, self.tipo_dispositivo)
+
+
 ACTIVO_FISICO = "fisico"
 ACTIVO_HIPERVISOR = "hipervisor"
 ACTIVO_VM = "vm"
+ACTIVO_DISPOSITIVO = "dispositivo"
 
 
 class Credencial(Base):
     """Credencial de acceso a un activo del inventario.
 
     La contraseña se cifra en reposo (Fernet/AES) antes de persistirse.
-    Exactamente una de las tres claves foráneas debe estar presente.
+    Exactamente una de las cuatro claves foráneas debe estar presente.
     """
 
     __tablename__ = "credenciales"
@@ -274,7 +371,8 @@ class Credencial(Base):
         CheckConstraint(
             "(CASE WHEN servidor_fisico_id IS NULL THEN 0 ELSE 1 END"
             " + CASE WHEN hipervisor_id IS NULL THEN 0 ELSE 1 END"
-            " + CASE WHEN maquina_virtual_id IS NULL THEN 0 ELSE 1 END) = 1",
+            " + CASE WHEN maquina_virtual_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN dispositivo_red_id IS NULL THEN 0 ELSE 1 END) = 1",
             name="ck_credenciales_un_activo",
         ),
     )
@@ -288,6 +386,9 @@ class Credencial(Base):
     )
     maquina_virtual_id: Mapped[int | None] = mapped_column(
         ForeignKey("maquinas_virtuales.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    dispositivo_red_id: Mapped[int | None] = mapped_column(
+        ForeignKey("dispositivos_red.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
     usuario_acceso: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -305,6 +406,7 @@ class Credencial(Base):
     servidor_fisico: Mapped[ServidorFisico | None] = relationship(back_populates="credenciales")
     hipervisor: Mapped[Hipervisor | None] = relationship(back_populates="credenciales")
     maquina_virtual: Mapped[MaquinaVirtual | None] = relationship(back_populates="credenciales")
+    dispositivo_red: Mapped[DispositivoRed | None] = relationship(back_populates="credenciales")
     creado_por: Mapped[Usuario | None] = relationship()
 
     @property
@@ -313,6 +415,8 @@ class Credencial(Base):
             return ACTIVO_FISICO
         if self.hipervisor_id is not None:
             return ACTIVO_HIPERVISOR
+        if self.dispositivo_red_id is not None:
+            return ACTIVO_DISPOSITIVO
         return ACTIVO_VM
 
     @property
@@ -323,6 +427,8 @@ class Credencial(Base):
             return self.hipervisor.nombre
         if self.maquina_virtual is not None:
             return self.maquina_virtual.nombre
+        if self.dispositivo_red is not None:
+            return self.dispositivo_red.nombre
         return "—"
 
     @property
@@ -378,7 +484,8 @@ class ConcesionAcceso(Base):
         CheckConstraint(
             "(CASE WHEN servidor_fisico_id IS NULL THEN 0 ELSE 1 END"
             " + CASE WHEN hipervisor_id IS NULL THEN 0 ELSE 1 END"
-            " + CASE WHEN maquina_virtual_id IS NULL THEN 0 ELSE 1 END) = 1",
+            " + CASE WHEN maquina_virtual_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN dispositivo_red_id IS NULL THEN 0 ELSE 1 END) = 1",
             name="ck_concesiones_un_activo",
         ),
         CheckConstraint(
@@ -389,6 +496,7 @@ class ConcesionAcceso(Base):
             "servidor_fisico_id",
             "hipervisor_id",
             "maquina_virtual_id",
+            "dispositivo_red_id",
             name="uq_concesion_usuario_activo",
         ),
     )
@@ -406,6 +514,9 @@ class ConcesionAcceso(Base):
     maquina_virtual_id: Mapped[int | None] = mapped_column(
         ForeignKey("maquinas_virtuales.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    dispositivo_red_id: Mapped[int | None] = mapped_column(
+        ForeignKey("dispositivos_red.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     nivel: Mapped[str] = mapped_column(String(20), nullable=False, default=NIVEL_VER)
     concedido_por_id: Mapped[int | None] = mapped_column(
@@ -422,6 +533,7 @@ class ConcesionAcceso(Base):
     servidor_fisico: Mapped[ServidorFisico | None] = relationship()
     hipervisor: Mapped[Hipervisor | None] = relationship()
     maquina_virtual: Mapped[MaquinaVirtual | None] = relationship()
+    dispositivo_red: Mapped[DispositivoRed | None] = relationship()
 
     def esta_vigente(self) -> bool:
         return self.expira_en is None or self.expira_en > ahora_utc()
@@ -436,6 +548,8 @@ class ConcesionAcceso(Base):
             return ACTIVO_FISICO
         if self.hipervisor_id is not None:
             return ACTIVO_HIPERVISOR
+        if self.dispositivo_red_id is not None:
+            return ACTIVO_DISPOSITIVO
         return ACTIVO_VM
 
     @property
@@ -446,6 +560,8 @@ class ConcesionAcceso(Base):
             return self.hipervisor.nombre
         if self.maquina_virtual is not None:
             return self.maquina_virtual.nombre
+        if self.dispositivo_red is not None:
+            return self.dispositivo_red.nombre
         return "—"
 
 
@@ -625,6 +741,32 @@ class EntradaVault(Base):
     @property
     def dias_sin_rotar(self) -> int:
         return max((ahora_utc() - self.password_rotada_en).days, 0)
+
+
+class Configuracion(Base):
+    """Ajuste de operación editable en tiempo de ejecución (capa de *overrides*).
+
+    Almacena, por clave, el valor que **anula** el valor base (por defecto o de
+    variable de entorno) definido en ``app/config.py``. Solo cubre una lista
+    blanca curada de parámetros operativos (sesión, política de cuentas, límites
+    de tasa, rotación/auditoría, correo/SMTP); las claves criptográficas, la URL
+    de la base de datos y el arranque **nunca** se guardan aquí, se definen solo
+    por entorno. Los valores marcados ``es_secreto`` (p. ej. la contraseña SMTP)
+    se guardan **cifrados** (Fernet) y jamás se devuelven en claro a la interfaz.
+    """
+
+    __tablename__ = "configuracion"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    clave: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    valor: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    es_secreto: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
+    actualizado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+
+    actualizado_por: Mapped[Usuario | None] = relationship()
 
 
 class EventoTasa(Base):

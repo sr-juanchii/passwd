@@ -21,10 +21,12 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import (
+    ACTIVO_DISPOSITIVO,
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
     ROL_ANALISTA,
+    DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
@@ -42,6 +44,7 @@ _ACTIVOS = {
     ACTIVO_FISICO: (ServidorFisico, "/servidores"),
     ACTIVO_HIPERVISOR: (Hipervisor, "/hipervisores"),
     ACTIVO_VM: (MaquinaVirtual, "/vms"),
+    ACTIVO_DISPOSITIVO: (DispositivoRed, "/dispositivos"),
 }
 
 
@@ -64,6 +67,8 @@ def notas_form(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     activo, url_volver = _resolver(db, tipo, activo_id)
+    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
+        raise HTTPException(status_code=404, detail="El activo no existe.")
     contenido = descifrar(activo.notas_cifradas) if activo.notas_cifradas else ""
     return render(request, "notas_form.html", {
         "usuario_actual": usuario, "activo": activo, "tipo_activo": tipo,
@@ -81,6 +86,8 @@ def notas_guardar(
     contenido: Annotated[str, Form()] = "",
 ):
     activo, url_volver = _resolver(db, tipo, activo_id)
+    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
+        raise HTTPException(status_code=404, detail="El activo no existe.")
     activo.notas_cifradas = cifrar(contenido) if contenido.strip() else None
     audit.registrar(db, audit.NOTA_ACTUALIZADA, request=request, usuario=usuario,
                     objeto_tipo=tipo, objeto_id=activo_id,

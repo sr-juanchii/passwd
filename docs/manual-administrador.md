@@ -59,8 +59,8 @@ operativo del rol **analista** (*default-deny*: no ve nada hasta que se le conce
 ### 2.1 Conceder acceso a un analista
 
 1. Cree el usuario con rol **analista** (§1.1).
-2. Abra el **detalle del activo** (servidor físico, hipervisor o VM). Al final verá el panel
-   **«Accesos de analistas»** (en el frontend, la pestaña/sección de accesos).
+2. Abra el **detalle del activo** (servidor físico, hipervisor, VM o dispositivo de red). Al
+   final verá el panel **«Accesos de analistas»** (en el frontend, la pestaña/sección de accesos).
 3. Elija el analista, el **nivel** y, si procede, los **días de caducidad**; pulse **Conceder**.
    - **Ver** — ve el activo y la lista de credenciales (usuario, servicio, puerto, descripción),
      **sin** las contraseñas.
@@ -69,13 +69,33 @@ operativo del rol **analista** (*default-deny*: no ve nada hasta que se le conce
 
 ### 2.2 Reglas que conviene recordar
 
-- **Sin herencia:** conceder un servidor físico no da acceso a sus hipervisores ni VMs; cada activo
-  se concede por separado.
+- **Sin herencia:** conceder un servidor físico no da acceso a sus hipervisores ni VMs (ni a los
+  dispositivos de red); cada activo se concede por separado.
 - **Default-deny:** sin concesión vigente, el analista recibe **404** (ni siquiera se filtra la
   existencia del activo).
 - **Caducidad:** al vencer `expira_en`, la concesión deja de surtir efecto automáticamente.
 - La traza de quién concedió/revocó qué y cuándo vive en la **bitácora** (`acceso_concedido` /
   `acceso_revocado`).
+
+### 2.3 Ocultar activos a los operadores (restringir)
+
+Mientras las concesiones **abren** acceso a un analista, la marca **restringido** lo **cierra**
+para los operadores. Úsela con los activos más sensibles (p. ej. los servidores de dirección o
+seguridad) que solo la administración debe manejar.
+
+1. Al crear o editar un servidor físico, hipervisor o dispositivo de red, marque la casilla
+   **«Restringir a administradores»** (solo visible para administradores).
+2. Efecto inmediato:
+   - El **operador** deja de ver el activo por completo: no aparece en el inventario, la
+     búsqueda ni la exportación, y su detalle responde **404**. Tampoco puede gestionar ni
+     revelar sus credenciales o notas.
+   - El **auditor sí lo ve** (para su labor de supervisión) pero, como siempre, **no revela
+     contraseñas**.
+   - Un **analista** solo lo ve si usted le concede acceso explícito (la concesión prevalece
+     sobre la restricción).
+   - Si restringe un **hipervisor**, sus **máquinas virtuales** quedan igualmente ocultas.
+3. Para volver a hacerlo visible, desmarque la casilla. Cada cambio queda auditado
+   (`activo_restriccion_cambiada`).
 
 ---
 
@@ -135,12 +155,49 @@ Menú **Importar** (requiere `inventario.gestionar`: admin y operador).
 - Suba un **CSV** con activos y/o credenciales. El archivo se procesa **en memoria** (no se
   persiste) y las contraseñas se **cifran al guardar**.
 - Los **errores por fila no abortan** la importación: al final se muestra un resumen con lo creado
-  (servidores, hipervisores, VMs, credenciales) y la lista de errores.
+  (servidores, hipervisores, dispositivos de red, VMs, credenciales) y la lista de errores.
 - La operación queda auditada.
 
-El CSV usa una columna `tipo` (`servidor`/`hipervisor`/`vm`/`credencial`) y, para las VMs y
-credenciales, una referencia al activo padre. Tras importar, revise el inventario y rote o complete
-las credenciales que lo necesiten.
+El CSV usa una columna `tipo` (`servidor`/`hipervisor`/`dispositivo`/`vm`/`credencial`) y, para las
+VMs y credenciales, una referencia al activo padre (en credenciales, `activo_tipo` acepta también
+`dispositivo`). Los dispositivos de red usan además `tipo_dispositivo`, `version` (firmware) y
+`puertos`. Tras importar, revise el inventario y rote o complete las credenciales que lo necesiten.
+
+---
+
+## 6 bis. Configuración del sistema (en caliente)
+
+Menú **Configuración** (solo administradores; requiere `configuracion.gestionar`). Permite ajustar
+parámetros operativos **sin reiniciar ni tocar el `.env`**. Los cambios se aplican al instante,
+anulan la variable de entorno correspondiente, se propagan a las demás instancias en pocos segundos
+y **quedan auditados**.
+
+Grupos de ajustes editables:
+
+- **Sesión y comportamiento:** inactividad máxima, vida máxima de sesión, amortiguación de actividad.
+- **Política de cuentas:** longitud mínima de contraseña (mín. 8), intentos antes de bloquear,
+  duración del bloqueo.
+- **Límites de tasa (anti-abuso):** límites y ventanas de inicio de sesión y de revelado/copiado.
+- **Inventario y auditoría:** días de rotación antes de alertar, historial de contraseñas, retención
+  de auditoría (mín. 90 días).
+- **Notificaciones por correo:** activación, servidor/puerto/usuario SMTP, contraseña SMTP (se guarda
+  **cifrada** y nunca se muestra; deje el campo vacío para conservarla), STARTTLS, remitente,
+  destinatarios y nombre/emisor.
+
+Utilidades de la pantalla:
+
+- **Origen de cada ajuste:** una insignia indica si el valor viene «por defecto», «por entorno» o si
+  está «configurado aquí». **Restablecer** un ajuste borra el override y vuelve al valor base.
+- **Enviar correo de prueba:** valida la configuración SMTP enviando un mensaje (sin secretos) a un
+  destinatario o a la lista configurada; informa si el envío falla.
+- **Información del sistema (solo lectura):** parámetros que **no** se editan aquí porque son
+  secretos de despliegue o exigen reinicio (claves criptográficas, base de datos, `COOKIE_SECURE`,
+  tamaño máximo de petición, proxies de confianza, backend del limitador). Estos siguen fijándose por
+  variable de entorno — ver [`referencia-configuracion.md`](referencia-configuracion.md).
+
+> La configuración inicial (y la de despliegue) sigue haciéndose por variables de entorno; esta
+> pantalla es para los ajustes operativos del día a día. Un cambio hecho aquí **prevalece** sobre la
+> variable de entorno hasta que se restablezca.
 
 ---
 

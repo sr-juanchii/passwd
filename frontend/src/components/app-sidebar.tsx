@@ -7,10 +7,12 @@ import {
   Activity,
   KeyRound,
   Lock,
+  Network,
   ScrollText,
   Search,
   ServerCog,
   ShieldCheck,
+  SlidersHorizontal,
   Upload,
   Users,
   Wallet,
@@ -42,6 +44,7 @@ interface Item {
 
 const PRINCIPAL: Item[] = [
   { titulo: "Inventario", url: "/", icono: ServerCog, permiso: "inventario.ver" },
+  { titulo: "Dispositivos de red", url: "/dispositivos", icono: Network, permiso: "inventario.ver" },
   { titulo: "Mi vault", url: "/vault", icono: Wallet, permiso: "vault.usar" },
   { titulo: "Buscar", url: "/buscar", icono: Search, permiso: "inventario.ver" },
   { titulo: "Importar", url: "/importar", icono: Upload, permiso: "inventario.gestionar" },
@@ -52,6 +55,7 @@ const ADMINISTRACION: Item[] = [
   { titulo: "Usuarios", url: "/usuarios", icono: Users, permiso: "usuarios.gestionar" },
   { titulo: "Tokens API", url: "/tokens", icono: KeyRound, permiso: "tokens.gestionar" },
   { titulo: "Auditoría", url: "/auditoria", icono: ScrollText, permiso: "auditoria.ver" },
+  { titulo: "Configuración", url: "/configuracion", icono: SlidersHorizontal, permiso: "configuracion.gestionar" },
 ];
 
 function Grupo({

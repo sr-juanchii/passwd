@@ -5,9 +5,12 @@
 import type {
   AuditoriaPagina,
   Concesion,
+  ConfiguracionResp,
   CredencialDetalle,
   CredencialInput,
   Dashboard,
+  DispositivoDetalle,
+  DispositivoInput,
   HipervisorDetalle,
   HipervisorInput,
   Metricas,
@@ -45,6 +48,17 @@ export function getCsrf() {
 }
 
 const BASE = "/api/web";
+
+// Cuerpo de crear/editar de un activo restringible (servidor, hipervisor,
+// dispositivo). `restringido` solo viaja cuando el caller (el formulario) lo
+// definió — es decir, cuando el usuario es administrador. Para el resto de roles
+// el formulario lo deja sin definir y el campo se omite del JSON (el backend lo
+// ignoraría de todos modos).
+function cuerpoActivo<T extends { restringido?: boolean }>(b: T): Record<string, unknown> {
+  const cuerpo: Record<string, unknown> = { ...b };
+  if (b.restringido === undefined) delete cuerpo.restringido;
+  return cuerpo;
+}
 
 type Opts = {
   method?: string;
@@ -141,19 +155,27 @@ export const api = {
   dashboard: () => request<Dashboard>("/dashboard"),
   servidor: (id: number) => request<ServidorDetalle>(`/servidores/${id}`),
   crearServidor: (b: ServidorInput) =>
-    request<{ id: number }>("/servidores", { method: "POST", body: b, csrf: true }),
+    request<{ id: number }>("/servidores", { method: "POST", body: cuerpoActivo(b), csrf: true }),
   editarServidor: (id: number, b: ServidorInput) =>
-    request<{ id: number }>(`/servidores/${id}`, { method: "PUT", body: b, csrf: true }),
+    request<{ id: number }>(`/servidores/${id}`, { method: "PUT", body: cuerpoActivo(b), csrf: true }),
   eliminarServidor: (id: number) =>
     request<{ ok: boolean }>(`/servidores/${id}`, { method: "DELETE", csrf: true }),
 
   hipervisor: (id: number) => request<HipervisorDetalle>(`/hipervisores/${id}`),
   crearHipervisor: (b: HipervisorInput) =>
-    request<{ id: number }>("/hipervisores", { method: "POST", body: b, csrf: true }),
+    request<{ id: number }>("/hipervisores", { method: "POST", body: cuerpoActivo(b), csrf: true }),
   editarHipervisor: (id: number, b: HipervisorInput) =>
-    request<{ id: number }>(`/hipervisores/${id}`, { method: "PUT", body: b, csrf: true }),
+    request<{ id: number }>(`/hipervisores/${id}`, { method: "PUT", body: cuerpoActivo(b), csrf: true }),
   eliminarHipervisor: (id: number) =>
     request<{ ok: boolean }>(`/hipervisores/${id}`, { method: "DELETE", csrf: true }),
+
+  dispositivoDetalle: (id: number) => request<DispositivoDetalle>(`/dispositivos/${id}`),
+  crearDispositivo: (b: DispositivoInput) =>
+    request<{ id: number }>("/dispositivos", { method: "POST", body: cuerpoActivo(b), csrf: true }),
+  editarDispositivo: (id: number, b: DispositivoInput) =>
+    request<{ id: number }>(`/dispositivos/${id}`, { method: "PUT", body: cuerpoActivo(b), csrf: true }),
+  eliminarDispositivo: (id: number) =>
+    request<{ ok: boolean }>(`/dispositivos/${id}`, { method: "DELETE", csrf: true }),
 
   vm: (id: number) => request<VmDetalle>(`/vms/${id}`),
   crearVm: (hipervisorId: number, b: VmInput) =>
@@ -284,6 +306,31 @@ export const api = {
 
   // --- Métricas ---
   metricas: () => request<Metricas>("/metricas"),
+
+  // --- Configuración del sistema (solo administradores) ---
+  configuracion: () => request<ConfiguracionResp>("/configuracion"),
+  // Envía valores nativos: number (entero), boolean (booleano), string
+  // (texto/secreto). Un secreto solo debe incluirse si el usuario escribió uno
+  // nuevo (ausencia/vacío = «no cambiar»).
+  guardarConfiguracion: (cambios: Record<string, unknown>) =>
+    request<{ modificadas: string[] }>("/configuracion", {
+      method: "PUT",
+      body: { cambios },
+      csrf: true,
+    }),
+  restablecerAjuste: (clave: string) =>
+    request<{ restablecido: boolean }>("/configuracion/restablecer", {
+      method: "POST",
+      body: { clave },
+      csrf: true,
+    }),
+  // `destinatario` opcional: si va vacío, el backend usa la lista configurada.
+  probarCorreo: (destinatario: string) =>
+    request<{ ok: boolean; destinatarios: number }>("/configuracion/probar-correo", {
+      method: "POST",
+      body: { destinatario },
+      csrf: true,
+    }),
 
   // --- Importación ---
   importar: async (archivo: File): Promise<ResultadoImportacion> => {
