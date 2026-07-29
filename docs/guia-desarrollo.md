@@ -121,6 +121,15 @@ Mapa detallado del backend en [`arquitectura.md`](arquitectura.md) §3; del fron
   la migración, `alembic upgrade head` para aplicarla y `alembic stamp head` para marcar una base
   existente como al día. La revisión `0001` es la línea base del esquema completo, y una prueba
   (`tests/test_migraciones_alembic.py`) verifica que reproduce exactamente `Base.metadata`.
+  - **Auto-reparación de restricciones al arrancar:** el despliegue habitual (`docker compose up
+    --build`) NO ejecuta Alembic; solo `init_db()`. Para que una BD que se actualiza de forma
+    aditiva no quede con restricciones obsoletas, `schema_sync.reconciliar_restricciones()` pone al
+    día, tras `reconciliar_esquema`, las `CHECK`/`UNIQUE` conocidas que dependen de columnas nuevas
+    (hoy: la CHECK «un activo» y la UNIQUE de concesiones, que deben incluir `dispositivo_red_id`).
+    Es idempotente y seguro (SQLite: reconstrucción de tabla; MySQL/MariaDB: `ALTER`); si no puede,
+    registra la reparación manual necesaria sin abortar el arranque. Si en el futuro un cambio de
+    `CHECK`/`UNIQUE` debe surtir efecto también en despliegues que no corren Alembic, amplíe esa
+    función además de crear la revisión.
 - **Pruebas:** acompañe cada cambio funcional o de seguridad con su prueba en `tests/`.
 - **Política del proyecto:** **ninguna funcionalidad extra se incorpora sin consultarla antes**
   (ver README y [`hoja-de-ruta.md`](hoja-de-ruta.md)).

@@ -58,7 +58,11 @@ def get_engine() -> Engine:
 def init_db() -> None:
     """Crea las tablas que falten y reconcilia columnas nuevas (cambios aditivos)."""
     from app import models  # noqa: F401  (registra los modelos)
-    from app.schema_sync import migrar_inventario_nivel_superior, reconciliar_esquema
+    from app.schema_sync import (
+        migrar_inventario_nivel_superior,
+        reconciliar_esquema,
+        reconciliar_restricciones,
+    )
 
     engine = get_engine()
     # Migración no aditiva del inventario (hipervisor de nivel superior) ANTES de
@@ -66,6 +70,10 @@ def init_db() -> None:
     migrar_inventario_nivel_superior(engine)
     Base.metadata.create_all(engine)
     reconciliar_esquema(engine)
+    # Tras añadir columnas nuevas, actualiza las restricciones CHECK/UNIQUE que
+    # una BD antigua conserve obsoletas (p. ej. la CHECK «un activo» sin
+    # dispositivo_red_id, que causa un error 500 al guardar su credencial).
+    reconciliar_restricciones(engine)
 
 
 def get_db() -> Iterator[Session]:
