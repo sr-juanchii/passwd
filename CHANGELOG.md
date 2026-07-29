@@ -12,6 +12,20 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
+_Nada pendiente de publicar._
+
+<!--
+Al abrir un PR, añada aquí sus entradas bajo la categoría correspondiente
+(Añadido / Cambiado / Corregido / Seguridad / Eliminado / Obsoleto). Al liberar
+una versión, mueva este bloque a una nueva sección `## [X.Y.Z] - AAAA-MM-DD` y
+actualice `app/__init__.py` + `pyproject.toml`.
+-->
+
+## [1.1.0] - 2026-07-29
+
+Amplía el inventario a toda la infraestructura, añade control de acceso restrictivo por objeto
+y una consola de configuración en caliente; incluye una corrección de despliegue.
+
 ### Añadido
 
 - **Módulo de configuración en tiempo de ejecución** (solo administradores, nuevo permiso
@@ -49,12 +63,16 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 - Migración Alembic `0005` (nueva tabla `dispositivos_red`; cuarta clave foránea con CHECK y
   UNIQUE ampliados en `credenciales` y `concesiones_acceso`).
 
-<!--
-Al abrir un PR, añada aquí sus entradas bajo la categoría correspondiente
-(Añadido / Cambiado / Corregido / Seguridad / Eliminado / Obsoleto). Al liberar
-una versión, mueva este bloque a una nueva sección `## [X.Y.Z] - AAAA-MM-DD` y
-actualice `app/__init__.py` + `pyproject.toml`.
--->
+### Corregido
+
+- **Error 500 al guardar la contraseña de un dispositivo de red** en instalaciones existentes
+  actualizadas por despliegue (`git pull` + `docker compose up --build`, que arranca con
+  `init_db()` pero no ejecuta Alembic). En una BD anterior a los dispositivos, la columna
+  `dispositivo_red_id` se añadía de forma aditiva, pero la restricción `CHECK` «un activo» de
+  `credenciales`/`concesiones_acceso` (y la `UNIQUE` de concesiones) quedaba obsoleta y rechazaba
+  el registro. `schema_sync.reconciliar_restricciones()` (invocada por `init_db`) las pone al día
+  de forma idempotente y segura al arrancar (SQLite: reconstrucción de tabla; MySQL/MariaDB:
+  `ALTER TABLE`), sin abortar el arranque si no puede.
 
 ## [1.0.0] - 2026-07-15
 
@@ -94,5 +112,6 @@ Primera versión estable. Establece la línea base sobre la que se versionan los
 
 El detalle del alcance por fases está en [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md).
 
-[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.0.0...HEAD
+[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.1.0
 [1.0.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.0.0
