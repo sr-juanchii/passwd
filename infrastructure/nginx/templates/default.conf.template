@@ -74,9 +74,29 @@ server {
     proxy_hide_header Strict-Transport-Security;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
+    # Huella tecnológica: se oculta cualquier X-Powered-By del upstream.
+    proxy_hide_header X-Powered-By;
+
     # La aplicación aplica su propio límite (64 KB); nginx corta abusos brutos.
     client_max_body_size 1m;
     limit_conn passwd_conn 30;
+
+    # ── Barrera de acceso al código fuente (defensa en profundidad) ──────────
+    # No impide leer el JS que el navegador necesita ejecutar —eso es imposible,
+    # ver docs/proteccion-codigo-fuente.md— pero niega los artefactos que
+    # revelan el código ORIGINAL y que nunca deben servirse en producción.
+    location ~* \.(map|ts|tsx|py|pyc)$ {
+        access_log off;
+        return 404;
+    }
+
+    # Metadatos de repositorio y de entorno (/.git/, /.env, /.svn/, editores),
+    # objetivo rutinario de escaneos automatizados. /.well-known/ (ACME) sigue
+    # siendo legítimo y queda excluido.
+    location ~ ^/\.(?!well-known/) {
+        access_log off;
+        return 404;
+    }
 
     # ── nginx detrás de OTRO proxy/balanceador (opcional) ────────────────────
     # Por defecto, nginx es el borde y $remote_addr es la IP del cliente final.

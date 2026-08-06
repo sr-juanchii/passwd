@@ -12,7 +12,13 @@ export default function ErrorBoundary({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    // Solo en desarrollo: en producción, volcar el objeto Error a la consola
+    // expone la traza de pila (nombres de módulos y funciones internas) a
+    // cualquiera con la consola abierta. El `digest` que Next muestra en la
+    // interfaz basta para correlacionar el fallo con el log del servidor.
+    if (process.env.NODE_ENV !== "production") {
+      console.error(error);
+    }
   }, [error]);
 
   return (
@@ -22,6 +28,7 @@ export default function ErrorBoundary({
         <h1 className="text-xl font-semibold">Algo salió mal</h1>
         <p className="text-sm text-muted-foreground">
           Ocurrió un error inesperado al mostrar esta página.
+          {error.digest ? ` (ref. ${error.digest})` : ""}
         </p>
       </div>
       <Button onClick={reset} variant="outline">

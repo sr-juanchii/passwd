@@ -111,6 +111,12 @@ jobs:
       - name: Compilación (next build)
         run: pnpm build
 
+      - name: Exposición de código fuente en los artefactos públicos
+        # Verifica que .next/static y public/ no publiquen mapas de origen
+        # (*.map, que reconstruyen el TypeScript original), secretos de servidor
+        # ni rutas absolutas del entorno de compilación.
+        run: bash ../scripts/verificar-build-frontend.sh .
+
       - name: Vulnerabilidades en dependencias (pnpm audit, OWASP A06)
         # npm retiró el endpoint clásico de auditoría (HTTP 410) y esta versión
         # de pnpm aún lo consulta. Si el registro no responde, se avisa y no se

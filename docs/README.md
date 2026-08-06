@@ -48,6 +48,7 @@ corresponda a su rol.
 | [`cumplimiento-iso-27003.md`](cumplimiento-iso-27003.md) | Alineación ISO/IEC 27001:2022 (Anexo A) e ISO/IEC 27003. |
 | [`cumplimiento-owasp.md`](cumplimiento-owasp.md) | OWASP Top 10 (2021) y API Security Top 10 (2023). |
 | [`verificacion-cumplimiento.md`](verificacion-cumplimiento.md) | Informe de verificación con evidencia (pruebas, SAST, dinámica). |
+| [`proteccion-codigo-fuente.md`](proteccion-codigo-fuente.md) | **Exposición del código en el navegador**: qué se puede bloquear de verdad (mapas de origen, secretos, huella, `/.git/`), qué no (las herramientas de desarrollador) y por qué. |
 
 ## 🗺️ Evolución
 

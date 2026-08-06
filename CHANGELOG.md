@@ -12,7 +12,36 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
-_Nada pendiente de publicar._
+### Seguridad
+
+- **Reducción de la exposición del código fuente en producción** (OWASP A05 — configuración de
+  seguridad incorrecta). Nuevo documento
+  [`docs/proteccion-codigo-fuente.md`](docs/proteccion-codigo-fuente.md) que delimita qué se puede
+  bloquear de verdad y qué no: **no es posible impedir la lectura del bundle desde las herramientas
+  de desarrollador** —el navegador debe ejecutar ese código, y `view-source`, `curl` o un proxy de
+  intercepción eluden cualquier truco anti-DevTools— por lo que la protección se centra en no
+  entregar información que la aplicación no necesita:
+  - **Mapas de origen**: `productionBrowserSourceMaps: false` fijado de forma explícita en
+    `next.config.ts`, y nginx responde `404` a `*.map`, `*.ts` y `*.tsx` como segunda barrera, para
+    que un build mal configurado no publique el TypeScript original con nombres y comentarios.
+  - **Metadatos de repositorio y entorno**: nginx responde `404` a las rutas que empiezan por punto
+    (`/.git/`, `/.env`, `/.svn/`, archivos de editor), preservando `/.well-known/` para ACME. Un
+    `/.git/` accesible es la fuga completa de código fuente más habitual en despliegues reales.
+  - **Trazas de pila**: el error boundary de la aplicación ya no vuelca el objeto `Error` a la
+    consola en producción (solo en desarrollo); la interfaz muestra el `digest` de Next, suficiente
+    para correlacionar con el log del servidor.
+  - **Huella tecnológica**: `poweredByHeader: false` en Next y `proxy_hide_header X-Powered-By` en
+    ambas plantillas de nginx.
+  - **Indexación**: cabecera `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` en las páginas
+    del frontend, para que una aplicación interna no quede en cachés públicas de terceros.
+
+### Añadido
+
+- **Control automático de exposición del build del frontend**:
+  [`scripts/verificar-build-frontend.sh`](scripts/verificar-build-frontend.sh), integrado en el CI
+  tras `next build`. Falla el pipeline si en `.next/static` o `public/` aparecen mapas de origen,
+  patrones de secretos de servidor (`PASSWD_SECRET_KEY`, `PASSWD_ENCRYPTION_KEY`, claves privadas…)
+  o rutas absolutas de la máquina de compilación.
 
 <!--
 Al abrir un PR, añada aquí sus entradas bajo la categoría correspondiente
