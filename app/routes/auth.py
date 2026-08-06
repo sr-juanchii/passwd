@@ -324,7 +324,10 @@ def mfa_configurar(
                       status_code=400)
 
     usuario.mfa_habilitado = True
-    usuario.ultimo_otp_usado = codigo.strip()
+    # Se registra en forma CANÓNICA: la comparación anti-reutilización de
+    # /mfa/verificar normaliza igual, de modo que el mismo código no puede
+    # volver a pasar reformateado con espacios.
+    usuario.ultimo_otp_usado = mfa.normalizar_codigo(codigo)
     usuario.ultimo_acceso = ahora_utc()
     sesion.etapa = ETAPA_ACTIVA
     token = rotar_token(db, sesion)
@@ -366,7 +369,7 @@ def mfa_verificar(
         return render(request, "mfa_verificar.html",
                       {"csrf_token": sesion.csrf_token, "error": "Token CSRF inválido."}, status_code=403)
 
-    codigo_limpio = codigo.strip().replace(" ", "")
+    codigo_limpio = mfa.normalizar_codigo(codigo)
     secreto = descifrar(usuario.totp_secret_cifrado)
     reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
 
@@ -507,7 +510,7 @@ def recuperar_verificar(
     # un código incorrecto sobre una cuenta real (anti-enumeración en el paso 2).
     usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
     recuperable = usuario is not None and usuario.activo and usuario.totp_secret_cifrado is not None
-    codigo_limpio = codigo.strip().replace(" ", "")
+    codigo_limpio = mfa.normalizar_codigo(codigo)
     if recuperable:
         secreto = descifrar(usuario.totp_secret_cifrado)
         reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado

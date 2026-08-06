@@ -14,6 +14,25 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ### Seguridad
 
+- **Corregida la reutilización del código TOTP de enrolamiento** (severidad alta;
+  OWASP A07 — fallos de identificación y autenticación; RFC 6238 §5.2). La
+  protección anti-reutilización (`Usuario.ultimo_otp_usado`) quedaba anulada por una
+  **asimetría de normalización**: el enrolamiento guardaba el código con
+  `codigo.strip()`, conservando los espacios internos, mientras que la verificación
+  comparaba con `strip().replace(" ", "")`. Como las aplicaciones autenticadoras
+  muestran los códigos agrupados (`599 790`), al enrolar con esa forma se almacenaba
+  `"599 790"` y la comparación posterior contra `"599790"` no coincidía: **el mismo
+  código de 6 dígitos volvía a ser aceptado** durante toda su ventana de validez
+  (hasta ~90 s con `valid_window=1`), que es exactamente el ataque de *replay* con un
+  proxy de intercepción. Afectaba a los dos flujos (web Jinja y API JSON del
+  frontend). Segunda cara del mismo defecto: la columna es `String(8)`, así que una
+  forma sin normalizar (`1 2 3 4 5 6`) se truncaba en MySQL no estricto —rompiendo
+  también la comparación— o fallaba en modo estricto. Se introduce
+  `mfa.normalizar_codigo()` como **única** forma canónica y los seis puntos que tocan
+  un código TOTP (validación, y registro y comparación en enrolamiento, verificación
+  y recuperación) pasan por ella, de modo que la asimetría no puede reaparecer al
+  editar un solo sitio.
+
 - **Reducción de la exposición del código fuente en producción** (OWASP A05 — configuración de
   seguridad incorrecta). Nuevo documento
   [`docs/proteccion-codigo-fuente.md`](docs/proteccion-codigo-fuente.md) que delimita qué se puede
@@ -42,6 +61,21 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   tras `next build`. Falla el pipeline si en `.next/static` o `public/` aparecen mapas de origen,
   patrones de secretos de servidor (`PASSWD_SECRET_KEY`, `PASSWD_ENCRYPTION_KEY`, claves privadas…)
   o rutas absolutas de la máquina de compilación.
+- **Batería exhaustiva contra el salto del MFA**: `tests/test_bypass_mfa.py` (20
+  pruebas). El barrido principal **enumera las rutas registradas en la aplicación**
+  —vía esquema OpenAPI— y ataca las 113 con todos sus métodos desde una sesión
+  detenida en cada una de las tres etapas previas a `activa`, de modo que un endpoint
+  nuevo que olvide su dependencia de sesión rompe la suite en lugar de pasar
+  inadvertido. Un 422 **no** se acepta como rechazo válido (significaría que la
+  petición superó la autenticación y llegó a validar el cuerpo). Incluye pruebas
+  dirigidas de re-enrolamiento, fuga del secreto TOTP, replay de TOTP y de códigos de
+  recuperación, fuerza bruta con bloqueo de cuenta, fijación de sesión, falsificación
+  de cookie, CSRF cruzado, recuperación de contraseña como puerta trasera y emisión
+  de tokens de API desde una sesión pre-MFA. Dos pruebas vigilan a la propia suite
+  para que no pase en vacío (cobertura mínima de rutas y ausencia de exenciones
+  fantasma). Nuevo documento
+  [`docs/resistencia-bypass-mfa.md`](docs/resistencia-bypass-mfa.md) con el modelo de
+  amenaza, los vectores auditados y los límites del TOTP frente a WebAuthn/FIDO2.
 
 <!--
 Al abrir un PR, añada aquí sus entradas bajo la categoría correspondiente

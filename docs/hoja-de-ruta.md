@@ -57,6 +57,16 @@ Marca el estado de cada propuesta y el orden de desarrollo por fases.
   (aprovisionamiento, roles, break-glass, MFA del IdP) más una revisión de seguridad dedicada.
   Queda como candidata futura; cuando se priorice se retomará el diseño y se implementará con esos
   datos.
+- 🔜 **WebAuthn / FIDO2 como segundo factor** (llave física o *passkey*), al menos para las cuentas
+  de administrador. Es la **mejora de seguridad de mayor impacto** pendiente para este sistema. El
+  TOTP actual resiste todos los vectores auditados en
+  [`resistencia-bypass-mfa.md`](resistencia-bypass-mfa.md) —replay, re-enrolamiento, fuerza bruta,
+  fijación de sesión—, pero es **intrínsecamente vulnerable al phishing en tiempo real**
+  (*adversary-in-the-middle*: Evilginx, Modlishka), donde un sitio falso proxifica el real y usa la
+  contraseña y el código al instante. Ningún control de servidor puede distinguir ese uso, porque el
+  código es legítimo y se usa una sola vez. WebAuthn lo cierra por diseño: la firma va **ligada al
+  dominio**, de modo que un sitio falso no puede reutilizarla. Dado que este sistema custodia las
+  contraseñas de todos los servidores, el TOTP es el eslabón más débil que queda en el acceso.
 
 ## Fase 5 — Endurecimiento (Olas 1+2 del [análisis de mejoras](analisis-mejoras.md)) ✅ (entregada)
 

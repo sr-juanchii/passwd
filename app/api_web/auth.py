@@ -386,7 +386,9 @@ def mfa_configurar(
         raise _error("Código incorrecto. Verifique su aplicación autenticadora.", 400)
 
     usuario.mfa_habilitado = True
-    usuario.ultimo_otp_usado = cuerpo.codigo.strip()
+    # Se registra en forma CANÓNICA (ver nota en app/security/mfa.py):
+    # almacenarlo sin normalizar permitiría reutilizarlo con espacios.
+    usuario.ultimo_otp_usado = mfa.normalizar_codigo(cuerpo.codigo)
     usuario.ultimo_acceso = ahora_utc()
     sesion.etapa = ETAPA_ACTIVA
     token = rotar_token(db, sesion)
@@ -423,7 +425,7 @@ def mfa_verificar(
     usuario = db.get(Usuario, sesion.usuario_id)
     assert usuario is not None and usuario.totp_secret_cifrado is not None
 
-    codigo_limpio = cuerpo.codigo.strip().replace(" ", "")
+    codigo_limpio = mfa.normalizar_codigo(cuerpo.codigo)
     secreto = descifrar(usuario.totp_secret_cifrado)
     reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
 
@@ -575,7 +577,7 @@ def recuperar_verificar(
     # reintroducir un oráculo de enumeración en este paso.
     usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
     recuperable = usuario is not None and usuario.activo and usuario.totp_secret_cifrado is not None
-    codigo_limpio = cuerpo.codigo.strip().replace(" ", "")
+    codigo_limpio = mfa.normalizar_codigo(cuerpo.codigo)
     if recuperable:
         secreto = descifrar(usuario.totp_secret_cifrado)
         reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado

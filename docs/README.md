@@ -49,6 +49,7 @@ corresponda a su rol.
 | [`cumplimiento-owasp.md`](cumplimiento-owasp.md) | OWASP Top 10 (2021) y API Security Top 10 (2023). |
 | [`verificacion-cumplimiento.md`](verificacion-cumplimiento.md) | Informe de verificación con evidencia (pruebas, SAST, dinámica). |
 | [`proteccion-codigo-fuente.md`](proteccion-codigo-fuente.md) | **Exposición del código en el navegador**: qué se puede bloquear de verdad (mapas de origen, secretos, huella, `/.git/`), qué no (las herramientas de desarrollador) y por qué. |
+| [`resistencia-bypass-mfa.md`](resistencia-bypass-mfa.md) | **Salto del segundo factor**: modelo de amenaza con proxy de intercepción (Burp), vectores auditados, la vulnerabilidad de reutilización de TOTP corregida y los límites del TOTP frente a WebAuthn. |
 
 ## 🗺️ Evolución
 
