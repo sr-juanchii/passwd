@@ -17,7 +17,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, avisos
 from app.database import get_db
 from app.deps import requiere_permiso, verificar_csrf
 from app.models import (
@@ -110,6 +110,9 @@ def conceder(
                     objeto_tipo=tipo, objeto_id=activo_id,
                     detalle=f"Concesión {accion_detalle} a {objetivo.username} sobre "
                             f"{instancia.nombre} (nivel {nivel}{caduca})")
+    # El titular debe saber siempre qué acceso tiene: un cambio de permisos que no
+    # reconozca es un indicio de uso indebido de una cuenta administrativa.
+    avisos.aviso_concesion(db, objetivo, tipo, activo_id, concedida=True, nivel=nivel)
     return RedirectResponse(f"{url_volver}?msg={quote('Acceso concedido.')}", status_code=303)
 
 
@@ -129,9 +132,11 @@ def revocar(
     detalle = (f"Acceso de {concesion.usuario.username} sobre {concesion.nombre_activo} "
                f"(nivel {concesion.nivel}) revocado")
     _, url_volver, _ = _resolver_activo(db, tipo, activo_id)
+    afectado = concesion.usuario
     db.delete(concesion)
     audit.registrar(db, audit.ACCESO_REVOCADO, request=request, usuario=admin,
                     objeto_tipo=tipo, objeto_id=activo_id, detalle=detalle)
+    avisos.aviso_concesion(db, afectado, tipo, activo_id, concedida=False)
     return RedirectResponse(f"{url_volver}?msg={quote('Acceso revocado.')}", status_code=303)
 
 

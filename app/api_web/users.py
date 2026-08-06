@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, avisos
 from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.api_web.serializers import serializar_usuario
 from app.database import get_db
@@ -140,6 +140,18 @@ def usuario_reset_password(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, ADMIN],
 ):
+    """Restablece la contraseña de un usuario y le envía la temporal por correo.
+
+    Exclusivo de administradores (``usuarios.gestionar``). La contraseña temporal
+    viaja al buzón del titular, de modo que el administrador ya no tiene que
+    copiarla ni transmitirla a mano por un canal sin auditoría.
+
+    Si el correo NO se puede entregar, la contraseña se devuelve al administrador
+    como plan de contingencia: el restablecimiento ya ocurrió y, sin ese valor, la
+    cuenta quedaría con una contraseña que nadie conoce. Ese caso se audita de
+    forma distinguible para que quede constancia de que el secreto pasó por
+    pantalla.
+    """
     objetivo = _obtener_usuario_o_404(db, usuario_id)
     password_temporal = _generar_password_temporal()
     objetivo.password_hash = hashear_password(password_temporal)
@@ -147,10 +159,34 @@ def usuario_reset_password(
     objetivo.intentos_fallidos = 0
     objetivo.bloqueado_hasta = None
     revocar_sesiones_de_usuario(db, objetivo.id)
-    audit.registrar(db, audit.USUARIO_ACTUALIZADO, request=request, usuario=usuario,
-                    objeto_tipo="usuario", objeto_id=objetivo.id,
-                    detalle=f"Contraseña temporal emitida para {objetivo.username}; sesiones revocadas")
-    return {"username": objetivo.username, "password_temporal": password_temporal}
+
+    entregado = avisos.enviar_password_temporal(objetivo, password_temporal, usuario.username)
+    audit.registrar(
+        db, audit.USUARIO_ACTUALIZADO, request=request, usuario=usuario,
+        objeto_tipo="usuario", objeto_id=objetivo.id,
+        detalle=(
+            f"Contraseña temporal emitida para {objetivo.username} y enviada a su correo; "
+            "sesiones revocadas"
+            if entregado else
+            f"Contraseña temporal emitida para {objetivo.username}; sesiones revocadas. "
+            "NO se pudo enviar por correo: entregada al administrador en pantalla"
+        ),
+    )
+    respuesta: dict = {
+        "username": objetivo.username,
+        "correo_enviado": entregado,
+        "destino": avisos.enmascarar_correo(objetivo.email) if entregado else None,
+    }
+    if not entregado:
+        # Contingencia: sin correo, el administrador necesita el valor para poder
+        # entregarlo; se acompaña del motivo para que sepa que no es lo normal.
+        respuesta["password_temporal"] = password_temporal
+        respuesta["aviso"] = (
+            "No se pudo enviar el correo (revise la configuración SMTP). Entregue "
+            "la contraseña temporal por un canal seguro; el usuario deberá cambiarla "
+            "en su primer acceso."
+        )
+    return respuesta
 
 
 @router.post("/usuarios/{usuario_id}/reset-mfa", dependencies=[CSRF])
@@ -191,4 +227,7 @@ def usuario_cambiar_rol(
     audit.registrar(db, audit.USUARIO_ACTUALIZADO, request=request, usuario=usuario,
                     objeto_tipo="usuario", objeto_id=objetivo.id,
                     detalle=f"Rol de {objetivo.username}: {anterior} → {cuerpo.rol}; sesiones revocadas")
+    avisos.aviso_cambio_permisos_propios(
+        db, objetivo, "Rol modificado", f"su rol pasó de «{anterior}» a «{cuerpo.rol}»"
+    )
     return {"ok": True}

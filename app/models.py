@@ -585,6 +585,48 @@ class CodigoRecuperacionMFA(Base):
     usuario: Mapped[Usuario] = relationship()
 
 
+class CodigoOtpCorreo(Base):
+    """Código OTP de un solo uso enviado al correo, como MFA de respaldo.
+
+    Permite completar el segundo factor cuando el usuario no tiene acceso a su
+    aplicación autenticadora. Solo se persiste el hash SHA-256 del código; el
+    valor en claro existe únicamente en el correo enviado a su titular.
+
+    Ciclo de vida: se emite desde la etapa ``mfa_pendiente`` (es decir, DESPUÉS de
+    validar la contraseña), caduca a los ``PASSWD_EMAIL_OTP_TTL_MINUTES`` minutos,
+    se invalida al consumirse (``usado_en``) y también al superar ``MAX_INTENTOS``
+    verificaciones fallidas. Emitir un código nuevo invalida los anteriores del
+    mismo usuario, de modo que solo hay un código vivo por cuenta.
+    """
+
+    __tablename__ = "codigos_otp_correo"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    codigo_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    expira_en: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    intentos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    usado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    invalidado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Contexto de la solicitud, para la bitácora y el propio correo de aviso.
+    direccion_ip: Mapped[str] = mapped_column(String(45), nullable=False, default="")
+
+    usuario: Mapped[Usuario] = relationship()
+
+    @property
+    def vigente(self) -> bool:
+        return (
+            self.usado_en is None
+            and self.invalidado_en is None
+            and self.expira_en > ahora_utc()
+        )
+
+
 class RecuperacionPassword(Base):
     """Desafío de auto-recuperación de contraseña (server-side, efímero).
 

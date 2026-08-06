@@ -54,6 +54,15 @@ RUTAS_PRE_MFA_LEGITIMAS = {
     "/api/web/password/cambiar",
     "/api/web/mfa/configurar",
     "/api/web/mfa/verificar",
+    # Método de respaldo del MFA: pedir un OTP al correo registrado. Alcanzable
+    # solo desde 'mfa_pendiente' (la contraseña ya está validada), con CSRF y
+    # doble límite de tasa; no entrega el código en la respuesta, solo lo envía.
+    "/mfa/otp-correo",
+    "/api/web/mfa/otp-correo",
+    # Métodos de 2.º factor disponibles, para que la pantalla ofrezca los
+    # correctos. Solo informa al titular de una sesión cuya contraseña ya se
+    # validó, y sobre su propia cuenta.
+    "/api/web/mfa/metodos",
     "/api/web/password/recuperar/iniciar",
     "/api/web/password/recuperar/verificar",
     "/api/web/password/recuperar/cambiar",

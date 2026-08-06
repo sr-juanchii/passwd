@@ -50,6 +50,7 @@ corresponda a su rol.
 | [`verificacion-cumplimiento.md`](verificacion-cumplimiento.md) | Informe de verificación con evidencia (pruebas, SAST, dinámica). |
 | [`proteccion-codigo-fuente.md`](proteccion-codigo-fuente.md) | **Exposición del código en el navegador**: qué se puede bloquear de verdad (mapas de origen, secretos, huella, `/.git/`), qué no (las herramientas de desarrollador) y por qué. |
 | [`resistencia-bypass-mfa.md`](resistencia-bypass-mfa.md) | **Salto del segundo factor**: modelo de amenaza con proxy de intercepción (Burp), vectores auditados, la vulnerabilidad de reutilización de TOTP corregida y los límites del TOTP frente a WebAuthn. |
+| [`notificaciones-y-mfa-correo.md`](notificaciones-y-mfa-correo.md) | **Avisos dinámicos, MFA de respaldo por correo y reset automatizado**: qué notifica cada evento y a quién (según la matriz de permisos), por qué los avisos nunca llevan secretos y cómo desactivar el OTP por correo. |
 
 ## 🗺️ Evolución
 

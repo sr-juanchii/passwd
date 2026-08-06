@@ -12,6 +12,80 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
+### Añadido
+
+- **MFA de respaldo por OTP al correo**: un usuario sin acceso a su aplicación
+  autenticadora ni a sus códigos de recuperación puede pedir un código de un solo uso
+  a su buzón registrado (`POST /mfa/otp-correo` y su equivalente JSON) y completar con
+  él el segundo factor. Solo alcanzable desde la etapa `mfa_pendiente` —exige la
+  contraseña válida primero, **no es un punto de entrada**—, con código de 8 dígitos,
+  un solo uso, caducidad de 10 min, tope de 5 intentos, límite de tasa por cuenta y
+  por IP, CSRF, solo hash SHA-256 en base de datos, y auditoría más alerta al equipo
+  de seguridad en cada uso. La normalización del código vive en **una sola función**,
+  aplicando la lección del hallazgo de reutilización de TOTP. Nueva tabla
+  `codigos_otp_correo` (migración `0008`, no toca datos existentes).
+  **Nota:** es un factor más débil que el TOTP —quien controle el buzón y conozca la
+  contraseña entra— y añade el proveedor de correo a la cadena de confianza. Se
+  desactiva con `PASSWD_EMAIL_OTP_ENABLED=false` (también en caliente) sin afectar al
+  resto del MFA. El orden de preferencia recomendado sigue siendo TOTP → códigos de
+  recuperación → OTP por correo.
+- **Restablecimiento administrativo con envío automático**: al restablecer la
+  contraseña de una cuenta, la temporal se envía **directamente al correo del
+  titular** y ya no se muestra al administrador, eliminando el paso manual de
+  copiarla y transmitirla por un canal sin auditoría. La respuesta confirma el envío
+  con el buzón **enmascarado**. La acción sigue siendo **exclusiva de administradores**
+  (`usuarios.gestionar`), verificado con pruebas para operador, auditor y analista. Si
+  SMTP falla, la contraseña se devuelve al administrador como contingencia —el
+  restablecimiento ya ocurrió y la cuenta quedaría inaccesible— y la bitácora registra
+  ese caso de forma distinguible.
+- **Sistema dinámico de notificaciones por matriz de permisos** (`app/avisos.py`).
+  Los destinatarios se resuelven **en tiempo de ejecución** con
+  `access.usuarios_con_acceso_a_activo`, que reutiliza como predicado las mismas
+  funciones que autorizan de verdad (`puede_ver_activo` / `puede_revelar_en_activo`):
+  no duplica la lógica, así que los destinatarios no pueden divergir de la
+  autorización real. Eventos cubiertos:
+  - **Actividad y permisos propios**: aviso de inicio de sesión (IP, cliente, rol),
+    de actividad sensible (revelado/copia de credenciales) y de todo cambio en los
+    permisos propios (concesión, revocación y cambio de rol).
+  - **Credenciales compartidas**: al actualizar una credencial se identifica
+    automáticamente a los demás usuarios con acceso a ese activo y se les avisa de la
+    modificación, excluyendo al autor.
+  - **Caducidad de rotación**: aviso preventivo a quienes pueden rotar la contraseña
+    cuando se acerca el cambio obligatorio, con nuevo comando programable
+    `python -m app.cli avisar-rotacion` (y `--simular` para revisar el alcance sin
+    enviar). Distingue «próxima» de «VENCIDA».
+
+  Los avisos comunican **el hecho, nunca el secreto**: ningún correo sobre una
+  credencial incluye la contraseña, ni la anterior ni la nueva, ni pistas sobre ellas
+  — quien la necesite la revela en la aplicación, donde el permiso se comprueba, se
+  limita por tasa y queda en la bitácora. Verificado de forma explícita contra el
+  texto real de los correos. Las dos únicas excepciones son el OTP del MFA y la
+  contraseña temporal de un reset: ambas de un solo uso, con cambio forzado o
+  caducidad corta, y dirigidas al buzón de su propio titular.
+  Los envíos a varios destinatarios salen **como mensajes independientes**: agrupar
+  las direcciones en un `To:` revelaría quién más tiene acceso al activo.
+  Nuevas variables: `PASSWD_NOTIFY_USERS_ENABLED` (defecto `true`, dentro de
+  `PASSWD_NOTIFY_ENABLED`), `PASSWD_ROTATION_WARNING_DAYS` (14),
+  `PASSWD_EMAIL_OTP_ENABLED` (true) y `PASSWD_EMAIL_OTP_TTL_MINUTES` (10), todas
+  editables en caliente.
+- Nuevo documento
+  [`docs/notificaciones-y-mfa-correo.md`](docs/notificaciones-y-mfa-correo.md) y
+  `tests/test_avisos_dinamicos.py` (25 pruebas).
+
+### Cambiado
+
+- **Comportamiento del correo al actualizar**: en despliegues que ya tuvieran
+  `PASSWD_NOTIFY_ENABLED=true`, los **usuarios finales** empezarán a recibir avisos
+  (inicios de sesión, cambios de permisos, credenciales compartidas), no solo la lista
+  fija `PASSWD_NOTIFY_TO`. Es el comportamiento solicitado; para conservar el anterior,
+  `PASSWD_NOTIFY_USERS_ENABLED=false`. Conviene avisar a los usuarios antes de
+  activarlo para que no confundan los avisos legítimos con phishing.
+- Los avisos de actividad sensible se **deduplican por sesión y categoría** (un aviso
+  por tipo de actividad y sesión) en lugar de uno por acción: decenas de correos harían
+  que el usuario los filtrara y se perdería la señal. La bitácora conserva el registro
+  completo acción por acción. La deduplicación se apoya en el limitador de tasa, así
+  que con más de un worker conviene `PASSWD_RATE_LIMIT_BACKEND=bd`.
+
 ### Seguridad
 
 - **Corregida la reutilización del código TOTP de enrolamiento** (severidad alta;

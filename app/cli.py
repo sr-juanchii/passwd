@@ -248,6 +248,70 @@ def _cmd_verificar_auditoria(_args: argparse.Namespace) -> int:
         db.close()
 
 
+def _cmd_avisar_rotacion(args: argparse.Namespace) -> int:
+    """Avisa a los usuarios con acceso de las rotaciones obligatorias próximas.
+
+    Pensado para una tarea programada diaria (cron / systemd timer). Es idempotente
+    dentro de la semana: ``avisos.aviso_rotacion_proxima`` deduplica por credencial
+    y umbral con una ventana de 7 días, así que ejecutarlo a diario no repite el
+    mismo aviso cada día.
+
+    Con ``--simular`` no envía nada: solo informa de cuántas credenciales entrarían
+    en la ventana de preaviso, para poder revisar el alcance antes de activarlo.
+    """
+    from sqlalchemy import select
+
+    from app import avisos
+    from app.access import usuarios_con_acceso_a_credencial
+    from app.config import get_settings
+    from app.models import Credencial
+
+    init_db()
+    db = next(get_db())
+    try:
+        settings = get_settings()
+        if args.simular:
+            credenciales = db.scalars(select(Credencial)).all()
+            en_ventana = [
+                c for c in credenciales
+                if avisos.dias_para_rotacion(c) <= settings.rotation_warning_days
+            ]
+            print(
+                f"Simulación: {len(en_ventana)} de {len(credenciales)} credencial(es) "
+                f"entran en la ventana de preaviso "
+                f"(política {settings.rotation_max_days} días, preaviso "
+                f"{settings.rotation_warning_days} días)."
+            )
+            for c in en_ventana:
+                restantes = avisos.dias_para_rotacion(c)
+                estado = f"vencida hace {abs(restantes)} d" if restantes < 0 else f"vence en {restantes} d"
+                destinatarios = len(
+                    usuarios_con_acceso_a_credencial(db, c, solo_con_revelado=True)
+                )
+                print(f"  - {c.usuario_acceso}@{c.nombre_activo} ({c.servicio}): "
+                      f"{estado}; {destinatarios} destinatario(s)")
+            return 0
+
+        if not avisos.avisos_activos():
+            print(
+                "Los avisos dinámicos están desactivados: se necesita "
+                "PASSWD_NOTIFY_ENABLED=true, PASSWD_NOTIFY_USERS_ENABLED=true y SMTP "
+                "configurado. No se envió nada.",
+                file=sys.stderr,
+            )
+            return 1
+        resumen = avisos.revisar_rotaciones(db)
+        db.commit()
+        print(
+            f"Revisadas {resumen['credenciales_revisadas']} credencial(es); "
+            f"{resumen['avisos_enviados']} aviso(s) enviado(s) sobre "
+            f"{resumen['credenciales_avisadas']} credencial(es)."
+        )
+        return 0
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli", description="Utilidades administrativas.")
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -286,6 +350,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("verificar-auditoria",
                    help="Verifica la integridad (encadenamiento por hash) de la bitácora de auditoría.")
 
+    p_rotacion = sub.add_parser(
+        "avisar-rotacion",
+        help="Avisa por correo a los usuarios con acceso de las rotaciones obligatorias "
+             "próximas o vencidas (pensado para una tarea programada diaria).",
+    )
+    p_rotacion.add_argument("--simular", action="store_true",
+                            help="No envía correos: solo informa de qué credenciales entrarían "
+                                 "en la ventana de preaviso y a cuántos destinatarios.")
+
     args = parser.parse_args(argv)
     if args.comando == "init-db":
         return _cmd_init_db(args)
@@ -301,6 +374,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_export_csv(args)
     if args.comando == "verificar-auditoria":
         return _cmd_verificar_auditoria(args)
+    if args.comando == "avisar-rotacion":
+        return _cmd_avisar_rotacion(args)
     return 1
 
 

@@ -16,7 +16,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, avisos
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
 from app.models import ROLES_VALIDOS, Usuario
@@ -147,6 +147,15 @@ def usuario_reset_password(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, ADMIN],
 ):
+    """Restablece la contraseña de un usuario y le envía la temporal por correo.
+
+    Exclusivo de administradores (``usuarios.gestionar``). En el caso normal la
+    contraseña NO se muestra en pantalla: viaja al buzón del titular, con lo que
+    el administrador deja de tener que transmitirla a mano por un canal sin
+    auditoría. Si el correo falla, se muestra como contingencia —el
+    restablecimiento ya ocurrió y sin ese valor la cuenta quedaría inaccesible— y
+    se audita de forma distinguible.
+    """
     objetivo = _obtener_usuario_o_404(db, usuario_id)
     password_temporal = _generar_password_temporal()
     objetivo.password_hash = hashear_password(password_temporal)
@@ -154,12 +163,32 @@ def usuario_reset_password(
     objetivo.intentos_fallidos = 0
     objetivo.bloqueado_hasta = None
     revocar_sesiones_de_usuario(db, objetivo.id)
-    audit.registrar(db, audit.USUARIO_ACTUALIZADO, request=request, usuario=usuario,
-                    objeto_tipo="usuario", objeto_id=objetivo.id,
-                    detalle=f"Contraseña temporal emitida para {objetivo.username}; sesiones revocadas")
+
+    entregado = avisos.enviar_password_temporal(objetivo, password_temporal, usuario.username)
+    audit.registrar(
+        db, audit.USUARIO_ACTUALIZADO, request=request, usuario=usuario,
+        objeto_tipo="usuario", objeto_id=objetivo.id,
+        detalle=(
+            f"Contraseña temporal emitida para {objetivo.username} y enviada a su correo; "
+            "sesiones revocadas"
+            if entregado else
+            f"Contraseña temporal emitida para {objetivo.username}; sesiones revocadas. "
+            "NO se pudo enviar por correo: entregada al administrador en pantalla"
+        ),
+    )
     return render(request, "usuario_password_temporal.html", {
-        "usuario_actual": usuario, "objetivo": objetivo, "password_temporal": password_temporal,
+        "usuario_actual": usuario,
+        "objetivo": objetivo,
         "titulo": "Contraseña restablecida",
+        "correo_enviado": entregado,
+        "destino": avisos.enmascarar_correo(objetivo.email) if entregado else None,
+        # Solo se expone en pantalla como contingencia (correo no entregado).
+        "password_temporal": None if entregado else password_temporal,
+        "aviso": None if entregado else (
+            "No se pudo enviar el correo (revise la configuración SMTP). Entregue la "
+            "contraseña temporal por un canal seguro; el usuario deberá cambiarla en "
+            "su primer acceso."
+        ),
     })
 
 
@@ -201,4 +230,7 @@ def usuario_cambiar_rol(
     audit.registrar(db, audit.USUARIO_ACTUALIZADO, request=request, usuario=usuario,
                     objeto_tipo="usuario", objeto_id=objetivo.id,
                     detalle=f"Rol de {objetivo.username}: {anterior} → {rol}; sesiones revocadas")
+    avisos.aviso_cambio_permisos_propios(
+        db, objetivo, "Rol modificado", f"su rol pasó de «{anterior}» a «{rol}»"
+    )
     return RedirectResponse(f"/usuarios?msg={quote(f'Rol de {objetivo.username} actualizado.')}", status_code=303)
