@@ -35,8 +35,27 @@ def qr_svg_data_uri(secreto: str, username: str) -> str:
     return f"data:image/svg+xml;base64,{b64}"
 
 
+def normalizar_codigo(codigo: str) -> str:
+    """Forma canónica de un código TOTP: dígitos sin espacios ni separadores.
+
+    ÚNICO punto de normalización del proyecto, y debe usarse tanto al VALIDAR un
+    código como al REGISTRARLO en ``Usuario.ultimo_otp_usado`` para impedir su
+    reutilización (RFC 6238 §5.2).
+
+    Que ambas operaciones compartan esta función no es cosmético: si la
+    validación normalizara los espacios y el registro no, el mismo código pasaría
+    dos veces con solo reformatearlo (p. ej. «123 456» frente a «123456»), porque
+    la comparación anti-reutilización no reconocería la forma almacenada. Las
+    aplicaciones autenticadoras muestran los códigos agrupados —«123 456»—, así
+    que la forma con espacio llega al servidor de manera habitual, no excepcional.
+    Además, la forma canónica cabe siempre en la columna ``String(8)``, mientras
+    que una sin normalizar («1 2 3 4 5 6») se truncaría o desbordaría.
+    """
+    return codigo.strip().replace(" ", "")
+
+
 def verificar_codigo(secreto: str, codigo: str) -> bool:
-    codigo = codigo.strip().replace(" ", "")
+    codigo = normalizar_codigo(codigo)
     if not codigo.isdigit() or len(codigo) != 6:
         return False
     # valid_window=1 tolera un desfase de reloj de ±30 s

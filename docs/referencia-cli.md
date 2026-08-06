@@ -28,6 +28,7 @@ web. Llama a `init_db()` antes de operar, de modo que crea/concilia el esquema s
 | `recifrar` | Recifrar todos los secretos con la clave primaria (rotación de la clave de cifrado). |
 | `exportar-csv` | Exportar el inventario **en claro** a CSV para migración (formato del importador). |
 | `verificar-auditoria` | Verificar la integridad (encadenamiento por hash) de la bitácora de auditoría. |
+| `avisar-rotacion` | Avisar por correo a los usuarios con acceso de las rotaciones obligatorias próximas o vencidas. |
 
 Todos devuelven **código de salida 0** si tienen éxito y **1** ante un error (con el motivo en
 `stderr`).
@@ -207,9 +208,45 @@ python -m app.cli verificar-auditoria
 
 ---
 
+## `avisar-rotacion`
+
+Recorre las credenciales del inventario y avisa por correo a **los usuarios con acceso** cuando la
+rotación obligatoria se acerca o ya venció. Está pensado para una **tarea programada diaria**.
+
+```bash
+# Revisar el alcance sin enviar nada (recomendado la primera vez)
+python -m app.cli avisar-rotacion --simular
+
+# Envío real
+python -m app.cli avisar-rotacion
+```
+
+Ejemplo de tarea programada (cron, todos los días a las 07:00):
+
+```cron
+0 7 * * *  cd /srv/passwd && python -m app.cli avisar-rotacion >> /var/log/passwd-rotacion.log 2>&1
+```
+
+- Solo se dirige a quienes **pueden revelar** la contraseña (los que pueden rotarla): administrador,
+  operador y analista con nivel `ver_credenciales`. El auditor ve el activo pero nunca sus secretos,
+  así que queda fuera.
+- **Idempotente dentro de la semana**: los avisos se deduplican por credencial y umbral con una
+  ventana de 7 días, de modo que ejecutarlo a diario no repite el mismo mensaje cada día.
+- Distingue «rotación próxima» de «rotación **VENCIDA**».
+- La ventana de preaviso la fija `PASSWD_ROTATION_WARNING_DAYS` (14 días) sobre la política
+  `PASSWD_ROTATION_MAX_DAYS` (90 días).
+- Devuelve **1** si los avisos dinámicos están desactivados (`PASSWD_NOTIFY_ENABLED` /
+  `PASSWD_NOTIFY_USERS_ENABLED`) o falta SMTP, e informa por `stderr` sin enviar nada.
+- Los correos **nunca incluyen la contraseña**: solo el activo, el servicio y las fechas.
+- Con más de un worker o réplica, use `PASSWD_RATE_LIMIT_BACKEND=bd` para que la deduplicación sea
+  compartida (ver [`notificaciones-y-mfa-correo.md`](notificaciones-y-mfa-correo.md)).
+
+---
+
 ## Documentos relacionados
 
 - [`referencia-configuracion.md`](referencia-configuracion.md) — variables `PASSWD_*`.
+- [`notificaciones-y-mfa-correo.md`](notificaciones-y-mfa-correo.md) — avisos dinámicos y MFA por correo.
 - [`manual-administrador.md`](manual-administrador.md) — operación desde la interfaz.
 - [`guia-implementacion.md`](guia-implementacion.md) §4.4 y §4.7 — claves y respaldos en producción.
 </content>

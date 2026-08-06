@@ -27,6 +27,22 @@ const CSP = [
 const nextConfig: NextConfig = {
   // Salida autocontenida para una imagen Docker mínima (server.js + estáticos).
   output: "standalone",
+
+  // ── Reducción de superficie de información del cliente ─────────────────────
+  // NO impide leer el bundle desde las herramientas de desarrollador: el
+  // JavaScript que ejecuta el navegador es, por definición, legible por quien
+  // controla ese navegador. Lo que sí se elimina es la información EXTRA que
+  // no hace falta para ejecutar la aplicación (ver docs/proteccion-codigo-fuente.md).
+
+  // Sin mapas de origen en el navegador: el bundle de producción queda
+  // minificado y sin nombres originales de archivos, módulos ni variables.
+  // Es el valor por omisión de Next; se fija de forma explícita para que un
+  // cambio accidental a `true` se vea en la revisión de código.
+  productionBrowserSourceMaps: false,
+
+  // Sin `X-Powered-By: Next.js`: no se anuncia el framework (OWASP A05 —
+  // configuración de seguridad incorrecta / fuga de huella tecnológica).
+  poweredByHeader: false,
   async rewrites() {
     return [
       { source: "/api/web/:path*", destination: `${API_BASE}/api/web/:path*` },
@@ -47,6 +63,10 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "no-referrer" },
+          // Aplicación interna: no debe indexarse ni archivarse en buscadores
+          // ni en cachés públicas (evita que rutas y marcado queden expuestos
+          // en copias de terceros como el archivo de Google o archive.org).
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet" },
         ],
       },
     ];

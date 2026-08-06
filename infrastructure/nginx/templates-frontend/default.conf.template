@@ -62,8 +62,36 @@ server {
     proxy_hide_header Strict-Transport-Security;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
+    # Huella tecnológica: Next ya no emite X-Powered-By (poweredByHeader: false
+    # en next.config.ts); se oculta también en el borde por si un upstream
+    # futuro la reintroduce.
+    proxy_hide_header X-Powered-By;
+
     client_max_body_size 4m;
     limit_conn passwd_conn 30;
+
+    # ── Barrera de acceso al código fuente (defensa en profundidad) ──────────
+    # Estas reglas NO evitan que el navegador lea el JavaScript que sí necesita
+    # ejecutar (eso es imposible: ver docs/proteccion-codigo-fuente.md). Cortan
+    # el acceso a artefactos que revelan el código ORIGINAL y que nunca deben
+    # servirse en producción, aunque un build mal configurado los publique.
+
+    # Mapas de origen (*.map): reconstruyen el TypeScript original con nombres
+    # de variables y comentarios. El build los desactiva; aquí se niegan además
+    # en el borde, para que un `productionBrowserSourceMaps: true` accidental no
+    # se traduzca en una fuga de código.
+    location ~* \.(map|ts|tsx)$ {
+        access_log off;
+        return 404;
+    }
+
+    # Metadatos de repositorio y de entorno: /.git/, /.env, /.svn/, editores.
+    # Escaneos automatizados los prueban de forma rutinaria contra cualquier
+    # dominio público. Se excluye /.well-known/ (ACME) que sí es legítimo.
+    location ~ ^/\.(?!well-known/) {
+        access_log off;
+        return 404;
+    }
 
     # ── nginx detrás de OTRO proxy (opcional, ver guía-nginx-tls.md §realip) ──
     #set_real_ip_from 10.0.0.0/8;

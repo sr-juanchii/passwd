@@ -144,7 +144,11 @@ usuario y fallo de respaldo.
 | `PASSWD_SMTP_PASSWORD` | `""` | Contraseña SMTP (secreto). |
 | `PASSWD_SMTP_FROM` | `SMTP_USER` si está vacía | Dirección remitente. |
 | `PASSWD_SMTP_TLS` | `true` | Usar STARTTLS. |
-| `PASSWD_NOTIFY_TO` | `""` | Destinatarios, separados por coma. |
+| `PASSWD_NOTIFY_TO` | `""` | Destinatarios de las alertas **estáticas** de plataforma (equipo de seguridad), separados por coma. |
+| `PASSWD_NOTIFY_USERS_ENABLED` | `true` | Avisos **dinámicos por usuario** (actividad propia, cambios de permisos, credenciales compartidas y caducidad de rotación). Va **dentro** de `NOTIFY_ENABLED`: con el correo apagado no se envía nada. Póngala en `false` para conservar solo las alertas estáticas. Ver [`notificaciones-y-mfa-correo.md`](notificaciones-y-mfa-correo.md). |
+| `PASSWD_ROTATION_WARNING_DAYS` | `14` | Días de antelación con los que se avisa de una rotación obligatoria próxima (comando `avisar-rotacion`). |
+| `PASSWD_EMAIL_OTP_ENABLED` | `true` | **MFA de respaldo por correo**: permite pedir un OTP de un solo uso al buzón registrado cuando no hay acceso al dispositivo TOTP. Requiere SMTP. Es un factor **más débil** que el TOTP (quien controle el buzón y conozca la contraseña entra): póngala en `false` si su política no acepta esa dependencia. |
+| `PASSWD_EMAIL_OTP_TTL_MINUTES` | `10` | Minutos de validez del OTP enviado por correo. |
 
 ---
 
@@ -210,7 +214,8 @@ fija su valor base:
 | Política de cuentas | `PASSWORD_MIN_LENGTH` (mín. 8), `MAX_FAILED_ATTEMPTS`, `LOCKOUT_MINUTES` |
 | Límites de tasa | `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW_MINUTES`, `REVEAL_RATE_LIMIT`, `REVEAL_RATE_WINDOW_MINUTES` |
 | Inventario y auditoría | `ROTATION_MAX_DAYS`, `PASSWORD_HISTORY_MAX`, `AUDIT_RETENTION_DAYS` (mín. 90) |
-| Notificaciones por correo | `NOTIFY_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` (cifrada), `SMTP_FROM`, `SMTP_TLS`, `NOTIFY_TO`, `TOTP_ISSUER` |
+| Notificaciones por correo | `NOTIFY_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` (cifrada), `SMTP_FROM`, `SMTP_TLS`, `NOTIFY_TO`, `NOTIFY_USERS_ENABLED`, `ROTATION_WARNING_DAYS`, `TOTP_ISSUER` |
+| MFA de respaldo por correo | `EMAIL_OTP_ENABLED`, `EMAIL_OTP_TTL_MINUTES` |
 
 **NO editables en caliente** (exclusivos de entorno; requieren reinicio o son secretos de
 despliegue): claves criptográficas (`SECRET_KEY`, `ENCRYPTION_KEY`, `REQUIRE_ENV_KEYS`), base de

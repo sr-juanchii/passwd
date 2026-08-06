@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, avisos
 from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.database import get_db
 from app.models import (
@@ -112,6 +112,10 @@ def conceder(
                     objeto_tipo=cuerpo.tipo, objeto_id=cuerpo.activo_id,
                     detalle=f"Concesión {accion_detalle} a {objetivo.username} sobre "
                             f"{instancia.nombre} (nivel {cuerpo.nivel}{caduca})")
+    # El titular debe saber siempre qué acceso tiene: un cambio de permisos que no
+    # reconozca es un indicio de uso indebido de una cuenta administrativa.
+    avisos.aviso_concesion(db, objetivo, cuerpo.tipo, cuerpo.activo_id,
+                           concedida=True, nivel=cuerpo.nivel)
     return {"ok": True}
 
 
@@ -135,7 +139,9 @@ def revocar(
     )
     detalle = (f"Acceso de {concesion.usuario.username} sobre {concesion.nombre_activo} "
                f"(nivel {concesion.nivel}) revocado")
+    afectado = concesion.usuario
     db.delete(concesion)
     audit.registrar(db, audit.ACCESO_REVOCADO, request=request, usuario=admin,
                     objeto_tipo=tipo, objeto_id=activo_id, detalle=detalle)
+    avisos.aviso_concesion(db, afectado, tipo, activo_id, concedida=False)
     return {"ok": True}

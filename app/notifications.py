@@ -1,9 +1,22 @@
 """Alertas de seguridad por correo (opt-in).
 
 Desactivadas por defecto. Cuando se configuran (PASSWD_NOTIFY_ENABLED=true +
-SMTP), envían avisos a los destinatarios definidos ante eventos relevantes
-(cuenta bloqueada, posible exfiltración, alta de usuario…). Los mensajes
-**nunca** contienen contraseñas ni otros secretos: solo el hecho y su contexto.
+SMTP), envían avisos ante eventos relevantes. Hay dos familias de destinatario:
+
+1. **Estática** (``enviar_alerta``): a la lista fija ``PASSWD_NOTIFY_TO``, para
+   eventos de plataforma que interesan al equipo de seguridad (cuenta bloqueada,
+   posible exfiltración, fallo de respaldo).
+2. **Dinámica** (``enviar_a_usuario`` / ``enviar_a_usuarios``): al correo de cada
+   usuario afectado, resuelto en tiempo de ejecución desde su matriz de permisos
+   (ver ``app.avisos``). Cubre la actividad de la propia sesión, los cambios en
+   los permisos propios, las modificaciones de credenciales compartidas y los
+   avisos de caducidad de rotación.
+
+Los mensajes **nunca** contienen contraseñas de servidores ni otros secretos del
+inventario: solo el hecho y su contexto. La única excepción deliberada es la
+contraseña TEMPORAL de un restablecimiento administrativo y el código OTP de
+respaldo del MFA, que por definición viajan al buzón de su titular y son de un
+solo uso y corta vida (ver ``docs/notificaciones-y-mfa-correo.md``).
 
 El envío es de mejor esfuerzo: un fallo de SMTP se registra pero nunca rompe
 el flujo principal de la aplicación.
@@ -52,6 +65,59 @@ def enviar_alerta(asunto: str, cuerpo: str) -> bool:
     except Exception:  # noqa: BLE001 — el aviso es de mejor esfuerzo
         logger.exception("No se pudo enviar la alerta por correo: %s", asunto)
         return False
+
+
+def correo_operativo() -> bool:
+    """¿Está el correo en condiciones de enviar avisos dinámicos?
+
+    Los avisos por usuario no dependen de ``PASSWD_NOTIFY_TO`` (cada mensaje va
+    al buzón de su destinatario), así que solo exigen el interruptor general y un
+    servidor SMTP configurado.
+    """
+    settings = get_settings()
+    return bool(settings.notify_enabled and settings.smtp_host)
+
+
+def enviar_a_direccion(destinatario: str, asunto: str, cuerpo: str) -> bool:
+    """Envía un aviso a una dirección concreta. Mejor esfuerzo: no lanza."""
+    destinatario = (destinatario or "").strip()
+    if not destinatario or not correo_operativo():
+        return False
+    try:
+        _enviar_smtp(get_settings(), [destinatario], asunto, cuerpo)
+        return True
+    except Exception:  # noqa: BLE001 — el aviso es de mejor esfuerzo
+        logger.exception("No se pudo enviar el aviso «%s» a un destinatario", asunto)
+        return False
+
+
+def enviar_a_usuario(usuario, asunto: str, cuerpo: str) -> bool:
+    """Envía un aviso al correo de un usuario activo. Mejor esfuerzo: no lanza."""
+    if usuario is None or not getattr(usuario, "activo", False):
+        return False
+    return enviar_a_direccion(getattr(usuario, "email", ""), asunto, cuerpo)
+
+
+def enviar_a_usuarios(usuarios, asunto: str, cuerpo: str) -> int:
+    """Envía el MISMO aviso a varios usuarios, uno por mensaje.
+
+    Se manda un correo independiente por destinatario a propósito: agrupar las
+    direcciones en un solo ``To:`` revelaría a cada usuario quién más tiene
+    acceso al activo, que es justamente información de control de acceso. Además
+    se deduplican direcciones repetidas. Devuelve cuántos envíos salieron bien.
+    """
+    if not correo_operativo():
+        return 0
+    enviados = 0
+    ya_enviado: set[str] = set()
+    for usuario in usuarios:
+        direccion = (getattr(usuario, "email", "") or "").strip().lower()
+        if not direccion or direccion in ya_enviado:
+            continue
+        ya_enviado.add(direccion)
+        if enviar_a_usuario(usuario, asunto, cuerpo):
+            enviados += 1
+    return enviados
 
 
 class ErrorCorreo(Exception):

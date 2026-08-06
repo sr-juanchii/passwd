@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import access, audit
+from app import access, audit, avisos
 from app.config import get_settings
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
@@ -237,6 +237,14 @@ def credencial_editar(
                     objeto_tipo="credencial", objeto_id=credencial.id,
                     detalle=f"{credencial.usuario_acceso}@{instancia.nombre}"
                             + (" — contraseña rotada" if rotada else ""))
+    # Auditoría de credenciales compartidas: se avisa a los DEMÁS usuarios con
+    # acceso a este activo de que hubo una modificación. El correo comunica solo
+    # EL HECHO —activo, servicio, quién y cuándo—, nunca la contraseña nueva ni la
+    # anterior: quien la necesite la revela en la aplicación, donde el acceso se
+    # comprueba, se limita por tasa y queda en la bitácora.
+    avisos.aviso_credencial_compartida_actualizada(
+        db, credencial, usuario, password_cambiada=rotada
+    )
     return RedirectResponse(f"{url_volver}?msg={quote('Credencial actualizada.')}", status_code=303)
 
 
@@ -320,6 +328,7 @@ def _entregar_password(
     audit.registrar(db, accion, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,
                     detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio}){via}")
+    _avisar_revelado(request, db, usuario, credencial)
     return JSONResponse(
         {"usuario": credencial.usuario_acceso, "password": descifrar(credencial.password_cifrada)},
         headers={"Cache-Control": "no-store"},
@@ -385,3 +394,20 @@ def credencial_copiar(
     propia para distinguirla del revelado en pantalla.
     """
     return _entregar_password(request, db, usuario, credencial_id, audit.CREDENCIAL_COPIADA)
+
+
+def _avisar_revelado(request, db, usuario, credencial) -> None:
+    """Aviso al titular de que reveló una credencial en su sesión (mejor esfuerzo).
+
+    Deduplicado por sesión y categoría en ``avisos``: el primer revelado de la
+    sesión genera un correo, los siguientes no. Así el aviso conserva su valor de
+    detección sin convertir el trabajo normal en decenas de mensajes.
+    """
+    sesion = getattr(request.state, "sesion", None)
+    if sesion is None:
+        return
+    avisos.aviso_actividad_sensible(
+        db, usuario, sesion.id, "revelado",
+        f"reveló o copió una contraseña del inventario "
+        f"({credencial.usuario_acceso}@{credencial.nombre_activo})",
+    )

@@ -234,6 +234,45 @@ def concesiones_de_activo(db: Session, tipo: str, activo_id: int) -> list[Conces
     )
 
 
+def usuarios_con_acceso_a_activo(
+    db: Session,
+    tipo: str,
+    activo_id: int,
+    *,
+    solo_con_revelado: bool = False,
+) -> list[Usuario]:
+    """Usuarios ACTIVOS que tienen acceso a un activo, según la matriz completa.
+
+    Resuelve en un sentido inverso al resto del módulo: en lugar de «¿puede este
+    usuario ver este activo?», responde «¿quiénes pueden?». Es la base de los
+    avisos dinámicos (``app.avisos``): notificar a los demás usuarios con acceso
+    cuando cambia una credencial compartida, o avisar de una rotación próxima.
+
+    Aplica exactamente las mismas reglas que ``puede_ver_activo`` /
+    ``puede_revelar_en_activo`` —incluidas la restricción a administradores y su
+    herencia hacia las máquinas virtuales— reutilizando esas funciones como
+    predicado, para que no puedan divergir de la autorización real: si un día
+    cambia la matriz, los destinatarios cambian con ella.
+
+    Con ``solo_con_revelado=True`` se limita a quienes pueden revelar/copiar la
+    contraseña (los que de verdad la usan y deben rotarla), excluyendo al auditor,
+    que ve el activo pero nunca sus secretos.
+    """
+    predicado = puede_revelar_en_activo if solo_con_revelado else puede_ver_activo
+    candidatos = db.scalars(
+        select(Usuario).where(Usuario.activo.is_(True)).order_by(func.lower(Usuario.username))
+    ).all()
+    return [u for u in candidatos if predicado(db, u, tipo, activo_id)]
+
+
+def usuarios_con_acceso_a_credencial(
+    db: Session, credencial: Credencial, *, solo_con_revelado: bool = False
+) -> list[Usuario]:
+    """Usuarios activos con acceso al activo al que pertenece la credencial."""
+    tipo, activo_id = _tipo_y_id_de_credencial(credencial)
+    return usuarios_con_acceso_a_activo(db, tipo, activo_id, solo_con_revelado=solo_con_revelado)
+
+
 def analistas_activos(db: Session) -> list[Usuario]:
     """Analistas activos, para el selector del panel de concesión del admin."""
     return list(

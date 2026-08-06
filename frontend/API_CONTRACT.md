@@ -28,7 +28,9 @@ Todas las rutas cuelgan de `/api/web`.
 | GET | `/mfa/configurar` | — | `{ qr_data_uri, secreto }` (stage `mfa_enrolamiento`) |
 | POST | `/mfa/configurar` | `{codigo}` | `{ codigos_recuperacion: string[] }` (única vez; stage→activa) |
 | GET | `/mfa/verificar` | — | `{ ok: true }` (solo confirma stage) |
-| POST | `/mfa/verificar` | `{codigo}` | `{ ok, aviso? }` |
+| POST | `/mfa/verificar` | `{codigo}` | `{ ok, aviso? }`. Acepta, por este orden: TOTP, código de recuperación y OTP enviado al correo |
+| GET | `/mfa/metodos` | — | `{ totp, codigos_recuperacion, otp_correo }` (stage `mfa_pendiente`): qué vías de 2.º factor ofrecer |
+| POST | `/mfa/otp-correo` | — + cabecera `X-CSRF-Token` | `{ ok, destino, vigencia_minutos }`: envía un OTP de un solo uso al correo registrado (**MFA de respaldo**). `destino` va enmascarado y el código **nunca** viaja en la respuesta. 409 si el método está desactivado; 429 si se supera el límite (3 por cuenta y 3 por IP cada 15 min); 502 si SMTP falla |
 | POST | `/password/recuperar/iniciar` | `{username, email, csrf_login}` | `{ ok: true, csrf }`; fija cookie efímera `passwd_recuperacion`. **Anti-enumeración**: responde igual exista o no la cuenta. `csrf` es el token del desafío para los pasos siguientes |
 | POST | `/password/recuperar/verificar` | `{codigo}` + cabecera `X-CSRF-Token: <csrf del desafío>` | `{ ok: true }`. Acepta TOTP en vivo o un código de recuperación. 400 si el desafío caducó/se agotó; 401 código incorrecto |
 | POST | `/password/recuperar/cambiar` | `{password_nueva, password_confirmacion}` + cabecera `X-CSRF-Token` | `{ ok: true, next: "/login" }`; revoca todas las sesiones del usuario y borra la cookie de desafío |
@@ -158,7 +160,7 @@ nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`. `tipo` pued
 | POST | `/usuarios` | usuarios.gestionar | `{username, email, nombre_completo, rol}` → `{ username, password_temporal }` |
 | POST | `/usuarios/{id}/desactivar` | usuarios.gestionar | `{ ok }` |
 | POST | `/usuarios/{id}/reactivar` | usuarios.gestionar | `{ ok }` |
-| POST | `/usuarios/{id}/reset-password` | usuarios.gestionar | `{ username, password_temporal }` |
+| POST | `/usuarios/{id}/reset-password` | usuarios.gestionar | `{ username, correo_enviado, destino }`. La contraseña temporal se **envía al correo del titular** y NO se devuelve; `destino` va enmascarado. Solo si el envío falla se añaden `password_temporal` y `aviso` como contingencia |
 | POST | `/usuarios/{id}/reset-mfa` | usuarios.gestionar | `{ ok }` |
 | POST | `/usuarios/{id}/rol` | usuarios.gestionar | `{rol}` → `{ ok }` |
 

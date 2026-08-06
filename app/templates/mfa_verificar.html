@@ -5,6 +5,8 @@
   <h1>Verificación en dos pasos</h1>
   <p class="texto-suave">Ingrese el código de 6 dígitos de su aplicación autenticadora,
      o uno de sus códigos de recuperación si perdió el dispositivo.</p>
+  {% if aviso %}<p class="mensaje mensaje-exito">{{ aviso }}</p>{% endif %}
+  {% if error %}<p class="mensaje mensaje-error">{{ error }}</p>{% endif %}
   <form method="post" action="/mfa/verificar" class="formulario">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="codigo">Código de verificación o de recuperación</label>
@@ -12,5 +14,17 @@
            required maxlength="14" autofocus>
     <button type="submit" class="boton boton-primario">Verificar</button>
   </form>
+  {% if otp_correo_disponible %}
+  {# Método de respaldo: OTP al correo registrado. Es un factor más débil que el
+     TOTP (depende del buzón), así que se ofrece como último recurso y su uso
+     queda auditado y alertado al equipo de seguridad. #}
+  <hr class="separador">
+  <p class="texto-suave">¿Sin acceso a su aplicación autenticadora ni a sus códigos
+     de recuperación? Podemos enviarle un código de un solo uso a su correo registrado.</p>
+  <form method="post" action="/mfa/otp-correo" class="formulario">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="boton">Enviarme un código por correo</button>
+  </form>
+  {% endif %}
 </div>
 {% endblock %}

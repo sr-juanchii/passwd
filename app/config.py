@@ -120,6 +120,22 @@ class Settings:
     # MFA
     totp_issuer: str = field(default_factory=lambda: _env("TOTP_ISSUER", "Gestor-Passwd"))
 
+    # MFA de respaldo por correo: permite pedir un OTP al buzón registrado cuando
+    # el usuario no tiene su dispositivo TOTP. Requiere SMTP + NOTIFY_ENABLED (sin
+    # correo no puede funcionar). Es un factor MÁS DÉBIL que el TOTP —quien
+    # controle el buzón y conozca la contraseña entra—, así que se puede desactivar
+    # con PASSWD_EMAIL_OTP_ENABLED=false; ver docs/notificaciones-y-mfa-correo.md.
+    email_otp_enabled: bool = field(default_factory=lambda: _env_bool("EMAIL_OTP_ENABLED", True))
+    email_otp_ttl_minutes: int = field(default_factory=lambda: _env_int("EMAIL_OTP_TTL_MINUTES", 10))
+
+    # Avisos dinámicos por usuario (actividad propia, cambios de permisos,
+    # credenciales compartidas y caducidad de rotación). Se resuelven contra la
+    # matriz de permisos de cada usuario. Van dentro de NOTIFY_ENABLED: si el
+    # correo está apagado, no se envía nada.
+    notify_users_enabled: bool = field(default_factory=lambda: _env_bool("NOTIFY_USERS_ENABLED", True))
+    # Días de antelación con los que se avisa de una rotación obligatoria próxima.
+    rotation_warning_days: int = field(default_factory=lambda: _env_int("ROTATION_WARNING_DAYS", 14))
+
     # Notificaciones por correo (opt-in; los correos NUNCA incluyen secretos)
     notify_enabled: bool = field(default_factory=lambda: _env_bool("NOTIFY_ENABLED", False))
     smtp_host: str = field(default_factory=lambda: _env("SMTP_HOST", ""))
@@ -216,6 +232,10 @@ OVERRIDABLES: dict[str, tuple[str, str, object]] = {
     "smtp_from": ("SMTP_FROM", "texto", ""),
     "smtp_tls": ("SMTP_TLS", "booleano", True),
     "notify_to": ("NOTIFY_TO", "texto", ""),
+    "email_otp_enabled": ("EMAIL_OTP_ENABLED", "booleano", True),
+    "email_otp_ttl_minutes": ("EMAIL_OTP_TTL_MINUTES", "entero", 10),
+    "notify_users_enabled": ("NOTIFY_USERS_ENABLED", "booleano", True),
+    "rotation_warning_days": ("ROTATION_WARNING_DAYS", "entero", 14),
 }
 
 
