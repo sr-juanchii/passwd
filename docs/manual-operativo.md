@@ -207,12 +207,73 @@ En los accesos siguientes, tras usuario y contraseña se pide el código de 6 d�
 ![Verificación del segundo factor](capturas/06-mfa-verificacion.png)
 
 Si no dispone del dispositivo, use **uno de los códigos de recuperación** (cada uno sirve una sola
-vez) o, si su organización lo ha habilitado, solicite un **código por correo** al buzón registrado.
+vez).
 
 ![Acceso con código de recuperación](capturas/07-mfa-codigo-recuperacion.png)
 
 > **Anti-reutilización.** El último código TOTP aceptado se retiene y se rechaza si se reenvía, aun
 > reformateado con espacios (RFC 6238 §5.2). La ventana de validez tolera ±30 s de desfase de reloj.
+> Este control se corrigió y endureció en la versión actual (ver Anexo E).
+
+**Orden de preferencia recomendado:** aplicación autenticadora (TOTP) → código de recuperación →
+código por correo (sección 4.4.1).
+
+#### 4.4.1 Segundo factor por correo (OTP de respaldo)
+
+Cubre el caso del usuario que **perdió el dispositivo autenticador y también sus códigos de
+recuperación**. Requiere que el correo esté configurado (sección 17.1) y que el método esté
+habilitado (`PASSWD_EMAIL_OTP_ENABLED`, activo por defecto).
+
+En la pantalla de verificación aparece la opción **Enviarme un código por correo**:
+
+![Opción de código por correo](capturas/06b-mfa-opcion-codigo-por-correo.png)
+
+Al pulsarla, el sistema envía al **buzón registrado** un código de **8 dígitos** válido **10
+minutos** y de **un solo uso**, e indica su vigencia sin revelar la dirección completa:
+
+![Código enviado al correo registrado](capturas/06c-mfa-otp-correo-enviado.png)
+
+El correo recibido tiene esta forma —contiene el código, la IP desde la que se solicitó y una
+advertencia explícita— y **ningún otro secreto**:
+
+```text
+Asunto: [passwd-PROD] Código de verificación de un solo uso
+
+Se solicitó un código de verificación para completar el acceso de la cuenta «jcarrasco».
+
+    CÓDIGO:  45919740
+
+Caduca en 10 minutos y solo puede usarse UNA vez.
+
+  Solicitado desde la IP: 10.20.30.51
+  Fecha y hora (UTC):     2026-08-06 11:37:49
+
+Si NO fue usted quien lo solicitó, alguien conoce su contraseña: cambie su contraseña de
+inmediato y avise al administrador. No comparta este código con nadie, ni siquiera con
+personal de soporte.
+```
+
+**Controles que lo rodean** (implementados en [`app/security/otp_correo.py`](../app/security/otp_correo.py)):
+
+| Control | Valor |
+|---|---|
+| Punto de partida | Solo desde la etapa `mfa_pendiente`: **exige la contraseña válida primero**, nunca es un punto de entrada |
+| Código | 8 dígitos, un solo uso, caducidad 10 min (configurable), máximo 5 intentos |
+| Almacenamiento | Solo el **hash SHA-256** en la base de datos |
+| Límite de solicitudes | 3 cada 15 minutos **por cuenta** y 3 cada 15 minutos **por IP** (evita inundar un buzón y usar el sistema como amplificador de correo) |
+| Auditoría | `mfa_otp_correo_solicitado` y `mfa_otp_correo_usado` |
+| Alerta | Cada acceso completado por esta vía **avisa al equipo de seguridad**, porque merece revisión |
+| Desactivación | `PASSWD_EMAIL_OTP_ENABLED=false`, también en caliente, sin afectar al resto del MFA |
+
+> ⚠️ **Decisión de riesgo que debe quedar firmada en la aprobación.** Este factor es **más débil que
+> el TOTP**: quien controle el buzón del usuario y conozca su contraseña completa el acceso, y añade
+> el proveedor de correo a la cadena de confianza. Actívelo solo si el correo corporativo exige a su
+> vez MFA; si no, desactívelo y deje como única alternativa los códigos de recuperación. Análisis
+> completo en [`notificaciones-y-mfa-correo.md`](notificaciones-y-mfa-correo.md).
+
+> 📌 **Disponibilidad por interfaz.** Esta opción se ofrece hoy en la **interfaz clásica (Jinja)** y
+> en la API (`POST /api/web/mfa/otp-correo`); el frontend Next.js aún no la muestra. Ver Anexo F.
+> Las dos capturas anteriores corresponden por eso a la interfaz clásica.
 
 ### 4.5 Recuperación de contraseña (autoservicio)
 
@@ -615,6 +676,20 @@ notifica el cambio.
 | **Restablecer contraseña** | Genera una contraseña temporal de un solo uso, desbloquea la cuenta y **revoca todas sus sesiones**. Si el correo está configurado, la temporal **se envía al buzón del titular** y el administrador solo ve el destino enmascarado; si el envío falla, se le muestra en pantalla como contingencia (y así queda anotado en la bitácora) | Olvido sin códigos de recuperación, sospecha de compromiso |
 | **Restablecer MFA** | Borra el enrolamiento y **revoca las sesiones**: el usuario deberá volver a escanear el QR y recibirá códigos de recuperación nuevos | Pérdida o cambio del dispositivo autenticador y de los códigos |
 
+La acción pide confirmación explícita:
+
+![Confirmación del restablecimiento](capturas/39b-usuario-reset-confirmacion.png)
+
+Con el correo configurado, el administrador **ya no manipula la contraseña**: la temporal viaja
+directamente al buzón del titular y en pantalla solo se muestra el destino **enmascarado**, lo que
+elimina el paso manual de copiarla y transmitirla por un canal sin auditoría.
+
+![Contraseña temporal enviada al titular](capturas/39c-usuario-reset-enviado-al-titular.png)
+
+> 📌 Esta pantalla corresponde a la **interfaz clásica**. En el frontend Next.js la acción funciona
+> igual en el servidor (la contraseña se envía por correo), pero el diálogo aún no refleja el envío
+> y muestra el campo de contraseña vacío. Ver Anexo F.
+
 > **Verifique la identidad del solicitante fuera del sistema** (videollamada, responsable directo)
 > antes de restablecer un MFA: es la vía más directa para tomar control de una cuenta.
 
@@ -792,8 +867,18 @@ Cada campo indica su procedencia: **por defecto** (valor de fábrica), **por ent
 | Avisos dinámicos a usuarios | activado | **activado** | |
 | Aviso previo de rotación (días) | 14 | **14** | |
 
+**Ejemplo de configuración de correo guardada** (los campos marcados «configurado aquí» tienen un
+override en caliente; la contraseña SMTP se guarda cifrada y nunca se muestra):
+
+![Configuración SMTP](capturas/45c-configuracion-correo-smtp.png)
+
 **Probar el correo** envía un mensaje de prueba con la configuración guardada; úselo tras cada
-cambio de SMTP.
+cambio de SMTP. El resultado se muestra bajo el formulario:
+
+![Prueba de correo correcta](capturas/45d-configuracion-prueba-correo.png)
+
+> En la instancia de demostración de las capturas, STARTTLS aparece desactivado porque el servidor
+> SMTP de prueba es local y sin TLS. **En producción manténgalo activado.**
 
 ### 17.2 Parámetros **no** editables en caliente
 
@@ -821,12 +906,38 @@ anteriores, ni pistas sobre ellos.
 | Inicio de sesión propio (con IP y agente) | Titular de la cuenta |
 | Cambio en sus permisos, rol o concesiones | Usuario afectado |
 | Contraseña de un activo compartido actualizada | Resto de usuarios con acceso a ese activo |
-| Rotación obligatoria próxima | Usuarios con acceso a la credencial |
+| Rotación obligatoria próxima | Usuarios con acceso a la credencial (los que pueden rotarla) |
+| Acceso completado con OTP por correo | Equipo de seguridad (merece revisión) |
+
+**Cómo se eligen los destinatarios.** Los avisos dirigidos a usuarios **no** usan una lista fija: se
+resuelven en tiempo de ejecución contra la **matriz de permisos**, reutilizando las mismas funciones
+que autorizan de verdad (`puede_ver_activo` / `puede_revelar_en_activo`), de modo que quien recibe
+el aviso es exactamente quien tiene acceso al activo. Dos consecuencias operativas:
+
+- Los envíos a varios destinatarios salen como **mensajes independientes**: agrupar direcciones en
+  un `To:` revelaría quién más tiene acceso al activo.
+- Los avisos de actividad sensible se **deduplican por sesión y categoría** (un aviso por tipo de
+  actividad y sesión, no uno por acción) para que la señal no se pierda entre decenas de correos.
+  La bitácora sí conserva el registro acción por acción. La deduplicación se apoya en el limitador
+  de tasa: con más de un *worker*, use `PASSWD_RATE_LIMIT_BACKEND=bd`.
+
+**Interruptores.** `PASSWD_NOTIFY_ENABLED` gobierna todo el correo; dentro de él,
+`PASSWD_NOTIFY_USERS_ENABLED` (activo por defecto) gobierna los avisos a usuarios finales. Si su
+despliegue ya tenía el correo activo y solo quiere las alertas al equipo de seguridad, póngalo en
+`false`.
+
+> **Antes de activar los avisos a usuarios, anúncielo.** Los usuarios que reciben por primera vez
+> correos del sistema («se inició sesión en su cuenta») pueden confundirlos con phishing.
+
+**Aviso preventivo de rotación.** El comando `python -m app.cli avisar-rotacion` (tarea diaria,
+sección 20.7) avisa a quienes pueden rotar cada credencial cuando se acerca el cambio obligatorio,
+distinguiendo «próxima» de «VENCIDA». Con `--simular` muestra el alcance **sin enviar nada**: úselo
+la primera vez para comprobar a cuánta gente llegaría.
 
 ### 18.2 MFA de respaldo por correo (OTP)
 
-Permite completar el segundo factor con un código enviado al buzón registrado cuando el usuario no
-tiene su dispositivo TOTP.
+El uso paso a paso está en la **sección 4.4.1**, con sus capturas y la tabla de controles. Aquí solo
+la decisión de gobierno:
 
 > **Decisión de riesgo que debe documentarse en la aprobación.** El OTP por correo es un factor
 > **más débil** que el TOTP: quien controle el buzón y conozca la contraseña puede entrar. Si su
@@ -834,6 +945,11 @@ tiene su dispositivo TOTP.
 > (`PASSWD_EMAIL_OTP_ENABLED=false`) y deje como única vía alternativa los códigos de recuperación.
 > Análisis completo en [`notificaciones-y-mfa-correo.md`](notificaciones-y-mfa-correo.md) y
 > [`resistencia-bypass-mfa.md`](resistencia-bypass-mfa.md).
+
+**Excepciones deliberadas a la regla «ningún secreto por correo».** Solo dos mensajes llevan un
+secreto, ambos de un solo uso, de vida corta y dirigidos al buzón de su propio titular: el **OTP del
+MFA** y la **contraseña temporal de un restablecimiento**. Ninguna contraseña del inventario sale
+nunca por correo.
 
 ---
 
@@ -1086,7 +1202,14 @@ Antes de firmar la puesta en producción, compruebe punto por punto:
 
 **Operación**
 
-- [ ] Correo configurado y **probado** desde la pantalla de configuración.
+- [ ] Correo configurado y **probado** desde la pantalla de configuración (§17.1).
+- [ ] **Decisión firmada sobre el segundo factor por correo**: activado (con el correo corporativo
+      protegido por su propio MFA) o desactivado con `PASSWD_EMAIL_OTP_ENABLED=false` (§4.4.1).
+- [ ] Usuarios **avisados** de que empezarán a recibir correos del sistema, antes de activar los
+      avisos dinámicos (§18.1).
+- [ ] Verificado en el borde: `curl -sk https://<dominio>/x.map` y `https://<dominio>/.git/config`
+      devuelven **404**, y las respuestas no llevan `X-Powered-By` (§20.5).
+- [ ] `scripts/verificar-build-frontend.sh` activo en el pipeline de CI (Anexo E).
 - [ ] Respaldo programado activo, con frase custodiada aparte y **una restauración de prueba
       documentada**.
 - [ ] Tarea diaria de `avisar-rotacion` programada.
@@ -1109,6 +1232,8 @@ Antes de firmar la puesta en producción, compruebe punto por punto:
 | 05 | Códigos de recuperación | 4.3 |
 | 06 | Verificación del segundo factor | 4.4 |
 | 07 | Acceso con código de recuperación | 4.4 |
+| 06b | Opción «Enviarme un código por correo» | 4.4.1 |
+| 06c | Código enviado al correo registrado | 4.4.1 |
 | 08 | Recuperación de contraseña (identidad) | 4.5 |
 | 09 | Recuperación: segundo factor | 4.5 |
 | 10 | Panel de inventario | 5, 6.1 |
@@ -1141,12 +1266,16 @@ Antes de firmar la puesta en producción, compruebe punto por punto:
 | 37 | Gestión de usuarios | 13 |
 | 38 | Alta de usuario | 13.1 |
 | 39 | Contraseña temporal | 13.1 |
+| 39b | Confirmación del restablecimiento | 13.3 |
+| 39c | Temporal enviada al buzón del titular | 13.3 |
 | 40 | Métricas de seguridad | 14 |
 | 41 | Bitácora de auditoría | 15 |
 | 42 | Bitácora filtrada | 15 |
 | 43 | Tokens de API | 16 |
 | 44 | Token generado | 16.1 |
 | 45 / 45b | Configuración en caliente | 17 |
+| 45c | Configuración SMTP guardada | 17.1 |
+| 45d | Prueba de correo correcta | 17.1 |
 | 46 | Recurso no disponible | 5 |
 | 47 | Inventario del analista | 9.2 |
 | 48 | Activo concedido al analista | 9.2 |
@@ -1159,6 +1288,7 @@ Antes de firmar la puesta en producción, compruebe punto por punto:
 | Función | Dónde | Rol mínimo |
 |---|---|---|
 | Iniciar sesión / MFA / recuperación | `/login`, `/mfa/*`, `/recuperar` | cualquiera |
+| Pedir un OTP de respaldo por correo | `/mfa/verificar` (interfaz clásica) · `POST /api/web/mfa/otp-correo` | sesión en etapa `mfa_pendiente` |
 | Cambiar la contraseña propia | `/password/cambiar` | cualquiera |
 | Ver inventario y fichas | `/`, `/servidores/*`, `/hipervisores/*`, `/vms/*`, `/dispositivos/*` | auditor (analista: concedidos) |
 | Crear/editar/eliminar activos | Botones de alta y ficha | operador |
@@ -1212,6 +1342,55 @@ Antes de firmar la puesta en producción, compruebe punto por punto:
 | **Rotación** | Cambio periódico de una contraseña; el sistema alerta al superar el umbral |
 | **Anti-exfiltración** | Límite de revelados/copiados por usuario y ventana de tiempo |
 | **HSTS** | Cabecera que obliga al navegador a usar siempre HTTPS |
+| **OTP por correo** | Código de un solo uso enviado al buzón registrado, como segundo factor de respaldo |
+
+### Anexo E — Novedades y parches de la versión en curso
+
+Resumen de lo incorporado desde la 1.1.0 (detalle completo en [`CHANGELOG.md`](../CHANGELOG.md)),
+con su implicación operativa. **Léalo antes de aprobar el despliegue.**
+
+| Novedad | Qué cambia para la operación | Dónde en este manual |
+|---|---|---|
+| **Segundo factor por correo (OTP)** | Nueva vía de respaldo del MFA. Exige decidir si se activa (decisión de riesgo firmada) y tener SMTP operativo | §4.4.1, §17.1, §18.2 |
+| **Restablecimiento administrativo con envío automático** | El administrador ya no manipula la contraseña temporal: viaja al buzón del titular y solo ve el destino enmascarado. Si SMTP falla, se le entrega en pantalla y la bitácora lo registra de forma distinguible | §13.3 |
+| **Avisos dinámicos por matriz de permisos** | Los usuarios finales empiezan a recibir correos (inicio de sesión, cambios de permisos, credenciales compartidas, rotación próxima). **Anúncielo antes de activarlo** para que no se confundan con phishing; desactivable con `PASSWD_NOTIFY_USERS_ENABLED=false` | §18.1 |
+| **Comando `avisar-rotacion`** | Nueva tarea diaria programable, con `--simular` para revisar el alcance sin enviar | §19, §20.7 |
+| **Nuevos ajustes en caliente** | `PASSWD_EMAIL_OTP_ENABLED`, `PASSWD_EMAIL_OTP_TTL_MINUTES`, `PASSWD_NOTIFY_USERS_ENABLED`, `PASSWD_ROTATION_WARNING_DAYS` | §17.1 |
+
+**Parches de seguridad incorporados**
+
+| Parche | Qué corrige | Implicación |
+|---|---|---|
+| **Reutilización del código TOTP de enrolamiento** (severidad alta; OWASP A07, RFC 6238 §5.2) | Una asimetría de normalización permitía que **el mismo código de 6 dígitos se aceptara dos veces** durante su ventana de validez (hasta ~90 s) —el ataque de *replay* con proxy de intercepción—. Ahora la forma canónica del código vive en una única función por la que pasan los seis puntos que manipulan un TOTP | Sin acción del operador: se corrige al actualizar. Refuerza el control descrito en §4.4 |
+| **Reducción de la exposición del código fuente** (OWASP A05) | Mapas de origen desactivados y bloqueados en nginx (`*.map`, `*.ts`, `*.tsx`), 404 a rutas que empiezan por punto (`/.git/`, `/.env`), sin trazas de pila en la consola del navegador, sin `X-Powered-By`, `X-Robots-Tag: noindex` | Verifíquelo tras el despliegue (§20.5 y lista de §22). No impide leer el *bundle*: eso es imposible por diseño del navegador |
+| **Control automático del build del frontend** | `scripts/verificar-build-frontend.sh` falla el CI si aparecen mapas de origen, patrones de secretos o rutas absolutas de la máquina de compilación en `.next/static` o `public/` | Manténgalo en el pipeline; es la red de seguridad del punto anterior |
+| **Batería contra el salto del MFA** | 20 pruebas que atacan **todas** las rutas registradas desde sesiones detenidas en cada etapa previa a `activa`, de modo que un endpoint nuevo sin dependencia de sesión rompe la suite | Ejecute `pytest` en cada actualización antes de promover a producción (§21.7) |
+
+### Anexo F — Cobertura por interfaz y limitaciones conocidas
+
+El sistema ofrece dos interfaces con el **mismo backend y el mismo modelo de seguridad**: el
+**frontend Next.js** (recomendado en producción, el que ilustra este manual) y la **interfaz clásica
+Jinja** que sirve el propio backend. Dos funciones de la última versión están hoy **solo** en la
+interfaz clásica y en la API:
+
+| Función | Backend / API | Interfaz clásica (Jinja) | Frontend Next.js |
+|---|:-:|:-:|:-:|
+| Segundo factor por correo (OTP) | ✔ `POST /api/web/mfa/otp-correo`, `GET /api/web/mfa/metodos` | ✔ botón **Enviarme un código por correo** | ✘ la pantalla de verificación solo ofrece TOTP y códigos de recuperación |
+| Restablecimiento con envío al titular | ✔ devuelve `correo_enviado` y `destino` enmascarado | ✔ muestra «se envió a su correo registrado (j\*\*\*\*\*\*\*\*o@empresa.tld)» | ⚠ el envío **sí ocurre**, pero el diálogo no lo refleja y muestra el campo de contraseña vacío |
+
+**Consecuencias prácticas mientras esto no se ajuste:**
+
+1. Si activa el OTP por correo, publique también el acceso a la interfaz clásica (o instruya a los
+   usuarios para usarla en ese caso concreto); de lo contrario la vía de respaldo no es alcanzable
+   desde el frontend.
+2. Al restablecer una contraseña desde el frontend Next.js, **el campo vacío no indica un fallo**:
+   la contraseña temporal ya fue enviada al buzón del titular. Confírmelo en la bitácora
+   (`usuario_actualizado`, con el detalle «enviada a su correo»). Para ver el destino enmascarado,
+   realice la operación desde la interfaz clásica.
+
+> Ambos puntos son ajustes de interfaz, no de seguridad: la autorización, la auditoría y el envío
+> se resuelven en el backend, que ya está completo. Deben resolverse antes de retirar la interfaz
+> clásica del despliegue.
 
 ---
 
