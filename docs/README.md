@@ -19,7 +19,7 @@ corresponda a su rol.
 | Documento | Audiencia |
 |---|---|
 | [`manual-usuario.md`](manual-usuario.md) | Todo el personal: primer acceso, MFA, inventario, credenciales, notas, búsqueda. |
-| [`manual-uso-ilustrado.md`](manual-uso-ilustrado.md) | **Recorrido visual con capturas** de cada pantalla, paso a paso. |
+| [`manual-operativo.md`](manual-operativo.md) | **Manual completo e ilustrado**: todas las funciones con capturas, configuración óptima de producción (MySQL + nginx + Next.js) y procedimientos operativos. Documento apto para aprobación formal. |
 | [`manual-administrador.md`](manual-administrador.md) | Administradores: usuarios, concesiones, auditoría, métricas, tokens, importación, respaldo. |
 
 ## 🚀 Despliegue y operación
@@ -64,6 +64,7 @@ corresponda a su rol.
 ### ¿Por dónde empiezo?
 
 - **Soy usuario nuevo** → [`manual-usuario.md`](manual-usuario.md).
+- **Quiero el manual completo con capturas, configuración óptima y procedimientos** → [`manual-operativo.md`](manual-operativo.md).
 - **Administro el sistema** → [`manual-administrador.md`](manual-administrador.md).
 - **Voy a instalarlo/desplegarlo** → [`guia-implementacion.md`](guia-implementacion.md) + [`ambientes.md`](ambientes.md).
 - **Quiero entender el código** → [`arquitectura.md`](arquitectura.md) + [`guia-desarrollo.md`](guia-desarrollo.md).

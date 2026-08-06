@@ -11,8 +11,9 @@ el [`manual-administrador.md`](manual-administrador.md).
 > Este manual describe los flujos; el aspecto concreto puede variar ligeramente entre ambas, pero
 > los pasos y los nombres de las acciones son equivalentes.
 >
-> 📸 ¿Prefiere verlo con **capturas de pantalla**? Vea el
-> [`manual-uso-ilustrado.md`](manual-uso-ilustrado.md).
+> 📸 ¿Prefiere verlo con **capturas de pantalla** de cada función, junto con la configuración
+> óptima y los procedimientos de operación? Vea el
+> [`manual-operativo.md`](manual-operativo.md).
 
 ---
 

@@ -452,7 +452,7 @@ entrega, que es solo el informe.)*
   (`README.md`/`arquitectura.md`/`guia-desarrollo.md`) vs 45 (`verificacion-cumplimiento.md §2`) vs
   43 (`guia-implementacion.md §3`) vs 51 (`cumplimiento-owasp.md`, A08), además de los apéndices
   63/75/103. → Unificar al valor real vigente y fechar la verificación.
-- **DOC-3 ·** `manual-uso-ilustrado.md §8` describe la auditoría como "registro inmutable de solo
+- **DOC-3 ·** el manual ilustrado (hoy `manual-operativo.md §15`) describía la auditoría como "registro inmutable de solo
   anexado", afirmación que **hoy no tiene respaldo técnico** (ver SEC-9). → Matizar el texto ("registro
   de solo anexado a nivel de aplicación") o implementar la evidencia de manipulación de SEC-9.
 
