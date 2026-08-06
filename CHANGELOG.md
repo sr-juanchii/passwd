@@ -14,6 +14,18 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ### Añadido
 
+- **Manual de uso, funciones y procedimientos** ([`docs/manual-operativo.md`](docs/manual-operativo.md)):
+  documento único, apto para aprobación formal, que cubre **todas** las funciones del
+  sistema —interfaz web, API JSON, API REST, CLI y avisos— con **52 capturas de pantalla**
+  nuevas, la **configuración óptima** de cada parámetro para producción (MySQL 8.4 + nginx
+  con TLS + frontend Next.js + backend FastAPI), los procedimientos operativos (alta y baja
+  de usuarios, rotación, respaldo y prueba de restauración, respuesta a exfiltración,
+  rotación de la clave de cifrado, actualización de versión) y una lista de verificación
+  previa a la puesta en producción. Incluye control documental con campos de revisión y
+  aprobación, mapa función → interfaz → rol mínimo, e índice de capturas.
+  Las capturas se tomaron sobre el **stack real de producción** con datos ficticios.
+  Sustituye a `docs/manual-uso-ilustrado.md`, que se elimina.
+
 - **MFA de respaldo por OTP al correo**: un usuario sin acceso a su aplicación
   autenticadora ni a sus códigos de recuperación puede pedir un código de un solo uso
   a su buzón registrado (`POST /mfa/otp-correo` y su equivalente JSON) y completar con

@@ -56,6 +56,7 @@ rol: entender el sistema, manuales de uso, despliegue, referencias técnicas, cu
 
 Documentación destacada:
 - [`docs/arquitectura.md`](docs/arquitectura.md) — **cómo está construido y de qué se compone** el sistema
+- [`docs/manual-operativo.md`](docs/manual-operativo.md) — **manual completo e ilustrado**: todas las funciones con capturas, configuración óptima de producción (MySQL + nginx + Next.js) y procedimientos operativos
 - [`docs/manual-usuario.md`](docs/manual-usuario.md) — **manual de usuario** (todos los roles)
 - [`docs/manual-administrador.md`](docs/manual-administrador.md) — **manual del administrador**
 - [`docs/referencia-configuracion.md`](docs/referencia-configuracion.md) · [`docs/referencia-cli.md`](docs/referencia-cli.md) · [`docs/referencia-api-rest.md`](docs/referencia-api-rest.md) — **referencias** de configuración, CLI y API REST
