@@ -20,6 +20,7 @@ corresponda a su rol.
 |---|---|
 | [`manual-usuario.md`](manual-usuario.md) | Todo el personal: primer acceso, MFA, inventario, credenciales, notas, búsqueda. |
 | [`manual-operativo.md`](manual-operativo.md) | **Manual completo e ilustrado**: todas las funciones con capturas, configuración óptima de producción (MySQL + nginx + Next.js) y procedimientos operativos. Documento apto para aprobación formal. |
+| [`manual-operativo.docx`](manual-operativo.docx) | El mismo manual en **Word** (84 páginas, capturas incrustadas, índice con hipervínculos y páginas numeradas), listo para circular a firma. Se regenera desde el `.md` con pandoc. |
 | [`manual-administrador.md`](manual-administrador.md) | Administradores: usuarios, concesiones, auditoría, métricas, tokens, importación, respaldo. |
 
 ## 🚀 Despliegue y operación

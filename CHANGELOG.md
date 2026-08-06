@@ -33,6 +33,10 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   su implicación operativa, y un **Anexo F** con la cobertura por interfaz, que deja
   constancia de que el OTP por correo y el aviso de envío del reset están hoy solo en la
   interfaz clásica y en la API, no en el frontend Next.js.
+  Se acompaña de la **edición en Word** ([`docs/manual-operativo.docx`](docs/manual-operativo.docx)):
+  84 páginas con las 58 capturas incrustadas y dimensionadas a página, portada con control
+  documental, índice con hipervínculos y numeración de páginas, generada desde el `.md`
+  (pandoc + ajuste del pie de página), lista para el circuito de revisión y firma.
 
 - **MFA de respaldo por OTP al correo**: un usuario sin acceso a su aplicación
   autenticadora ni a sus códigos de recuperación puede pedir un código de un solo uso
