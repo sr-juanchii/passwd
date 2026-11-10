@@ -217,7 +217,7 @@ def _cmd_export_csv(args: argparse.Namespace) -> int:
     init_db()
     db = next(get_db())
     try:
-        texto = exportar_csv(db)
+        texto = exportar_csv(db, incluir_restringidos=True)
         ruta = Path(args.salida)
         ruta.touch(mode=0o600, exist_ok=True)
         ruta.write_text(texto, encoding="utf-8")

@@ -299,3 +299,97 @@ def test_respaldo_conserva_restriccion(client):
         assert restaurado is not None and restaurado.restringido is True
     finally:
         db.close()
+
+
+def _operador_json(client, crear_cliente, nombre: str):
+    """Crea un operador, lo autentica y devuelve (cliente, csrf de la API JSON)."""
+    clave = crear_usuario(client, nombre, "operador")
+    op = crear_cliente()
+    autenticar_usuario_nuevo(op, nombre, clave)
+    return op, op.get("/api/web/session").json()["csrf_token"]
+
+
+def test_export_json_operador_excluye_restringidos(client, crear_cliente):
+    """La API JSON aplica el mismo filtro que la interfaz clásica (regresión:
+    antes entregaba al operador las contraseñas de los activos restringidos)."""
+    autenticar_admin(client)
+    visible = _crear_servidor(client, "srv-json-visible")
+    _crear_credencial(client, "fisico", visible, "root")
+    restringido = _crear_servidor(client, "srv-json-oculto")
+    _crear_credencial(client, "fisico", restringido, "admin-oculto")
+    _restringir(client, "servidores", restringido, "srv-json-oculto",
+                {"sistema_operativo": "Debian", "ip_gestion": "10.0.0.1"})
+
+    op, csrf = _operador_json(client, crear_cliente, "oper-json1")
+    r = op.post("/api/web/exportar", headers={"X-CSRF-Token": csrf})
+    assert r.status_code == 200
+    assert "srv-json-visible" in r.text
+    assert "srv-json-oculto" not in r.text
+    assert "admin-oculto" not in r.text
+
+    csrf_admin = client.get("/api/web/session").json()["csrf_token"]
+    texto_admin = client.post("/api/web/exportar", headers={"X-CSRF-Token": csrf_admin}).text
+    assert "srv-json-oculto" in texto_admin and "admin-oculto" in texto_admin
+
+
+def test_export_por_defecto_no_incluye_restringidos(client):
+    """``exportar_csv`` es seguro por defecto: hay que pedir los restringidos."""
+    from app.exporter import exportar_csv
+
+    autenticar_admin(client)
+    restringido = _crear_servidor(client, "srv-defecto-oculto")
+    _restringir(client, "servidores", restringido, "srv-defecto-oculto",
+                {"sistema_operativo": "Debian", "ip_gestion": "10.0.0.1"})
+    db = sesion_bd()
+    try:
+        assert "srv-defecto-oculto" not in exportar_csv(db)
+        assert "srv-defecto-oculto" in exportar_csv(db, incluir_restringidos=True)
+    finally:
+        db.close()
+
+
+def test_export_tiene_limite_de_tasa(client):
+    from app.exporter import EXPORT_LIMITE
+
+    autenticar_admin(client)
+    csrf = client.get("/api/web/session").json()["csrf_token"]
+    for _ in range(EXPORT_LIMITE):
+        assert client.post("/api/web/exportar", headers={"X-CSRF-Token": csrf}).status_code == 200
+    assert client.post("/api/web/exportar", headers={"X-CSRF-Token": csrf}).status_code == 429
+
+
+def test_import_operador_no_cuelga_de_activos_restringidos(client, crear_cliente):
+    """Un operador no puede crear VMs ni credenciales bajo activos restringidos,
+    y el error es el mismo que el de un activo inexistente."""
+    autenticar_admin(client)
+    servidor = _crear_servidor(client, "srv-imp-oculto")
+    _restringir(client, "servidores", servidor, "srv-imp-oculto",
+                {"sistema_operativo": "Debian", "ip_gestion": "10.0.0.1"})
+    hipervisor = _crear_hipervisor(client, None, "hv-imp-oculto")
+    _restringir(client, "hipervisores", hipervisor, "hv-imp-oculto",
+                {"plataforma": "Proxmox VE", "version": "8", "ip_gestion": "10.0.0.2"})
+
+    csv_texto = (
+        "tipo,nombre,padre,activo_tipo,usuario_acceso,password\n"
+        "vm,vm-colada,hv-imp-oculto,,,\n"
+        "credencial,,srv-imp-oculto,servidor,intruso,Secreta-123\n"
+        "credencial,,no-existe,servidor,intruso,Secreta-123\n"
+    )
+    op, csrf = _operador_json(client, crear_cliente, "oper-imp1")
+    r = op.post("/api/web/importar", headers={"X-CSRF-Token": csrf},
+                files={"archivo": ("i.csv", csv_texto, "text/csv")})
+    assert r.status_code == 200
+    datos = r.json()
+    assert sum(datos["creados"].values()) == 0
+    assert len(datos["errores"]) == 3
+    # Mismo texto para el activo restringido y para el inexistente.
+    oculto = next(e for e in datos["errores"] if "srv-imp-oculto" in e)
+    inexistente = next(e for e in datos["errores"] if "no-existe" in e)
+    assert oculto.split(":", 1)[1].replace("srv-imp-oculto", "X") == \
+        inexistente.split(":", 1)[1].replace("no-existe", "X")
+
+    # El administrador sí puede.
+    csrf_admin = client.get("/api/web/session").json()["csrf_token"]
+    r = client.post("/api/web/importar", headers={"X-CSRF-Token": csrf_admin},
+                    files={"archivo": ("i.csv", csv_texto, "text/csv")})
+    assert sum(r.json()["creados"].values()) == 2
