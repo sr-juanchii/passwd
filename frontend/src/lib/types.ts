@@ -46,6 +46,10 @@ export interface SessionState {
   csrf_token: string;
   usuario?: Usuario;
   permisos?: Record<Permiso, boolean>;
+  /** Plazos de expiración (solo con sesión activa). */
+  sesion?: import("./expiracion").PlazosSesion;
+  /** Longitud mínima vigente de las contraseñas de usuario. */
+  password_min_length?: number;
 }
 
 export interface Credencial {

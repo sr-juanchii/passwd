@@ -14,7 +14,7 @@ import { toast } from "sonner";
 
 export default function CambiarPasswordPage() {
   const router = useRouter();
-  const { stage, refrescar } = useSession();
+  const { stage, refrescar, password_min_length } = useSession();
   const forzado = stage === "cambio_password";
   const [actual, setActual] = useState("");
   const [nueva, setNueva] = useState("");
@@ -52,7 +52,7 @@ export default function CambiarPasswordPage() {
       <p className="mt-1.5 text-[13.5px] leading-normal text-muted-foreground">
         {forzado
           ? "Su contraseña inicial es de un solo uso. Defina una nueva para continuar."
-          : "Mínimo 12 caracteres, sin palabras comunes ni su nombre de usuario."}
+          : `Mínimo ${password_min_length ?? 12} caracteres, sin palabras comunes ni su nombre de usuario.`}
       </p>
 
       <form onSubmit={enviar} className="mt-6 flex flex-col gap-4">

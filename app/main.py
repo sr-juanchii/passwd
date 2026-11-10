@@ -273,7 +273,14 @@ def create_app() -> FastAPI:
         if exc.status_code in (403, 404) and "text/html" in request.headers.get("accept", "text/html"):
             return render(request, "error.html",
                           {"codigo": exc.status_code, "detalle": exc.detail}, status_code=exc.status_code)
-        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        cabeceras = getattr(exc, "headers", None)
+        # Un detalle estructurado ``{mensaje, code}`` se aplana a ``detail`` (texto)
+        # más ``code``, para que el cliente distinga el motivo sin romper a quien
+        # solo lee ``detail``.
+        if isinstance(exc.detail, dict) and "mensaje" in exc.detail:
+            cuerpo = {"detail": exc.detail["mensaje"], "code": exc.detail.get("code")}
+            return JSONResponse(cuerpo, status_code=exc.status_code, headers=cabeceras)
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=cabeceras)
 
     return app
 

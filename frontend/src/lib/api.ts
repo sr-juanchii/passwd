@@ -28,14 +28,62 @@ import type {
   VmDetalle,
   VmInput,
 } from "./types";
+import type { PlazosSesion } from "./expiracion";
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
     this.name = "ApiError";
   }
+}
+
+// --- Vigilancia de la sesión (la registra SessionProvider) ---
+// `alExpirar`: la API respondió 401 a una petición de la aplicación → la sesión
+// ya no existe en el servidor. `alHaberActividad`: una petición autenticada salió
+// bien → la ventana de inactividad se renovó.
+let alExpirar: (() => void) | null = null;
+let alHaberActividad: (() => void) | null = null;
+export function vigilarSesion(h: { alExpirar: () => void; alHaberActividad: () => void } | null) {
+  alExpirar = h?.alExpirar ?? null;
+  alHaberActividad = h?.alHaberActividad ?? null;
+}
+
+// Rutas del flujo de acceso: ahí un 401 es una respuesta normal (credenciales o
+// código incorrectos), no una sesión vencida; y no cuentan como actividad.
+const RUTAS_ACCESO = ["/login", "/csrf", "/session", "/mfa/", "/password/recuperar"];
+function esRutaDeAcceso(path: string): boolean {
+  return RUTAS_ACCESO.some((p) => path === p || path.startsWith(p));
+}
+
+/**
+ * Tratamiento ÚNICO de las respuestas de la API. Ante un 401 de la aplicación
+ * avisa al vigilante de sesión (que cierra la interfaz y lleva al login) y deja
+ * la promesa pendiente: la pantalla se está desmontando y no debe pintar un
+ * error «No autenticado» sobre una interfaz que parece abierta.
+ */
+async function comprobar(path: string, res: Response): Promise<void> {
+  if (res.ok) {
+    if (!esRutaDeAcceso(path)) alHaberActividad?.();
+    return;
+  }
+  let detail = `Error ${res.status}`;
+  let code: string | undefined;
+  try {
+    const data = await res.json();
+    if (typeof data?.detail === "string") detail = data.detail;
+    if (typeof data?.code === "string") code = data.code;
+  } catch {
+    /* sin cuerpo JSON */
+  }
+  if (res.status === 401 && !esRutaDeAcceso(path) && alExpirar) {
+    alExpirar();
+    await new Promise<never>(() => {});
+  }
+  throw new ApiError(res.status, detail, code);
 }
 
 // Token CSRF de la sesión actual, refrescado por cada lectura de /session.
@@ -85,16 +133,7 @@ async function request<T>(path: string, opts: Opts = {}): Promise<T> {
 
   if (raw) return res as unknown as T;
 
-  if (!res.ok) {
-    let detail = `Error ${res.status}`;
-    try {
-      const data = await res.json();
-      if (data?.detail) detail = data.detail;
-    } catch {
-      /* sin cuerpo JSON */
-    }
-    throw new ApiError(res.status, detail);
-  }
+  await comprobar(path, res);
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
@@ -109,6 +148,8 @@ export const api = {
       body: { username, password, csrf_login },
     }),
   session: () => request<SessionState>("/session"),
+  extenderSesion: () =>
+    request<{ ok: boolean; sesion: PlazosSesion }>("/session/extender", { method: "POST", csrf: true }),
   // --- Auto-recuperación de contraseña (3 pasos, CSRF del desafío) ---
   recuperarIniciar: (username: string, email: string, csrf_login: string) =>
     request<{ ok: boolean; csrf: string }>("/password/recuperar/iniciar", {
@@ -235,16 +276,7 @@ export const api = {
       credentials: "include",
       cache: "no-store",
     });
-    if (!res.ok) {
-      let detail = `Error ${res.status}`;
-      try {
-        const d = await res.json();
-        if (d?.detail) detail = d.detail;
-      } catch {
-        /* */
-      }
-      throw new ApiError(res.status, detail);
-    }
+    await comprobar("/exportar", res);
     return res.blob();
   },
   plantillaUrl: () => `${BASE}/plantilla.csv`,
@@ -343,16 +375,7 @@ export const api = {
       cache: "no-store",
       body: fd,
     });
-    if (!res.ok) {
-      let detail = `Error ${res.status}`;
-      try {
-        const d = await res.json();
-        if (d?.detail) detail = d.detail;
-      } catch {
-        /* */
-      }
-      throw new ApiError(res.status, detail);
-    }
+    await comprobar("/importar", res);
     return res.json();
   },
 };

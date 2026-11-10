@@ -24,6 +24,7 @@ from app import audit, avisos
 from app.api_web.deps import (
     _sesion_de_cookie,
     en_etapa_json,
+    no_autenticado,
     sesion_activa_json,
     usuario_actual_json,
     verificar_csrf_json,
@@ -46,9 +47,12 @@ from app.security import mfa, otp_correo, ratelimit, recovery, recuperacion
 from app.security.crypto import cifrar, descifrar
 from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
 from app.security.sessions import (
+    COOKIE_SESION,
     borrar_cookie,
     configurar_cookie,
     crear_sesion,
+    extender,
+    plazos,
     revocar_sesion,
     revocar_sesiones_de_usuario,
     rotar_token,
@@ -172,10 +176,18 @@ def csrf_login(request: Request):
 
 @router.get("/session")
 def estado_sesion(request: Request, db: Annotated[Session, Depends(get_db)]):
-    """Estado de la sesión (siempre 200). No exige etapa activa."""
-    sesion = _sesion_de_cookie(request, db)
+    """Estado de la sesión (siempre 200). No exige etapa activa.
+
+    Es un sondeo: NO cuenta como actividad (no prolonga la sesión). Si la cookie
+    ya no abre ninguna sesión, se borra para que el navegador no la conserve.
+    """
+    sesion = _sesion_de_cookie(request, db, tocar=False)
     if sesion is None:
-        return {"authenticated": False, "stage": None, "csrf_token": None}
+        respuesta = JSONResponse({"authenticated": False, "stage": None, "csrf_token": None})
+        if request.cookies.get(COOKIE_SESION):
+            db.commit()  # persistir la revocación por vencimiento
+            borrar_cookie(respuesta)
+        return respuesta
 
     usuario = db.get(Usuario, sesion.usuario_id)
     if usuario is None or not usuario.activo:
@@ -196,7 +208,21 @@ def estado_sesion(request: Request, db: Annotated[Session, Depends(get_db)]):
         "csrf_token": sesion.csrf_token,
         "usuario": serializar_usuario(usuario),
         "permisos": permisos,
+        "sesion": plazos(sesion),
+        "password_min_length": get_settings().password_min_length,
     }
+
+
+@router.post("/session/extender", dependencies=[Depends(verificar_csrf_json)])
+def extender_sesion(
+    db: Annotated[Session, Depends(get_db)],
+    sesion: Annotated[SesionWeb, Depends(sesion_activa_json)],
+):
+    """Renueva la ventana de inactividad a petición expresa del usuario (botón
+    «Extender sesión» del aviso de expiración). La vida máxima no se prolonga."""
+    extender(sesion)
+    db.commit()
+    return {"ok": True, "sesion": plazos(sesion)}
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +308,7 @@ def _sesion_para_cambio(request: Request, db: Annotated[Session, Depends(get_db)
     """Acepta sesiones en etapa de cambio forzado o ya activas (cambio voluntario)."""
     sesion = _sesion_de_cookie(request, db)
     if sesion is None or sesion.etapa not in (ETAPA_CAMBIO_PASSWORD, ETAPA_ACTIVA):
-        raise HTTPException(status_code=401, detail="No autenticado")
+        raise no_autenticado(request, db, sesion)
     usuario = db.get(Usuario, sesion.usuario_id)
     if usuario is None or not usuario.activo:
         raise HTTPException(status_code=401, detail="No autenticado")

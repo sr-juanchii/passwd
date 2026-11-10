@@ -50,8 +50,18 @@ def crear_sesion(
     return sesion, token
 
 
-def buscar_sesion_valida(db: Session, token: str) -> SesionWeb | None:
-    """Devuelve la sesión si existe y no está revocada ni expirada."""
+def _amortiguacion_efectiva(settings) -> int:
+    """Segundos de amortiguación de la marca de actividad, nunca más de la mitad
+    de la ventana de inactividad (si no, una sesión en uso podría caducar)."""
+    return min(settings.activity_throttle_seconds, settings.session_idle_minutes * 30)
+
+
+def buscar_sesion_valida(db: Session, token: str, tocar: bool = True) -> SesionWeb | None:
+    """Devuelve la sesión si existe y no está revocada ni expirada.
+
+    Con ``tocar=False`` la consulta NO cuenta como actividad: la usa el sondeo de
+    estado del frontend, que no debe prolongar por sí solo una sesión inactiva.
+    """
     if not token:
         return None
     sesion = db.scalar(select(SesionWeb).where(SesionWeb.token_hash == _hash_token(token)))
@@ -66,9 +76,32 @@ def buscar_sesion_valida(db: Session, token: str) -> SesionWeb | None:
         return None
     # Amortiguar la escritura: solo actualizar la marca si pasó el umbral, para
     # no escribir en la BD en cada petición (una por acción sería costoso).
-    if inactiva.total_seconds() >= settings.activity_throttle_seconds:
+    if tocar and inactiva.total_seconds() >= _amortiguacion_efectiva(settings):
         sesion.ultima_actividad = ahora
     return sesion
+
+
+def plazos(sesion: SesionWeb) -> dict[str, int]:
+    """Segundos que le quedan a la sesión, para que el cliente avise antes de que
+    venza: por inactividad, por vida máxima, la ventana de inactividad completa y
+    el margen de imprecisión de la marca de actividad (amortiguación)."""
+    settings = get_settings()
+    ahora = ahora_utc()
+    ventana = settings.session_idle_minutes * 60
+    inactiva = int((ahora - sesion.ultima_actividad).total_seconds())
+    return {
+        "idle_expires_in": max(0, ventana - inactiva),
+        "absolute_expires_in": max(0, int((sesion.expira_en - ahora).total_seconds())),
+        "idle_timeout": ventana,
+        "margin": _amortiguacion_efectiva(settings),
+    }
+
+
+def extender(sesion: SesionWeb) -> None:
+    """Renueva la ventana de inactividad a petición expresa del usuario.
+
+    No altera ``expira_en``: la vida máxima absoluta nunca se prolonga."""
+    sesion.ultima_actividad = ahora_utc()
 
 
 def rotar_token(db: Session, sesion: SesionWeb) -> str:
@@ -118,3 +151,11 @@ def configurar_cookie(respuesta, token: str) -> None:
 
 def borrar_cookie(respuesta) -> None:
     respuesta.delete_cookie(COOKIE_SESION, path="/")
+
+
+def cabecera_borrar_cookie() -> dict[str, str]:
+    """Cabecera ``Set-Cookie`` que elimina la cookie de sesión, para adjuntarla a
+    un error (p. ej. el 401 de una sesión vencida) y que el navegador no conserve
+    una cookie que ya no abre nada."""
+    seguro = "; Secure" if get_settings().cookie_secure else ""
+    return {"Set-Cookie": f'{COOKIE_SESION}=""; Max-Age=0; Path=/; HttpOnly; SameSite=strict{seguro}'}

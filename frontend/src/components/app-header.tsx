@@ -30,7 +30,7 @@ function iniciales(nombre: string | undefined, username: string | undefined): st
 
 export function AppHeader() {
   const router = useRouter();
-  const { usuario, refrescar } = useSession();
+  const { usuario, cerrarInterfaz } = useSession();
   const [cmd, setCmd] = useState(false);
 
   // ⌘K / Ctrl+K abre la paleta de comandos.
@@ -48,10 +48,11 @@ export function AppHeader() {
   async function cerrarSesion() {
     try {
       await api.logout();
-    } finally {
-      await refrescar();
-      router.replace("/login");
+    } catch {
+      /* si falla, la interfaz se cierra igualmente */
     }
+    // El layout redirige al login con el motivo; las demás pestañas se cierran.
+    cerrarInterfaz("cerrada");
   }
 
   return (

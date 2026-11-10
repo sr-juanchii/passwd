@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { consumirRetorno } from "@/lib/expiracion";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,7 @@ export default function MfaVerificarPage() {
       const r = await api.mfaVerificar(codigo);
       await refrescar();
       if (r.aviso) toast.warning(r.aviso, { duration: 10000 });
-      router.replace("/");
+      router.replace(consumirRetorno());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Código incorrecto.");
       setEnviando(false);
