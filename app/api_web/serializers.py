@@ -44,6 +44,7 @@ def serializar_usuario(usuario: Usuario) -> dict:
         "rol": usuario.rol,
         "rol_label": ETIQUETAS_ROL.get(usuario.rol, usuario.rol),
         "mfa_habilitado": usuario.mfa_habilitado,
+        "mfa_metodo": usuario.mfa_metodo,
         "activo": usuario.activo,
         "ultimo_acceso": _iso(usuario.ultimo_acceso),
     }

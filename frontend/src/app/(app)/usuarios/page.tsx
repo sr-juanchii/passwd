@@ -294,6 +294,7 @@ export default function UsuariosPage() {
                     {u.mfa_habilitado ? (
                       <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
                         <ShieldCheck className="size-3.5" /> Activo
+                        {u.mfa_metodo === "correo" ? " · correo" : " · app"}
                       </span>
                     ) : (
                       <Badge variant="destructive" className="gap-1">

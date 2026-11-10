@@ -138,6 +138,23 @@ def aviso_actividad_sensible(
     enviar_a_usuario(usuario, "Actividad sensible en su sesión", cuerpo)
 
 
+def aviso_cambio_metodo_mfa(usuario: Usuario, descripcion: str, ip: str) -> None:
+    """Avisa al titular de que cambió su método de verificación en dos pasos.
+
+    Es un cambio de seguridad de la propia cuenta: si no lo hizo el titular,
+    conviene que lo sepa de inmediato."""
+    if not avisos_activos():
+        return
+    cuerpo = (
+        f"Se cambió el método de verificación en dos pasos de su cuenta «{usuario.username}».\n\n"
+        f"  Cambio:             {descripcion}\n"
+        f"  Fecha y hora (UTC): {ahora_utc():%Y-%m-%d %H:%M:%S}\n"
+        f"  Dirección IP:       {ip or 'desconocida'}\n\n"
+        "Sus demás sesiones abiertas se cerraron. Si fue usted, no hace falta ninguna acción."
+    ) + _PIE
+    enviar_a_usuario(usuario, "Cambio en su verificación en dos pasos", cuerpo)
+
+
 def aviso_cambio_permisos_propios(
     db: Session, usuario: Usuario, accion: str, detalle: str
 ) -> None:

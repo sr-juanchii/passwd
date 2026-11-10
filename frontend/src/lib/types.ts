@@ -36,6 +36,7 @@ export interface Usuario {
   rol: Rol;
   rol_label: string;
   mfa_habilitado: boolean;
+  mfa_metodo?: MetodoMfa;
   activo: boolean;
   ultimo_acceso: string | null;
 }
@@ -418,4 +419,38 @@ export interface InfoSistemaItem {
 export interface ConfiguracionResp {
   grupos: GrupoConfig[];
   info_sistema: InfoSistemaItem[];
+}
+
+// --- Verificación en dos pasos ---
+export type MetodoMfa = "totp" | "correo";
+
+export interface MetodosAltaMfa {
+  metodos: MetodoMfa[];
+  correo: { disponible: boolean; destino: string; motivo: string };
+  /** La cuenta se enroló por correo y ahora debe pasar a aplicación autenticadora. */
+  obligado_totp: boolean;
+}
+
+export interface MetodosAccesoMfa {
+  principal: MetodoMfa;
+  totp: boolean;
+  codigos_recuperacion: boolean;
+  otp_correo: boolean;
+  destino: string;
+}
+
+export interface EnvioCodigoCorreo {
+  ok: boolean;
+  destino: string;
+  vigencia_minutos: number;
+}
+
+export interface SeguridadCuenta {
+  metodo: MetodoMfa;
+  codigos_restantes: number;
+  destino: string;
+  puede_cambiar_a_correo: boolean;
+  motivo_correo: string;
+  puede_cambiar_a_totp: boolean;
+  correo_operativo: boolean;
 }

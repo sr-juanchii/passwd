@@ -127,6 +127,14 @@ class Settings:
     # con PASSWD_EMAIL_OTP_ENABLED=false; ver docs/notificaciones-y-mfa-correo.md.
     email_otp_enabled: bool = field(default_factory=lambda: _env_bool("EMAIL_OTP_ENABLED", True))
     email_otp_ttl_minutes: int = field(default_factory=lambda: _env_int("EMAIL_OTP_TTL_MINUTES", 10))
+    # Permite que un usuario ELIJA el correo como método principal de segundo
+    # factor (sin aplicación autenticadora). Independiente del respaldo anterior.
+    email_otp_primary_enabled: bool = field(
+        default_factory=lambda: _env_bool("EMAIL_OTP_PRIMARY_ENABLED", True))
+    # Los administradores deben usar aplicación autenticadora: el correo no les
+    # vale como método principal (sí como respaldo, si está habilitado).
+    mfa_totp_required_admin: bool = field(
+        default_factory=lambda: _env_bool("MFA_TOTP_REQUIRED_ADMIN", True))
 
     # Avisos dinámicos por usuario (actividad propia, cambios de permisos,
     # credenciales compartidas y caducidad de rotación). Se resuelven contra la
@@ -234,6 +242,8 @@ OVERRIDABLES: dict[str, tuple[str, str, object]] = {
     "notify_to": ("NOTIFY_TO", "texto", ""),
     "email_otp_enabled": ("EMAIL_OTP_ENABLED", "booleano", True),
     "email_otp_ttl_minutes": ("EMAIL_OTP_TTL_MINUTES", "entero", 10),
+    "email_otp_primary_enabled": ("EMAIL_OTP_PRIMARY_ENABLED", "booleano", True),
+    "mfa_totp_required_admin": ("MFA_TOTP_REQUIRED_ADMIN", "booleano", True),
     "notify_users_enabled": ("NOTIFY_USERS_ENABLED", "booleano", True),
     "rotation_warning_days": ("ROTATION_WARNING_DAYS", "entero", 14),
 }

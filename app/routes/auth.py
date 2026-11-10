@@ -38,12 +38,14 @@ from app.models import (
     ETAPA_CAMBIO_PASSWORD,
     ETAPA_MFA_ENROLAMIENTO,
     ETAPA_MFA_PENDIENTE,
+    MFA_CORREO,
+    MFA_TOTP,
     SesionWeb,
     Usuario,
     ahora_utc,
 )
 from app.notifications import enviar_a_direccion, enviar_alerta
-from app.security import mfa, otp_correo, ratelimit, recovery, recuperacion
+from app.security import mfa, otp_correo, ratelimit, recovery, recuperacion, segundo_factor
 from app.security.crypto import cifrar, descifrar
 from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
 from app.security.sessions import (
@@ -299,9 +301,11 @@ def mfa_configurar_form(
 ):
     usuario = db.get(Usuario, sesion.usuario_id)
     assert usuario is not None
-    if usuario.totp_secret_cifrado is None or usuario.mfa_habilitado:
+    reenrolando = usuario.mfa_habilitado and usuario.mfa_metodo == MFA_CORREO
+    if usuario.totp_secret_cifrado is None or (usuario.mfa_habilitado and not reenrolando):
         usuario.totp_secret_cifrado = cifrar(mfa.generar_secreto())
-        usuario.mfa_habilitado = False
+        if not reenrolando:
+            usuario.mfa_habilitado = False
     secreto = descifrar(usuario.totp_secret_cifrado)
     return render(request, "mfa_configurar.html", {
         "qr_data_uri": mfa.qr_svg_data_uri(secreto, usuario.username),
@@ -327,7 +331,8 @@ def mfa_configurar(
     if not hmac.compare_digest(csrf_token, sesion.csrf_token):
         return render(request, "mfa_configurar.html", {**ctx, "error": "Token CSRF inválido."}, status_code=403)
 
-    if not mfa.verificar_codigo(secreto, codigo):
+    valido, _reutilizado = segundo_factor.aceptar_totp(usuario, codigo)
+    if not valido:
         audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
                         detalle="Código de enrolamiento incorrecto.", exito=False)
         return render(request, "mfa_configurar.html",
@@ -335,10 +340,7 @@ def mfa_configurar(
                       status_code=400)
 
     usuario.mfa_habilitado = True
-    # Se registra en forma CANÓNICA: la comparación anti-reutilización de
-    # /mfa/verificar normaliza igual, de modo que el mismo código no puede
-    # volver a pasar reformateado con espacios.
-    usuario.ultimo_otp_usado = mfa.normalizar_codigo(codigo)
+    usuario.mfa_metodo = MFA_TOTP  # la interfaz clásica solo enrola TOTP
     usuario.ultimo_acceso = ahora_utc()
     sesion.etapa = ETAPA_ACTIVA
     token = rotar_token(db, sesion)
@@ -361,11 +363,14 @@ def mfa_configurar(
 @router.get("/mfa/verificar")
 def mfa_verificar_form(
     request: Request,
+    db: Annotated[Session, Depends(get_db)],
     sesion: Annotated[SesionWeb, Depends(en_etapa(ETAPA_MFA_PENDIENTE))],
 ):
+    usuario = db.get(Usuario, sesion.usuario_id)
+    assert usuario is not None
     return render(request, "mfa_verificar.html", {
         "csrf_token": sesion.csrf_token,
-        "otp_correo_disponible": otp_correo.habilitado(),
+        "otp_correo_disponible": segundo_factor.correo_en_login(usuario),
         "aviso": request.query_params.get("msg", "")[:200],
     })
 
@@ -383,19 +388,20 @@ def mfa_solicitar_otp_correo(
     que no es un punto de entrada por sí solo. El código se verifica luego en
     ``POST /mfa/verificar``, igual que un TOTP.
     """
-    contexto = {"csrf_token": sesion.csrf_token, "otp_correo_disponible": otp_correo.habilitado()}
+    usuario = db.get(Usuario, sesion.usuario_id)
+    assert usuario is not None
+    contexto = {"csrf_token": sesion.csrf_token,
+                "otp_correo_disponible": segundo_factor.correo_en_login(usuario)}
     if not hmac.compare_digest(csrf_token, sesion.csrf_token):
         return render(request, "mfa_verificar.html",
                       {**contexto, "error": "Token CSRF inválido."}, status_code=403)
-    if not otp_correo.habilitado():
+    if not segundo_factor.correo_en_login(usuario):
         return render(request, "mfa_verificar.html", {
             **contexto,
             "error": "El código por correo no está disponible. Use su aplicación "
                      "autenticadora o un código de recuperación.",
         }, status_code=409)
 
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
     ip = _ip_de(request)
 
     # Doble límite: por cuenta (no inundar el buzón de un usuario) y por IP (no
@@ -440,26 +446,19 @@ def mfa_verificar(
     csrf_token: Annotated[str, Form()] = "",
 ):
     usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None and usuario.totp_secret_cifrado is not None
+    assert usuario is not None
 
     if not hmac.compare_digest(csrf_token, sesion.csrf_token):
         return render(request, "mfa_verificar.html",
                       {"csrf_token": sesion.csrf_token, "error": "Token CSRF inválido."}, status_code=403)
 
-    codigo_limpio = mfa.normalizar_codigo(codigo)
-    secreto = descifrar(usuario.totp_secret_cifrado)
-    reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
-
-    totp_valido = not reutilizado and mfa.verificar_codigo(secreto, codigo)
-    recuperacion_usada = False
-    otp_correo_usado = False
-    if not totp_valido:
-        # Alternativa: código de recuperación de un solo uso
-        recuperacion_usada = recovery.consumir_codigo(db, usuario, codigo)
-    # Tercera vía (último lugar): OTP de respaldo enviado al correo. Orden de
-    # preferencia: TOTP → código de recuperación → OTP por correo.
-    if not totp_valido and not recuperacion_usada and otp_correo.habilitado():
-        otp_correo_usado = otp_correo.consumir(db, usuario, codigo)
+    # Comprobación ÚNICA del segundo factor, común con la API JSON: TOTP (si es
+    # el método del usuario) → código de recuperación → código por correo.
+    resultado = segundo_factor.comprobar(db, usuario, codigo)
+    reutilizado = resultado.reutilizado
+    totp_valido = resultado.via == segundo_factor.VIA_TOTP
+    recuperacion_usada = resultado.via == segundo_factor.VIA_RECUPERACION
+    otp_correo_usado = resultado.via == segundo_factor.VIA_CORREO
 
     if not totp_valido and not recuperacion_usada and not otp_correo_usado:
         _registrar_fallo(db, request, usuario)
@@ -474,11 +473,18 @@ def mfa_verificar(
                       {"csrf_token": sesion.csrf_token, "error": "Código incorrecto."}, status_code=401)
 
     usuario.intentos_fallidos = 0
-    if totp_valido:
-        usuario.ultimo_otp_usado = codigo_limpio
+    token = rotar_token(db, sesion)
+    if segundo_factor.debe_reenrolar_con_totp(usuario):
+        # Factores verificados, pero la política ya no admite el correo como
+        # método principal para esta cuenta: debe configurar TOTP antes de entrar.
+        sesion.etapa = ETAPA_MFA_ENROLAMIENTO
+        audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
+                        detalle="Código por correo aceptado; se exige configurar TOTP.")
+        respuesta = RedirectResponse("/mfa/configurar", status_code=303)
+        configurar_cookie(respuesta, token)
+        return respuesta
     usuario.ultimo_acceso = ahora_utc()
     sesion.etapa = ETAPA_ACTIVA
-    token = rotar_token(db, sesion)
 
     if recuperacion_usada:
         restantes = recovery.codigos_restantes(db, usuario)
@@ -487,10 +493,13 @@ def mfa_verificar(
         aviso = (f"Código de recuperación aceptado; le quedan {restantes}. "
                  "Si perdió su dispositivo, pida al administrador reiniciar su MFA.")
         destino = f"/?msg={quote(aviso)}"
+    elif otp_correo_usado and usuario.mfa_metodo == MFA_CORREO:
+        audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
+                        detalle="Acceso completado con código por correo (método principal).")
+        destino = "/"
     elif otp_correo_usado:
         # Un acceso por el factor de respaldo merece revisión: se audita y se
         # alerta al equipo de seguridad, no solo al titular.
-        otp_correo.invalidar_codigos(db, usuario.id)
         audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
                         detalle="Acceso completado con OTP de respaldo enviado al correo.")
         enviar_alerta(
@@ -609,13 +618,13 @@ def recuperar_verificar(
     # Señuelo (usuario_id nulo) o cuenta inválida → mismo camino y respuesta que
     # un código incorrecto sobre una cuenta real (anti-enumeración en el paso 2).
     usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
-    recuperable = usuario is not None and usuario.activo and usuario.totp_secret_cifrado is not None
-    codigo_limpio = mfa.normalizar_codigo(codigo)
+    recuperable = usuario is not None and usuario.activo and usuario.mfa_habilitado
     if recuperable:
-        secreto = descifrar(usuario.totp_secret_cifrado)
-        reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
-        totp_valido = not reutilizado and mfa.verificar_codigo(secreto, codigo)
-        codigo_recuperacion = recovery.consumir_codigo(db, usuario, codigo) if not totp_valido else False
+        # TOTP en vivo o código de recuperación; el código por correo no vale
+        # aquí (la identidad ya se acreditó con el correo: sería un único factor).
+        resultado = segundo_factor.comprobar(db, usuario, codigo, permitir_correo=False)
+        totp_valido = resultado.via == segundo_factor.VIA_TOTP
+        codigo_recuperacion = resultado.via == segundo_factor.VIA_RECUPERACION
     else:
         mfa.verificar_codigo(mfa.generar_secreto(), codigo)  # equipara el tiempo, nunca válido
         totp_valido = False
@@ -634,8 +643,6 @@ def recuperar_verificar(
         return render(request, "recuperar_verificar.html",
                       {"csrf_token": desafio.csrf_token, "error": "Código incorrecto."}, status_code=401)
 
-    if totp_valido:
-        usuario.ultimo_otp_usado = codigo_limpio
     recuperacion.marcar_verificado(db, desafio)
     audit.registrar(db, audit.RECUPERACION_VERIFICADA, request=request, usuario=usuario,
                     detalle="Código de recuperación usado." if codigo_recuperacion else "TOTP verificado.")

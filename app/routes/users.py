@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app import audit, avisos
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
-from app.models import ROLES_VALIDOS, Usuario
+from app.models import MFA_TOTP, ROLES_VALIDOS, Usuario
 from app.notifications import enviar_alerta
 from app.rbac import ETIQUETAS_ROL
 from app.security.passwords import hashear_password
@@ -203,6 +203,8 @@ def usuario_reset_mfa(
     objetivo.mfa_habilitado = False
     objetivo.totp_secret_cifrado = None
     objetivo.ultimo_otp_usado = None
+    objetivo.ultimo_totp_paso = None
+    objetivo.mfa_metodo = MFA_TOTP  # elegirá método al volver a enrolarse
     eliminar_codigos(db, objetivo.id)
     revocar_sesiones_de_usuario(db, objetivo.id)
     audit.registrar(db, audit.MFA_REINICIADO, request=request, usuario=usuario,

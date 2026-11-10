@@ -11,12 +11,16 @@ import type {
   Dashboard,
   DispositivoDetalle,
   DispositivoInput,
+  EnvioCodigoCorreo,
   HipervisorDetalle,
   HipervisorInput,
   Metricas,
+  MetodosAccesoMfa,
+  MetodosAltaMfa,
   NivelAcceso,
   ResultadoBusqueda,
   ResultadoImportacion,
+  SeguridadCuenta,
   ServidorDetalle,
   ServidorInput,
   SessionState,
@@ -177,6 +181,8 @@ export const api = {
     body: b,
     csrf: true,
   }),
+  // --- Verificación en dos pasos: alta (elección de método) y acceso ---
+  mfaMetodosAlta: () => request<MetodosAltaMfa>("/mfa/configurar/metodos"),
   mfaConfigurar: () => request<{ qr_data_uri: string; secreto: string }>("/mfa/configurar"),
   mfaConfirmar: (codigo: string) =>
     request<{ codigos_recuperacion: string[] }>("/mfa/configurar", {
@@ -184,10 +190,50 @@ export const api = {
       body: { codigo },
       csrf: true,
     }),
-  mfaVerificar: (codigo: string) =>
-    request<{ ok: boolean; aviso?: string }>("/mfa/verificar", {
+  mfaAltaCorreoEnviar: () =>
+    request<EnvioCodigoCorreo>("/mfa/configurar/correo/enviar", { method: "POST", csrf: true }),
+  mfaAltaCorreoConfirmar: (codigo: string) =>
+    request<{ codigos_recuperacion: string[] }>("/mfa/configurar/correo", {
       method: "POST",
       body: { codigo },
+      csrf: true,
+    }),
+  mfaMetodos: () => request<MetodosAccesoMfa>("/mfa/metodos"),
+  mfaPedirCodigoCorreo: () =>
+    request<EnvioCodigoCorreo>("/mfa/otp-correo", { method: "POST", csrf: true }),
+  mfaVerificar: (codigo: string) =>
+    request<{ ok: boolean; aviso?: string; stage?: string; next?: string }>("/mfa/verificar", {
+      method: "POST",
+      body: { codigo },
+      csrf: true,
+    }),
+
+  // --- Mi seguridad (gestión del segundo factor por el propio usuario) ---
+  seguridad: () => request<SeguridadCuenta>("/cuenta/seguridad"),
+  seguridadEnviarCodigo: () =>
+    request<EnvioCodigoCorreo>("/cuenta/mfa/correo/enviar", { method: "POST", csrf: true }),
+  seguridadActivarCorreo: (password: string, codigo: string) =>
+    request<SeguridadCuenta>("/cuenta/mfa/correo/activar", {
+      method: "POST",
+      body: { password, codigo },
+      csrf: true,
+    }),
+  seguridadIniciarTotp: (password: string) =>
+    request<{ qr_data_uri: string; secreto: string }>("/cuenta/mfa/totp/iniciar", {
+      method: "POST",
+      body: { password },
+      csrf: true,
+    }),
+  seguridadActivarTotp: (codigo: string) =>
+    request<SeguridadCuenta>("/cuenta/mfa/totp/activar", {
+      method: "POST",
+      body: { codigo },
+      csrf: true,
+    }),
+  seguridadRegenerarCodigos: (password: string, codigo: string) =>
+    request<{ codigos_recuperacion: string[] }>("/cuenta/mfa/codigos", {
+      method: "POST",
+      body: { password, codigo },
       csrf: true,
     }),
   logout: () => request<{ ok: boolean }>("/logout", { method: "POST", csrf: true }),

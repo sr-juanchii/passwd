@@ -12,7 +12,6 @@ import hmac
 import secrets
 from datetime import timedelta
 from typing import Annotated
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -37,13 +36,15 @@ from app.models import (
     ETAPA_CAMBIO_PASSWORD,
     ETAPA_MFA_ENROLAMIENTO,
     ETAPA_MFA_PENDIENTE,
+    MFA_CORREO,
+    MFA_TOTP,
     SesionWeb,
     Usuario,
     ahora_utc,
 )
 from app.notifications import enviar_a_direccion, enviar_alerta
 from app.rbac import PERMISOS, tiene_permiso
-from app.security import mfa, otp_correo, ratelimit, recovery, recuperacion
+from app.security import mfa, otp_correo, ratelimit, recovery, recuperacion, segundo_factor
 from app.security.crypto import cifrar, descifrar
 from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
 from app.security.sessions import (
@@ -384,6 +385,117 @@ def cambiar_password(
 # ---------------------------------------------------------------------------
 
 
+def _fallo_segundo_factor(
+    db: Session, request: Request, usuario: Usuario, sesion: SesionWeb,
+    detalle: str, mensaje: str, status_code: int,
+):
+    """Registra un código incorrecto (cuenta para el bloqueo de la cuenta).
+
+    Devuelve la respuesta 423 si la cuenta quedó bloqueada; en otro caso lanza el
+    error indicado. Vale tanto para el enrolamiento como para la verificación.
+    """
+    _registrar_fallo(db, request, usuario)
+    audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
+                    detalle=detalle, exito=False)
+    if usuario.esta_bloqueado():
+        revocar_sesion(sesion)
+        db.commit()
+        respuesta = JSONResponse(
+            {"detail": "Cuenta bloqueada; vuelva a iniciar sesión.", "next": "/login?motivo=bloqueada"},
+            status_code=423,
+        )
+        borrar_cookie(respuesta)
+        return respuesta
+    db.commit()
+    raise _error(mensaje, status_code)
+
+
+def enviar_codigo_correo(db: Session, request: Request, usuario: Usuario, proposito: str) -> dict:
+    """Emite y envía un código de un solo uso al buzón del usuario.
+
+    Doble límite: por cuenta (evita inundar el buzón de un usuario concreto) y
+    por IP (evita usar el sistema como amplificador de correo). La respuesta
+    NUNCA lleva el código: solo confirma el envío y a qué buzón (enmascarado).
+    """
+    ip = _ip_de(request)
+    for clave in (f"otp-correo-user:{usuario.id}", f"otp-correo-ip:{ip}"):
+        if not ratelimit.permitir_intento(clave, limite=3, ventana_minutos=15, db=db):
+            audit.registrar(db, audit.MFA_OTP_CORREO_SOLICITADO, request=request, usuario=usuario,
+                            detalle="Tasa excedida al pedir código por correo.", exito=False)
+            db.commit()
+            raise _error("Demasiadas solicitudes; espere unos minutos.", 429)
+
+    codigo = otp_correo.emitir(db, usuario, ip)
+    asunto, cuerpo_correo = otp_correo.texto_correo(usuario, codigo, ip)
+    entregado = enviar_a_direccion(usuario.email, asunto, cuerpo_correo)
+    audit.registrar(
+        db, audit.MFA_OTP_CORREO_SOLICITADO, request=request, usuario=usuario,
+        detalle=(f"Código enviado al correo registrado ({proposito})." if entregado
+                 else f"No se pudo entregar el código por correo ({proposito}; fallo SMTP)."),
+        exito=entregado,
+    )
+    db.commit()
+    if not entregado:
+        raise _error("No se pudo enviar el código a su correo. Avise al administrador.", 502)
+    return {
+        "ok": True,
+        "destino": avisos.enmascarar_correo(usuario.email),
+        "vigencia_minutos": get_settings().email_otp_ttl_minutes,
+    }
+
+
+def _completar_enrolamiento(
+    db: Session, request: Request, usuario: Usuario, sesion: SesionWeb, metodo: str,
+) -> JSONResponse:
+    """Activa el MFA con el método elegido, abre la sesión y entrega los códigos
+    de recuperación (una única vez)."""
+    usuario.mfa_habilitado = True
+    usuario.mfa_metodo = metodo
+    if metodo == MFA_CORREO:
+        usuario.totp_secret_cifrado = None
+        usuario.ultimo_totp_paso = None
+        usuario.ultimo_otp_usado = None
+    usuario.intentos_fallidos = 0
+    usuario.ultimo_acceso = ahora_utc()
+    sesion.etapa = ETAPA_ACTIVA
+    token = rotar_token(db, sesion)
+    codigos_recuperacion = recovery.emitir_codigos(db, usuario)
+    audit.registrar(db, audit.MFA_ENROLADO, request=request, usuario=usuario,
+                    detalle=f"Método: {metodo}. {len(codigos_recuperacion)} códigos de "
+                            "recuperación emitidos.")
+    audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
+    _avisar_inicio_sesion(db, request, usuario)
+
+    # Confirmar antes de responder: el frontend consulta /session enseguida y
+    # debe ver la sesión ya activa (ver nota en login).
+    db.commit()
+    respuesta = JSONResponse({"codigos_recuperacion": codigos_recuperacion, "metodo": metodo},
+                             headers={"Cache-Control": "no-store"})
+    configurar_cookie(respuesta, token)
+    return respuesta
+
+
+@router.get("/mfa/configurar/metodos")
+def mfa_configurar_metodos(
+    db: Annotated[Session, Depends(get_db)],
+    sesion: Annotated[SesionWeb, Depends(en_etapa_json(ETAPA_MFA_ENROLAMIENTO))],
+):
+    """Métodos entre los que el usuario puede elegir su segundo factor."""
+    usuario = db.get(Usuario, sesion.usuario_id)
+    assert usuario is not None
+    disponible = segundo_factor.correo_principal_disponible(usuario)
+    return {
+        "metodos": segundo_factor.metodos_enrolables(usuario),
+        "correo": {
+            "disponible": disponible,
+            "destino": avisos.enmascarar_correo(usuario.email) if disponible else "",
+            "motivo": "" if disponible else segundo_factor.motivo_correo_no_disponible(usuario),
+        },
+        # Cuenta enrolada por correo que ahora debe pasar a aplicación autenticadora.
+        "obligado_totp": segundo_factor.debe_reenrolar_con_totp(usuario),
+    }
+
+
 @router.get("/mfa/configurar")
 def mfa_configurar_datos(
     request: Request,
@@ -392,9 +504,13 @@ def mfa_configurar_datos(
 ):
     usuario = db.get(Usuario, sesion.usuario_id)
     assert usuario is not None
-    if usuario.totp_secret_cifrado is None or usuario.mfa_habilitado:
+    reenrolando = usuario.mfa_habilitado and usuario.mfa_metodo == MFA_CORREO
+    if usuario.totp_secret_cifrado is None or (usuario.mfa_habilitado and not reenrolando):
         usuario.totp_secret_cifrado = cifrar(mfa.generar_secreto())
-        usuario.mfa_habilitado = False
+        # Al pasar de correo a TOTP el MFA NO se desactiva mientras tanto: si el
+        # usuario abandona, su siguiente acceso sigue exigiendo el código por correo.
+        if not reenrolando:
+            usuario.mfa_habilitado = False
     secreto = descifrar(usuario.totp_secret_cifrado)
     # Si se regeneró el secreto hay que confirmarlo antes de responder, pues el
     # POST de confirmación lo lee de la BD para validar el código TOTP.
@@ -413,36 +529,58 @@ def mfa_configurar(
     # puede depender de ``verificar_csrf_json`` (que exige sesión activa).
     _exigir_csrf(request, sesion)
     usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None and usuario.totp_secret_cifrado is not None
-    secreto = descifrar(usuario.totp_secret_cifrado)
+    assert usuario is not None
+    if usuario.totp_secret_cifrado is None:
+        raise _error("Inicie de nuevo la configuración de la aplicación autenticadora.", 409)
 
-    if not mfa.verificar_codigo(secreto, cuerpo.codigo):
-        audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
-                        detalle="Código de enrolamiento incorrecto.", exito=False)
-        db.commit()
-        raise _error("Código incorrecto. Verifique su aplicación autenticadora.", 400)
+    # El código se registra como usado (paso temporal): no podrá repetirse en
+    # /mfa/verificar ni reformateado con espacios.
+    valido, _reutilizado = segundo_factor.aceptar_totp(usuario, cuerpo.codigo)
+    if not valido:
+        return _fallo_segundo_factor(
+            db, request, usuario, sesion, "Código de enrolamiento incorrecto.",
+            "Código incorrecto. Verifique su aplicación autenticadora.", 400,
+        )
+    return _completar_enrolamiento(db, request, usuario, sesion, MFA_TOTP)
 
-    usuario.mfa_habilitado = True
-    # Se registra en forma CANÓNICA (ver nota en app/security/mfa.py):
-    # almacenarlo sin normalizar permitiría reutilizarlo con espacios.
-    usuario.ultimo_otp_usado = mfa.normalizar_codigo(cuerpo.codigo)
-    usuario.ultimo_acceso = ahora_utc()
-    sesion.etapa = ETAPA_ACTIVA
-    token = rotar_token(db, sesion)
-    codigos_recuperacion = recovery.emitir_codigos(db, usuario)
-    audit.registrar(db, audit.MFA_ENROLADO, request=request, usuario=usuario,
-                    detalle=f"{len(codigos_recuperacion)} códigos de recuperación emitidos.")
-    audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
-    _avisar_inicio_sesion(db, request, usuario)
 
-    # Confirmar antes de responder: el frontend consulta /session enseguida y
-    # debe ver la sesión ya activa (ver nota en login).
-    db.commit()
-    # Los códigos de recuperación se entregan una única vez.
-    respuesta = JSONResponse({"codigos_recuperacion": codigos_recuperacion},
-                             headers={"Cache-Control": "no-store"})
-    configurar_cookie(respuesta, token)
-    return respuesta
+@router.post("/mfa/configurar/correo/enviar")
+def mfa_configurar_correo_enviar(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    sesion: Annotated[SesionWeb, Depends(en_etapa_json(ETAPA_MFA_ENROLAMIENTO))],
+):
+    """Envía el código con el que el usuario confirma su buzón al elegir el
+    correo como método principal de segundo factor."""
+    _exigir_csrf(request, sesion)
+    usuario = db.get(Usuario, sesion.usuario_id)
+    assert usuario is not None
+    if not segundo_factor.correo_principal_disponible(usuario):
+        raise _error(segundo_factor.motivo_correo_no_disponible(usuario), 409)
+    return enviar_codigo_correo(db, request, usuario, "alta de método por correo")
+
+
+@router.post("/mfa/configurar/correo")
+def mfa_configurar_correo(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    sesion: Annotated[SesionWeb, Depends(en_etapa_json(ETAPA_MFA_ENROLAMIENTO))],
+    cuerpo: CodigoMFA,
+):
+    """Confirma el código recibido y activa el correo como método principal."""
+    _exigir_csrf(request, sesion)
+    usuario = db.get(Usuario, sesion.usuario_id)
+    assert usuario is not None
+    if not segundo_factor.correo_principal_disponible(usuario):
+        raise _error(segundo_factor.motivo_correo_no_disponible(usuario), 409)
+
+    if not otp_correo.consumir(db, usuario, cuerpo.codigo):
+        return _fallo_segundo_factor(
+            db, request, usuario, sesion, "Código de enrolamiento por correo incorrecto.",
+            "Código incorrecto o caducado. Revise su correo o pida uno nuevo.", 400,
+        )
+    otp_correo.invalidar_codigos(db, usuario.id)
+    return _completar_enrolamiento(db, request, usuario, sesion, MFA_CORREO)
 
 
 @router.get("/mfa/verificar")
@@ -458,66 +596,28 @@ def mfa_solicitar_otp_correo(
     db: Annotated[Session, Depends(get_db)],
     sesion: Annotated[SesionWeb, Depends(en_etapa_json(ETAPA_MFA_PENDIENTE))],
 ):
-    """Envía un OTP de respaldo al correo del usuario (MFA sin dispositivo TOTP).
+    """Envía un código al correo del usuario para completar el segundo factor.
 
-    Solo alcanzable desde ``mfa_pendiente``: la contraseña ya fue validada, así
-    que esto NO es un punto de entrada por sí solo. El código se verifica después
-    en ``POST /mfa/verificar``, igual que un TOTP.
+    Para quien eligió el correo es su método principal; para quien usa TOTP es
+    el respaldo (si está habilitado). Solo alcanzable desde ``mfa_pendiente``: la
+    contraseña ya fue validada, así que NO es un punto de entrada por sí solo. El
+    código se verifica después en ``POST /mfa/verificar``.
     """
     _exigir_csrf(request, sesion)
-    if not otp_correo.habilitado():
+    usuario = db.get(Usuario, sesion.usuario_id)
+    assert usuario is not None
+    if not segundo_factor.correo_en_login(usuario):
         raise _error(
+            "El código por correo no está disponible. Use un código de recuperación "
+            "o pida al administrador que reinicie su verificación en dos pasos."
+            if usuario.mfa_metodo == MFA_CORREO else
             "El código por correo no está disponible. Use su aplicación "
             "autenticadora o un código de recuperación.",
             409,
         )
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-    ip = _ip_de(request)
-
-    # Doble límite: por cuenta (evita inundar el buzón de un usuario concreto) y
-    # por IP (evita usar el sistema como amplificador de correo).
-    for clave in (f"otp-correo-user:{usuario.id}", f"otp-correo-ip:{ip}"):
-        if not ratelimit.permitir_intento(clave, limite=3, ventana_minutos=15, db=db):
-            audit.registrar(db, audit.MFA_OTP_CORREO_SOLICITADO, request=request, usuario=usuario,
-                            detalle="Tasa excedida al pedir OTP por correo.", exito=False)
-            db.commit()
-            raise _error("Demasiadas solicitudes; espere unos minutos.", 429)
-
-    codigo = otp_correo.emitir(db, usuario, ip)
-    asunto, cuerpo_correo = otp_correo.texto_correo(usuario, codigo, ip)
-    entregado = enviar_a_direccion(usuario.email, asunto, cuerpo_correo)
-    audit.registrar(
-        db, audit.MFA_OTP_CORREO_SOLICITADO, request=request, usuario=usuario,
-        detalle=("Código de respaldo enviado al correo registrado." if entregado
-                 else "No se pudo entregar el código de respaldo (fallo SMTP)."),
-        exito=entregado,
-    )
-    db.commit()
-    if not entregado:
-        raise _error(
-            "No se pudo enviar el código a su correo. Avise al administrador.", 502
-        )
-    # La respuesta NUNCA lleva el código: solo confirma el envío y a qué buzón
-    # (enmascarado, para que sirva de pista al titular sin revelar la dirección).
-    return {
-        "ok": True,
-        "destino": _enmascarar_correo(usuario.email),
-        "vigencia_minutos": get_settings().email_otp_ttl_minutes,
-    }
-
-
-def _enmascarar_correo(correo: str) -> str:
-    """``ana.perez@ejemplo.com`` → ``a*******z@ejemplo.com`` (pista sin revelar)."""
-    correo = (correo or "").strip()
-    if "@" not in correo:
-        return "su correo registrado"
-    local, dominio = correo.rsplit("@", 1)
-    if len(local) <= 2:
-        oculto = "*" * len(local)
-    else:
-        oculto = f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}"
-    return f"{oculto}@{dominio}"
+    principal = usuario.mfa_metodo == MFA_CORREO
+    return enviar_codigo_correo(db, request, usuario,
+                                "método principal" if principal else "respaldo")
 
 
 @router.get("/mfa/metodos")
@@ -532,10 +632,13 @@ def mfa_metodos_disponibles(
     """
     usuario = db.get(Usuario, sesion.usuario_id)
     assert usuario is not None
+    correo = segundo_factor.correo_en_login(usuario)
     return {
-        "totp": True,
+        "principal": usuario.mfa_metodo,
+        "totp": usuario.mfa_metodo == MFA_TOTP,
         "codigos_recuperacion": recovery.codigos_restantes(db, usuario) > 0,
-        "otp_correo": otp_correo.habilitado(),
+        "otp_correo": correo,
+        "destino": avisos.enmascarar_correo(usuario.email) if correo else "",
     }
 
 
@@ -548,59 +651,36 @@ def mfa_verificar(
 ):
     _exigir_csrf(request, sesion)
     usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None and usuario.totp_secret_cifrado is not None
+    assert usuario is not None
 
-    codigo_limpio = mfa.normalizar_codigo(cuerpo.codigo)
-    secreto = descifrar(usuario.totp_secret_cifrado)
-    reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
-
-    totp_valido = not reutilizado and mfa.verificar_codigo(secreto, cuerpo.codigo)
-    recuperacion_usada = False
-    otp_correo_usado = False
-    if not totp_valido:
-        recuperacion_usada = recovery.consumir_codigo(db, usuario, cuerpo.codigo)
-    # Tercera vía: el OTP de respaldo enviado al correo. Se prueba en último lugar
-    # y solo si el método está habilitado, de modo que el orden de preferencia sea
-    # TOTP → código de recuperación → OTP por correo.
-    if not totp_valido and not recuperacion_usada and otp_correo.habilitado():
-        otp_correo_usado = otp_correo.consumir(db, usuario, cuerpo.codigo)
-
-    if not totp_valido and not recuperacion_usada and not otp_correo_usado:
-        _registrar_fallo(db, request, usuario)
+    # Límite propio de la verificación, además del bloqueo de cuenta por fallos.
+    if not ratelimit.permitir_intento(f"mfa-verif:{usuario.id}", db=db):
         audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
-                        detalle="Código reutilizado." if reutilizado else "Código incorrecto.", exito=False)
-        if usuario.esta_bloqueado():
-            revocar_sesion(sesion)
-            db.commit()
-            respuesta = JSONResponse(
-                {"detail": "Cuenta bloqueada; vuelva a iniciar sesión.", "next": "/login"},
-                status_code=423,
-            )
-            borrar_cookie(respuesta)
-            return respuesta
+                        detalle="Tasa de verificación excedida.", exito=False)
         db.commit()
-        raise _error("Código incorrecto.", 401)
+        raise _error("Demasiados intentos; espere unos minutos.", 429)
+
+    resultado = segundo_factor.comprobar(db, usuario, cuerpo.codigo)
+    if not resultado.valido:
+        return _fallo_segundo_factor(
+            db, request, usuario, sesion,
+            "Código reutilizado." if resultado.reutilizado else "Código incorrecto.",
+            "Código incorrecto.", 401,
+        )
 
     usuario.intentos_fallidos = 0
-    if totp_valido:
-        usuario.ultimo_otp_usado = codigo_limpio
-    usuario.ultimo_acceso = ahora_utc()
-    sesion.etapa = ETAPA_ACTIVA
-    token = rotar_token(db, sesion)
-
     aviso = None
-    if recuperacion_usada:
+    if resultado.via == segundo_factor.VIA_RECUPERACION:
         restantes = recovery.codigos_restantes(db, usuario)
         audit.registrar(db, audit.MFA_RECUPERACION, request=request, usuario=usuario,
                         detalle=f"Quedan {restantes} código(s) de recuperación sin usar.")
         aviso = (f"Código de recuperación aceptado; le quedan {restantes}. "
-                 "Si perdió su dispositivo, pida al administrador reiniciar su MFA.")
-    elif otp_correo_usado:
-        # Un acceso por el factor de respaldo merece revisión: se audita y se
+                 "Puede generar códigos nuevos en «Mi seguridad».")
+    elif resultado.via == segundo_factor.VIA_CORREO and usuario.mfa_metodo == MFA_TOTP:
+        # Un acceso por el factor de RESPALDO merece revisión: se audita y se
         # alerta al equipo de seguridad, no solo al titular.
-        otp_correo.invalidar_codigos(db, usuario.id)
         audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
-                        detalle="Acceso completado con OTP de respaldo enviado al correo.")
+                        detalle="Acceso completado con código de respaldo enviado al correo.")
         enviar_alerta(
             "Acceso con MFA de respaldo (OTP por correo)",
             f"La cuenta «{usuario.username}» completó el segundo factor con un código "
@@ -610,16 +690,29 @@ def mfa_verificar(
         )
         aviso = ("Acceso verificado con el código enviado a su correo. Vuelva a "
                  "configurar su aplicación autenticadora en cuanto pueda.")
+    elif resultado.via == segundo_factor.VIA_CORREO:
+        audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
+                        detalle="Acceso completado con código por correo (método principal).")
     else:
         audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
 
-    _avisar_inicio_sesion(db, request, usuario)
-
-    cuerpo_resp: dict = {"ok": True}
-    if aviso is not None:
-        cuerpo_resp["aviso"] = aviso
-        # Compatibilidad con la web: el aviso se transporta vía query si se desea.
-        cuerpo_resp["next"] = f"/?msg={quote(aviso)}"
+    token = rotar_token(db, sesion)
+    if segundo_factor.debe_reenrolar_con_totp(usuario):
+        # Los dos factores ya están verificados, pero la política ya no admite
+        # el correo como método principal para esta cuenta: antes de entrar debe
+        # configurar una aplicación autenticadora.
+        sesion.etapa = ETAPA_MFA_ENROLAMIENTO
+        cuerpo_resp: dict = {
+            "ok": True, "stage": sesion.etapa, "next": _SIGUIENTE[sesion.etapa],
+            "aviso": "Su cuenta debe usar ahora una aplicación autenticadora. Configúrela para continuar.",
+        }
+    else:
+        usuario.ultimo_acceso = ahora_utc()
+        sesion.etapa = ETAPA_ACTIVA
+        _avisar_inicio_sesion(db, request, usuario)
+        cuerpo_resp = {"ok": True, "stage": sesion.etapa, "next": "/"}
+        if aviso is not None:
+            cuerpo_resp["aviso"] = aviso
     # Confirmar antes de responder: el frontend consulta /session a continuación.
     db.commit()
     respuesta = JSONResponse(cuerpo_resp)
@@ -675,7 +768,6 @@ def recuperar_iniciar(
         usuario is not None
         and usuario.activo
         and usuario.mfa_habilitado
-        and usuario.totp_secret_cifrado is not None
         and hmac.compare_digest(usuario.email.strip().lower(), email)
     )
 
@@ -724,13 +816,14 @@ def recuperar_verificar(
     # y misma respuesta que un código erróneo sobre una cuenta real, para no
     # reintroducir un oráculo de enumeración en este paso.
     usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
-    recuperable = usuario is not None and usuario.activo and usuario.totp_secret_cifrado is not None
-    codigo_limpio = mfa.normalizar_codigo(cuerpo.codigo)
+    recuperable = usuario is not None and usuario.activo and usuario.mfa_habilitado
     if recuperable:
-        secreto = descifrar(usuario.totp_secret_cifrado)
-        reutilizado = usuario.ultimo_otp_usado is not None and codigo_limpio == usuario.ultimo_otp_usado
-        totp_valido = not reutilizado and mfa.verificar_codigo(secreto, cuerpo.codigo)
-        codigo_recuperacion = recovery.consumir_codigo(db, usuario, cuerpo.codigo) if not totp_valido else False
+        # TOTP en vivo (si es su método) o código de recuperación. El código por
+        # correo NO vale aquí: la identidad ya se acreditó con el correo, así que
+        # aceptarlo dejaría la recuperación en un único factor.
+        resultado = segundo_factor.comprobar(db, usuario, cuerpo.codigo, permitir_correo=False)
+        totp_valido = resultado.via == segundo_factor.VIA_TOTP
+        codigo_recuperacion = resultado.via == segundo_factor.VIA_RECUPERACION
     else:
         mfa.verificar_codigo(mfa.generar_secreto(), cuerpo.codigo)  # equipara el tiempo, nunca válido
         totp_valido = False
@@ -751,8 +844,6 @@ def recuperar_verificar(
             return respuesta
         raise _error("Código incorrecto.", 401)
 
-    if totp_valido:
-        usuario.ultimo_otp_usado = codigo_limpio  # cierra reutilización del mismo TOTP
     recuperacion.marcar_verificado(db, desafio)
     audit.registrar(db, audit.RECUPERACION_VERIFICADA, request=request, usuario=usuario,
                     detalle="Código de recuperación usado." if codigo_recuperacion else "TOTP verificado.")

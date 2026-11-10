@@ -1,9 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronDown, KeyRound, LogOut, Search } from "lucide-react";
+import { ChevronDown, KeyRound, LogOut, Search, ShieldCheck } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Kbd } from "@/components/ui/mono";
@@ -29,7 +28,6 @@ function iniciales(nombre: string | undefined, username: string | undefined): st
 }
 
 export function AppHeader() {
-  const router = useRouter();
   const { usuario, cerrarInterfaz } = useSession();
   const [cmd, setCmd] = useState(false);
 
@@ -105,6 +103,11 @@ export function AppHeader() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/cuenta">
+                <ShieldCheck className="size-4" /> Mi seguridad
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/password/cambiar">
                 <KeyRound className="size-4" /> Cambiar contraseña
