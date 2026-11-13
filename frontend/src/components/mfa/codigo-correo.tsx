@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Mail } from "lucide-react";
 import { ApiError } from "@/lib/api";
 import type { EnvioCodigoCorreo } from "@/lib/types";
@@ -32,6 +32,10 @@ export function CodigoCorreo({
   const [envio, setEnvio] = useState<EnvioCodigoCorreo | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [espera, setEspera] = useState(0);
+  // Si un envío falla (p. ej. por el límite de solicitudes) el campo se muestra
+  // igualmente: el usuario puede tener aún un código vigente en su buzón.
+  const [intentado, setIntentado] = useState(false);
+  const envioInicialHecho = useRef(false);
 
   async function pedir() {
     setEnviando(true);
@@ -42,12 +46,18 @@ export function CodigoCorreo({
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "No se pudo enviar el código.");
     } finally {
+      setIntentado(true);
       setEnviando(false);
     }
   }
 
   useEffect(() => {
-    if (enviarAlMontar) void pedir();
+    // Un único envío automático aunque el efecto se ejecute dos veces (modo
+    // estricto de React en desarrollo): cada envío invalida el código anterior
+    // y consume el límite de solicitudes.
+    if (!enviarAlMontar || envioInicialHecho.current) return;
+    envioInicialHecho.current = true;
+    void pedir();
     // Solo al montar: el envío inicial no debe repetirse en cada render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -68,6 +78,8 @@ export function CodigoCorreo({
               Enviamos un código a <span className="font-mono text-foreground">{envio.destino}</span>.
               Caduca en {envio.vigencia_minutos} minutos y sirve una sola vez.
             </>
+          ) : intentado ? (
+            <>Si ya recibió un código y sigue vigente, puede introducirlo.</>
           ) : (
             <>
               Le enviaremos un código de 8 dígitos a{" "}
@@ -76,7 +88,7 @@ export function CodigoCorreo({
           )}
         </span>
       </p>
-      {envio && (
+      {(envio || intentado) && (
         <Input
           autoFocus
           inputMode="numeric"
