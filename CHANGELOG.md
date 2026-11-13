@@ -12,7 +12,56 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
+### Seguridad
+
+- **Corregida una fuga de control de acceso en la exportación.** `POST /api/web/exportar`
+  entregaba a un operador las contraseñas en claro de los activos **restringidos a
+  administradores**; la interfaz clásica sí los excluía. La decisión vive ahora en un único
+  punto compartido y `exportar_csv` es seguro por defecto. La exportación gana límite de tasa
+  (5 por hora y usuario) y aviso de actividad sensible al titular.
+- La **importación CSV** ya no permite a quien no puede restringir crear máquinas virtuales ni
+  credenciales bajo activos restringidos.
+- **TOTP**: se rechaza cualquier código de un paso temporal igual o anterior al último aceptado;
+  los fallos durante el alta cuentan para el bloqueo; límite de tasa propio en la verificación.
+- `recifrar` recifra también los **secretos guardados en la configuración** (contraseña SMTP).
+
 ### Añadido
+
+- **Aviso de expiración de sesión.** Poco antes de vencer, un diálogo con cuenta atrás permite
+  extender la sesión o cerrarla; al vencer, la interfaz se cierra y lleva al inicio de sesión
+  con un mensaje claro, conservando la página de origen. Nuevos `POST /api/web/session/extender`
+  y plazos en `GET /api/web/session`, que deja de contar como actividad.
+- **Método de segundo factor elegible**: aplicación autenticadora o **código por correo** como
+  método principal, con política del administrador y vista **«Mi seguridad»** (cambio de método
+  y regeneración de códigos de recuperación). Migración `0009`.
+- **Configuración**: interruptor propio del servicio de correo (`PASSWD_SMTP_ENABLED`), modo de
+  cifrado `PASSWD_SMTP_SECURITY` (`starttls` / `ssl` / `ninguna`), **«Probar conexión»** con los
+  valores sin guardar, panel **«Estado del correo»**, dependencias visibles entre ajustes y
+  validación de formato y coherencia. Pasan a ser editables en pantalla el respaldo y la validez
+  del código por correo, los avisos a usuarios y el preaviso de rotación.
+- **Mantenimiento periódico** (cada 6 h): la retención de auditoría surte efecto sin reiniciar.
+- El respaldo incluye los ajustes guardados y el método de segundo factor.
+
+### Cambiado
+
+- `PASSWD_NOTIFY_ENABLED` controla **solo las alertas a administradores**; ya no apaga el resto
+  del correo. Compatibilidad: `PASSWD_SMTP_ENABLED` hereda su valor si no se define, y los
+  ajustes guardados se migran una vez al arrancar.
+- `PASSWD_SMTP_TLS` queda **obsoleta** (se sigue aceptando) en favor de `PASSWD_SMTP_SECURITY`.
+- `ACTIVITY_THROTTLE_SECONDS` deja de editarse en pantalla (solo por entorno) y se acota a la
+  mitad de la ventana de inactividad.
+- La CLI (`respaldo`, `avisar-rotacion`) aplica los ajustes guardados en la consola.
+- El inicio de sesión muestra mensajes fijos por motivo en lugar de texto libre de la URL.
+- El 401 de una sesión vencida incluye `code: "sesion_expirada"` y borra la cookie.
+
+### Corregido
+
+- La interfaz quedaba aparentemente abierta, mostrando «No autenticado», tras caducar la sesión.
+- El diálogo de restablecer contraseña mostraba una contraseña vacía cuando el correo sí se
+  enviaba.
+- El texto «Mínimo 12 caracteres» del cambio de contraseña ignoraba la longitud configurada.
+
+### Añadido (documentación)
 
 - **Manual de uso, funciones y procedimientos** ([`docs/manual-operativo.md`](docs/manual-operativo.md)):
   documento único, apto para aprobación formal, que cubre **todas** las funciones del

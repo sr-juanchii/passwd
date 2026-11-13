@@ -93,12 +93,27 @@ def _podar_respaldos(ruta: Path, retener: int) -> int:
     return eliminados
 
 
+def _aplicar_ajustes(db) -> None:
+    """Aplica los ajustes guardados desde la consola de configuración.
+
+    Sin esto la CLI solo vería las variables de entorno: el respaldo no podría
+    alertar por correo ni el aviso de rotación usar el SMTP y los plazos que el
+    administrador configuró en pantalla."""
+    from app import ajustes
+
+    try:
+        ajustes.aplicar(db)
+    except Exception as exc:  # noqa: BLE001 — la CLI sigue con los valores de entorno
+        print(f"Aviso: no se pudieron aplicar los ajustes guardados ({exc}).", file=sys.stderr)
+
+
 def _cmd_respaldo(args: argparse.Namespace) -> int:
     from app import backup
     from app.notifications import enviar_alerta
 
     init_db()
     db = next(get_db())
+    _aplicar_ajustes(db)
     try:
         frase = _frase_respaldo(args, confirmar=True)
         datos = backup.exportar(db, frase)
@@ -192,6 +207,20 @@ def _cmd_recifrar(_args: argparse.Namespace) -> int:
                 procesadas += 1
             print(f"  - {modelo.__tablename__}.{columna}: {procesadas}")
             total += procesadas
+        # Secretos guardados desde la consola de configuración (p. ej. la
+        # contraseña SMTP): van como texto Fernet en ``configuracion.valor``. Sin
+        # recifrarlos, retirar la clave antigua los dejaría ilegibles y el correo
+        # (y con él el código por correo del segundo factor) dejaría de funcionar.
+        from app.models import Configuracion
+
+        procesadas = 0
+        for fila in db.scalars(select(Configuracion).where(Configuracion.es_secreto.is_(True))).all():
+            if not fila.valor:
+                continue
+            fila.valor = crypto.recifrar(fila.valor.encode("ascii")).decode("ascii")
+            procesadas += 1
+        print(f"  - configuracion.valor (secretos): {procesadas}")
+        total += procesadas
         db.commit()
         print(f"Recifrado completado: {total} valores usan ahora la clave primaria.")
         print("Ya puede retirar las claves antiguas de PASSWD_ENCRYPTION_KEY.")
@@ -268,6 +297,7 @@ def _cmd_avisar_rotacion(args: argparse.Namespace) -> int:
 
     init_db()
     db = next(get_db())
+    _aplicar_ajustes(db)
     try:
         settings = get_settings()
         if args.simular:

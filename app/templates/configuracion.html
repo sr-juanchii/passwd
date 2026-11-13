@@ -16,6 +16,7 @@
   {% for grupo in grupos %}
   <div class="tarjeta">
     <h2>{{ grupo.grupo }}</h2>
+    <p class="texto-suave">{{ grupo.descripcion }}</p>
     {% for a in grupo.ajustes %}
     <div class="campo-config">
       <label for="cfg-{{ a.clave }}">
@@ -35,6 +36,13 @@
              {% if a.minimo is not none %}min="{{ a.minimo }}"{% endif %}
              {% if a.maximo is not none %}max="{{ a.maximo }}"{% endif %}>
       <small class="texto-suave">{{ a.ayuda }}</small>
+      {% elif a.tipo == 'opcion' %}
+      <select id="cfg-{{ a.clave }}" name="{{ a.clave }}">
+        {% for o in a.opciones %}
+        <option value="{{ o.valor }}" {{ 'selected' if a.valor == o.valor }}>{{ o.etiqueta }}</option>
+        {% endfor %}
+      </select>
+      <small class="texto-suave">{{ a.ayuda }}</small>
       {% elif a.tipo == 'secreto' %}
       <input id="cfg-{{ a.clave }}" name="{{ a.clave }}" type="password" autocomplete="new-password"
              placeholder="{{ '•••••• (configurada — dejar vacío para conservar)' if a.configurado else 'sin configurar' }}">
@@ -42,6 +50,10 @@
       {% else %}
       <input id="cfg-{{ a.clave }}" name="{{ a.clave }}" type="text" value="{{ a.valor }}" maxlength="255">
       <small class="texto-suave">{{ a.ayuda }}</small>
+      {% endif %}
+      {% if a.depende_de %}
+      <small class="texto-suave">Solo surte efecto con
+        {% for d in a.depende_de %}«{{ d.etiqueta }}»{{ ', ' if not loop.last }}{% endfor %}.</small>
       {% endif %}
     </div>
     {% endfor %}
@@ -54,7 +66,7 @@
 <div class="tarjeta">
   <h2>Probar el correo</h2>
   <p class="texto-suave">
-    Envía un mensaje de prueba con la configuración SMTP guardada (guarda primero los cambios).
+    Envía un mensaje de prueba con la configuración del servidor de correo guardada (guarda primero los cambios).
     El correo no contiene ningún secreto.
   </p>
   <form method="post" action="/configuracion/probar-correo" class="formulario">

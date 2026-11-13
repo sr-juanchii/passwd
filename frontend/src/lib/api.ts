@@ -353,7 +353,15 @@ export const api = {
   reactivarUsuario: (id: number) =>
     request<{ ok: boolean }>(`/usuarios/${id}/reactivar`, { method: "POST", csrf: true }),
   resetPassword: (id: number) =>
-    request<{ username: string; password_temporal: string }>(`/usuarios/${id}/reset-password`, {
+    request<{
+      username: string;
+      /** `true`: la contraseña temporal viajó al correo del usuario y NO se devuelve. */
+      correo_enviado: boolean;
+      destino: string | null;
+      /** Solo si el correo no salió (contingencia). */
+      password_temporal?: string;
+      aviso?: string;
+    }>(`/usuarios/${id}/reset-password`, {
       method: "POST",
       csrf: true,
     }),
@@ -404,9 +412,17 @@ export const api = {
     }),
   // `destinatario` opcional: si va vacío, el backend usa la lista configurada.
   probarCorreo: (destinatario: string) =>
-    request<{ ok: boolean; destinatarios: number }>("/configuracion/probar-correo", {
+    request<{ ok: boolean; destinatarios: number; aviso?: string }>("/configuracion/probar-correo", {
       method: "POST",
       body: { destinatario },
+      csrf: true,
+    }),
+  // Comprueba conexión y autenticación con los valores del formulario, SIN
+  // guardarlos ni enviar ningún mensaje.
+  probarConexionSmtp: (valores: Record<string, unknown>) =>
+    request<{ ok: boolean; detalle: string }>("/configuracion/probar-conexion", {
+      method: "POST",
+      body: { valores },
       csrf: true,
     }),
 

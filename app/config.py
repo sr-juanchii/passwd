@@ -63,6 +63,25 @@ def _leer_o_generar_secreto(ruta: Path, generador) -> str:
     return secreto
 
 
+SMTP_STARTTLS = "starttls"
+SMTP_SSL = "ssl"
+SMTP_SIN_CIFRADO = "ninguna"
+SMTP_SEGURIDADES = (SMTP_STARTTLS, SMTP_SSL, SMTP_SIN_CIFRADO)
+
+
+def _smtp_enabled_base() -> bool:
+    """Interruptor del servicio de correo; hereda NOTIFY_ENABLED si no se define."""
+    return _env_bool("SMTP_ENABLED", _env_bool("NOTIFY_ENABLED", False))
+
+
+def _smtp_security_base() -> str:
+    """Modo de cifrado SMTP; compatible con la antigua PASSWD_SMTP_TLS."""
+    valor = _env("SMTP_SECURITY", "").strip().lower()
+    if valor in SMTP_SEGURIDADES:
+        return valor
+    return SMTP_STARTTLS if _env_bool("SMTP_TLS", True) else SMTP_SIN_CIFRADO
+
+
 @dataclass
 class Settings:
     """Parámetros de operación con valores seguros por defecto."""
@@ -144,14 +163,24 @@ class Settings:
     # Días de antelación con los que se avisa de una rotación obligatoria próxima.
     rotation_warning_days: int = field(default_factory=lambda: _env_int("ROTATION_WARNING_DAYS", 14))
 
-    # Notificaciones por correo (opt-in; los correos NUNCA incluyen secretos)
+    # Servicio de correo saliente (SMTP). ``smtp_enabled`` es el interruptor del
+    # SERVICIO: de él dependen el código por correo del segundo factor, el envío
+    # de contraseñas temporales, las alertas y los avisos. Por compatibilidad, si
+    # PASSWD_SMTP_ENABLED no está definida hereda PASSWD_NOTIFY_ENABLED (que antes
+    # hacía de interruptor general).
+    smtp_enabled: bool = field(default_factory=lambda: _smtp_enabled_base())
+    # Alertas de seguridad a la lista de administradores (NOTIFY_TO). Solo eso:
+    # ya no apaga el resto del correo. Los correos NUNCA incluyen secretos.
     notify_enabled: bool = field(default_factory=lambda: _env_bool("NOTIFY_ENABLED", False))
     smtp_host: str = field(default_factory=lambda: _env("SMTP_HOST", ""))
     smtp_port: int = field(default_factory=lambda: _env_int("SMTP_PORT", 587))
     smtp_user: str = field(default_factory=lambda: _env("SMTP_USER", ""))
     smtp_password: str = field(default="", repr=False)
     smtp_from: str = field(default_factory=lambda: _env("SMTP_FROM", ""))
-    smtp_tls: bool = field(default_factory=lambda: _env_bool("SMTP_TLS", True))
+    # Cifrado de la conexión SMTP: "starttls" (587), "ssl" (TLS implícito, 465) o
+    # "ninguna". Si PASSWD_SMTP_SECURITY no está definida se deduce de la antigua
+    # PASSWD_SMTP_TLS (true → starttls, false → ninguna).
+    smtp_security: str = field(default_factory=lambda: _smtp_security_base())
     notify_to: str = field(default_factory=lambda: _env("NOTIFY_TO", ""))
 
     # Backend del limitador de tasa: "memoria" (un proceso) o "bd" (compartido)
@@ -232,13 +261,14 @@ OVERRIDABLES: dict[str, tuple[str, str, object]] = {
     "password_history_max": ("PASSWORD_HISTORY_MAX", "entero", 5),
     "audit_retention_days": ("AUDIT_RETENTION_DAYS", "entero", 365),
     "totp_issuer": ("TOTP_ISSUER", "texto", "Gestor-Passwd"),
+    "smtp_enabled": ("SMTP_ENABLED", "booleano", False),
     "notify_enabled": ("NOTIFY_ENABLED", "booleano", False),
     "smtp_host": ("SMTP_HOST", "texto", ""),
     "smtp_port": ("SMTP_PORT", "entero", 587),
     "smtp_user": ("SMTP_USER", "texto", ""),
     "smtp_password": ("SMTP_PASSWORD", "secreto", ""),
     "smtp_from": ("SMTP_FROM", "texto", ""),
-    "smtp_tls": ("SMTP_TLS", "booleano", True),
+    "smtp_security": ("SMTP_SECURITY", "opcion", SMTP_STARTTLS),
     "notify_to": ("NOTIFY_TO", "texto", ""),
     "email_otp_enabled": ("EMAIL_OTP_ENABLED", "booleano", True),
     "email_otp_ttl_minutes": ("EMAIL_OTP_TTL_MINUTES", "entero", 10),
@@ -257,6 +287,11 @@ def base_overridable(clave: str) -> object:
     capa de configuración aplica los overrides guardados.
     """
     sufijo, tipo, defecto = OVERRIDABLES[clave]
+    # Claves cuya base se deduce de otra variable por compatibilidad.
+    if clave == "smtp_enabled":
+        return _smtp_enabled_base()
+    if clave == "smtp_security":
+        return _smtp_security_base()
     if tipo == "entero":
         return _env_int(sufijo, int(defecto))  # type: ignore[arg-type]
     if tipo == "booleano":
@@ -273,10 +308,12 @@ def base_overridables() -> dict[str, object]:
 
 def env_definida(clave: str) -> bool:
     """¿La clave editable está fijada por variable de entorno (o su *_FILE)?"""
-    sufijo = OVERRIDABLES[clave][0]
-    return bool(
-        os.environ.get(f"{_PREFIX}{sufijo}")
-        or os.environ.get(f"{_PREFIX}{sufijo}_FILE")
+    sufijos = [OVERRIDABLES[clave][0]]
+    # Variables antiguas que también fijan el valor base de estas claves.
+    sufijos += {"smtp_enabled": ["NOTIFY_ENABLED"], "smtp_security": ["SMTP_TLS"]}.get(clave, [])
+    return any(
+        os.environ.get(f"{_PREFIX}{sufijo}") or os.environ.get(f"{_PREFIX}{sufijo}_FILE")
+        for sufijo in sufijos
     )
 
 

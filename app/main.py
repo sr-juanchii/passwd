@@ -6,6 +6,8 @@ Ejecutar en producción:   detrás de un proxy TLS (ver docker-compose.yml)
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from pathlib import Path
 
@@ -182,16 +184,49 @@ def _bootstrap_admin() -> None:
         db.close()
 
 
-def _mantenimiento_arranque() -> None:
-    """Aplica retención de auditoría y purga sesiones vencidas (CIS 8.10)."""
+# Cada cuánto se repite el mantenimiento mientras el proceso está en marcha.
+INTERVALO_MANTENIMIENTO_S = 6 * 3600
+
+
+def ejecutar_mantenimiento() -> None:
+    """Aplica la retención de auditoría y purga lo caducado (CIS 8.10).
+
+    Se ejecuta al arrancar y después periódicamente, de modo que un cambio de la
+    retención desde la consola surte efecto sin reiniciar. Usa la configuración
+    vigente (con los ajustes guardados ya aplicados). Idempotente.
+    """
+    from app.security import otp_correo
+
     settings = get_settings()
     db = next(get_db())
     try:
         audit.purgar_antiguos(db, settings.audit_retention_days)
         purgar_sesiones_expiradas(db)
+        otp_correo.purgar_expirados(db)
         db.commit()
     finally:
         db.close()
+
+
+async def _mantenimiento_periodico() -> None:
+    """Bucle de mantenimiento en segundo plano (uno por proceso)."""
+    while True:
+        await asyncio.sleep(INTERVALO_MANTENIMIENTO_S)
+        try:
+            await asyncio.to_thread(ejecutar_mantenimiento)
+        except Exception:  # noqa: BLE001 — el mantenimiento nunca tumba el proceso
+            logger.exception("Falló el mantenimiento periódico; se reintentará.")
+
+
+@contextlib.asynccontextmanager
+async def _ciclo_de_vida(_app: FastAPI):
+    tarea = asyncio.create_task(_mantenimiento_periodico())
+    try:
+        yield
+    finally:
+        tarea.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await tarea
 
 
 def create_app() -> FastAPI:
@@ -199,6 +234,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version=__version__,
+        lifespan=_ciclo_de_vida,
         docs_url=None,  # sin documentación interactiva pública
         redoc_url=None,
         openapi_url=None,
@@ -229,7 +265,6 @@ def create_app() -> FastAPI:
 
     init_db()
     _bootstrap_admin()
-    _mantenimiento_arranque()
     # Aplica los overrides de configuración persistidos sobre el singleton, para
     # que este worker arranque ya con los ajustes vigentes (no solo los de env).
     _db = next(get_db())
@@ -237,6 +272,8 @@ def create_app() -> FastAPI:
         ajustes.inicializar(_db)
     finally:
         _db.close()
+    # Después de aplicar los ajustes: la retención usa el valor configurado.
+    ejecutar_mantenimiento()
 
     app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 

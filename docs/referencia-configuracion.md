@@ -74,7 +74,7 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 | `PASSWD_DB_POOL_SIZE` | `5` | Tamaño del pool de conexiones (solo motores cliente/servidor como MySQL). |
 | `PASSWD_DB_MAX_OVERFLOW` | `10` | Conexiones adicionales por encima del pool bajo carga. |
 | `PASSWD_DB_POOL_RECYCLE_SECONDS` | `1800` | Recicla conexiones antes del `wait_timeout` del servidor. |
-| `PASSWD_ACTIVITY_THROTTLE_SECONDS` | `60` | Amortigua las escrituras de «última actividad» de sesión y «último uso» de token (no se reescriben en cada petición). |
+| `PASSWD_ACTIVITY_THROTTLE_SECONDS` | `60` | Amortigua las escrituras de «última actividad» de sesión y «último uso» de token (no se reescriben en cada petición). Solo por entorno; nunca supera la mitad de la ventana de inactividad. |
 
 ---
 
@@ -130,25 +130,44 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 
 ---
 
-## 9. Notificaciones por correo (opt-in)
+## 9. Correo saliente, notificaciones y verificación en dos pasos por correo
 
-Los correos **nunca** llevan secretos. Avisan de cuenta bloqueada, posible exfiltración, alta de
-usuario y fallo de respaldo.
+El **servicio de correo** es la base de todo lo que la aplicación envía: códigos de
+verificación, contraseñas temporales, alertas y avisos. Tiene su propio interruptor
+(`SMTP_ENABLED`); las alertas a administradores y los avisos a usuarios se activan aparte y
+**ya no apagan el resto**. Los correos **nunca** llevan secretos del inventario.
+
+**Servidor de correo (SMTP)**
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
-| `PASSWD_NOTIFY_ENABLED` | `false` | Activa el envío de alertas. |
-| `PASSWD_SMTP_HOST` | `""` | Servidor SMTP. |
-| `PASSWD_SMTP_PORT` | `587` | Puerto SMTP. |
-| `PASSWD_SMTP_USER` | `""` | Usuario SMTP. |
-| `PASSWD_SMTP_PASSWORD` | `""` | Contraseña SMTP (secreto). |
-| `PASSWD_SMTP_FROM` | `SMTP_USER` si está vacía | Dirección remitente. |
-| `PASSWD_SMTP_TLS` | `true` | Usar STARTTLS. |
-| `PASSWD_NOTIFY_TO` | `""` | Destinatarios de las alertas **estáticas** de plataforma (equipo de seguridad), separados por coma. |
-| `PASSWD_NOTIFY_USERS_ENABLED` | `true` | Avisos **dinámicos por usuario** (actividad propia, cambios de permisos, credenciales compartidas y caducidad de rotación). Va **dentro** de `NOTIFY_ENABLED`: con el correo apagado no se envía nada. Póngala en `false` para conservar solo las alertas estáticas. Ver [`notificaciones-y-mfa-correo.md`](notificaciones-y-mfa-correo.md). |
-| `PASSWD_ROTATION_WARNING_DAYS` | `14` | Días de antelación con los que se avisa de una rotación obligatoria próxima (comando `avisar-rotacion`). |
-| `PASSWD_EMAIL_OTP_ENABLED` | `true` | **MFA de respaldo por correo**: permite pedir un OTP de un solo uso al buzón registrado cuando no hay acceso al dispositivo TOTP. Requiere SMTP. Es un factor **más débil** que el TOTP (quien controle el buzón y conozca la contraseña entra): póngala en `false` si su política no acepta esa dependencia. |
-| `PASSWD_EMAIL_OTP_TTL_MINUTES` | `10` | Minutos de validez del OTP enviado por correo. |
+| `PASSWD_SMTP_ENABLED` | hereda `NOTIFY_ENABLED` | **Interruptor del servicio de correo.** Apagado, la aplicación no envía nada. Si no se define, toma el valor de `PASSWD_NOTIFY_ENABLED` (compatibilidad con versiones anteriores, donde esa variable hacía de interruptor general). |
+| `PASSWD_SMTP_HOST` | `""` | Nombre o IP del servidor SMTP (sin `smtp://` ni puerto). |
+| `PASSWD_SMTP_PORT` | `587` | Puerto: 587 con STARTTLS, 465 con SSL/TLS, 25 para relés internos. |
+| `PASSWD_SMTP_SECURITY` | `starttls` | Cifrado de la conexión: `starttls`, `ssl` (TLS implícito, puerto 465) o `ninguna` (solo relés internos de confianza). Si no se define se deduce de la antigua `PASSWD_SMTP_TLS` (`true` → `starttls`, `false` → `ninguna`). |
+| `PASSWD_SMTP_USER` | `""` | Usuario SMTP. Vacío = el servidor no exige autenticación. |
+| `PASSWD_SMTP_PASSWORD` | `""` | Contraseña SMTP (secreto; admite `_FILE`). Solo tiene sentido con usuario. |
+| `PASSWD_SMTP_FROM` | `SMTP_USER` si está vacía | Dirección remitente. Debe ser una dirección de correo. |
+| `PASSWD_SMTP_TLS` | — | **Obsoleta**; se sigue aceptando. Use `PASSWD_SMTP_SECURITY`. |
+
+**Notificaciones** (requieren el servicio de correo activo)
+
+| Variable | Por defecto | Descripción |
+|---|---|---|
+| `PASSWD_NOTIFY_ENABLED` | `false` | **Alertas de seguridad a administradores** (cuenta bloqueada, posible exfiltración, alta de usuario, acceso por el método de respaldo, fallo de respaldo). |
+| `PASSWD_NOTIFY_TO` | `""` | Destinatarios de esas alertas, separados por coma. Obligatorio si las alertas están activas. |
+| `PASSWD_NOTIFY_USERS_ENABLED` | `true` | **Avisos a cada usuario** en su propio buzón (inicios de sesión, actividad sensible, cambios en sus permisos, credenciales compartidas y rotación). Ver [`notificaciones-y-mfa-correo.md`](notificaciones-y-mfa-correo.md). |
+| `PASSWD_ROTATION_WARNING_DAYS` | `14` | Antelación del aviso de rotación obligatoria (comando `avisar-rotacion`). |
+
+**Verificación en dos pasos**
+
+| Variable | Por defecto | Descripción |
+|---|---|---|
+| `PASSWD_TOTP_ISSUER` | `Gestor-Passwd` | Nombre de la instalación en las aplicaciones autenticadoras y en el asunto de los correos. |
+| `PASSWD_EMAIL_OTP_PRIMARY_ENABLED` | `true` | Permite que cada usuario **elija el correo como método principal** (sin aplicación autenticadora). Factor **más débil** que el TOTP: depende de la seguridad del buzón. Requiere el servicio de correo. |
+| `PASSWD_MFA_TOTP_REQUIRED_ADMIN` | `true` | Las cuentas de **administrador** deben usar aplicación autenticadora: el correo no les vale como método principal. |
+| `PASSWD_EMAIL_OTP_ENABLED` | `true` | Permite el correo como **respaldo** de quien usa aplicación autenticadora (cada uso se audita y alerta). Requiere el servicio de correo. |
+| `PASSWD_EMAIL_OTP_TTL_MINUTES` | `10` | Minutos de validez del código enviado por correo. |
 
 ---
 
@@ -203,19 +222,37 @@ incluye una pantalla de **Configuración** (menú superior, solo administradores
   registra.
 - La **contraseña SMTP** se guarda **cifrada** (Fernet) y **nunca** se devuelve en claro a la
   interfaz (solo se indica si está configurada). Dejar su campo vacío al guardar la **conserva**.
-- Hay un botón **«Enviar correo de prueba»** para validar la configuración SMTP (`correo_prueba_enviado`).
+- Cada ajuste indica **de qué depende** (p. ej. los destinatarios solo surten efecto con las
+  alertas activas y el servicio de correo encendido); la pantalla lo deshabilita y explica por
+  qué mientras no se cumpla. Al guardar se valida el formato (host, direcciones) y la coherencia
+  entre ajustes (la inactividad no puede superar la duración máxima de la sesión; activar el
+  correo exige servidor y remitente; activar las alertas exige destinatarios).
+- **«Probar conexión»** comprueba la conexión y la autenticación SMTP con los valores del
+  formulario **sin guardarlos y sin enviar nada**. **«Enviar prueba»** manda un mensaje con la
+  configuración guardada (`correo_prueba_enviado`). Los errores se explican sin exponer detalles
+  internos del servidor.
+- El panel **«Estado del correo»** muestra qué funciones dependen del correo y cuáles están
+  operativas.
 
 **Parámetros editables en caliente** (por grupo). La columna indica la variable de entorno que
 fija su valor base:
 
 | Grupo | Ajuste (variable de entorno base) |
 |---|---|
-| Sesión y comportamiento | `SESSION_IDLE_MINUTES`, `SESSION_MAX_HOURS`, `ACTIVITY_THROTTLE_SECONDS` |
-| Política de cuentas | `PASSWORD_MIN_LENGTH` (mín. 8), `MAX_FAILED_ATTEMPTS`, `LOCKOUT_MINUTES` |
-| Límites de tasa | `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW_MINUTES`, `REVEAL_RATE_LIMIT`, `REVEAL_RATE_WINDOW_MINUTES` |
+| Sesión | `SESSION_IDLE_MINUTES`, `SESSION_MAX_HOURS` |
+| Cuentas y contraseñas | `PASSWORD_MIN_LENGTH` (mín. 8), `MAX_FAILED_ATTEMPTS`, `LOCKOUT_MINUTES` |
+| Verificación en dos pasos | `TOTP_ISSUER`, `EMAIL_OTP_PRIMARY_ENABLED`, `MFA_TOTP_REQUIRED_ADMIN`, `EMAIL_OTP_ENABLED`, `EMAIL_OTP_TTL_MINUTES` |
+| Servidor de correo (SMTP) | `SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD` (cifrada), `SMTP_FROM` |
+| Notificaciones | `NOTIFY_ENABLED`, `NOTIFY_TO`, `NOTIFY_USERS_ENABLED`, `ROTATION_WARNING_DAYS` |
+| Límites anti-abuso | `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW_MINUTES`, `REVEAL_RATE_LIMIT`, `REVEAL_RATE_WINDOW_MINUTES` |
 | Inventario y auditoría | `ROTATION_MAX_DAYS`, `PASSWORD_HISTORY_MAX`, `AUDIT_RETENTION_DAYS` (mín. 90) |
-| Notificaciones por correo | `NOTIFY_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` (cifrada), `SMTP_FROM`, `SMTP_TLS`, `NOTIFY_TO`, `NOTIFY_USERS_ENABLED`, `ROTATION_WARNING_DAYS`, `TOTP_ISSUER` |
-| MFA de respaldo por correo | `EMAIL_OTP_ENABLED`, `EMAIL_OTP_TTL_MINUTES` |
+
+La **retención de auditoría** se aplica al arrancar y después cada 6 horas, de modo que un
+cambio desde la consola surte efecto sin reiniciar. La **CLI** (`respaldo`, `avisar-rotacion`)
+también aplica los ajustes guardados aquí.
+
+`ACTIVITY_THROTTLE_SECONDS` dejó de ser editable en pantalla: es un ajuste técnico que se
+define solo por entorno y que la aplicación acota a la mitad de la ventana de inactividad.
 
 **NO editables en caliente** (exclusivos de entorno; requieren reinicio o son secretos de
 despliegue): claves criptográficas (`SECRET_KEY`, `ENCRYPTION_KEY`, `REQUIRE_ENV_KEYS`), base de

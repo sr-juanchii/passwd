@@ -389,7 +389,7 @@ export interface VaultInput {
 }
 
 // Configuración del sistema en tiempo de ejecución (solo administradores).
-export type TipoAjuste = "entero" | "booleano" | "texto" | "secreto";
+export type TipoAjuste = "entero" | "booleano" | "texto" | "secreto" | "opcion";
 export type OrigenAjuste = "configurado" | "entorno" | "defecto";
 
 export interface AjusteConfig {
@@ -399,6 +399,12 @@ export interface AjusteConfig {
   tipo: TipoAjuste;
   minimo: number | null;
   maximo: number | null;
+  /** Unidad del valor (min, h, días…), para mostrarla junto al campo. */
+  unidad: string;
+  /** Valores admitidos por un ajuste de tipo «opcion». */
+  opciones: { valor: string; etiqueta: string }[];
+  /** Ajustes que deben estar activos para que este surta efecto. */
+  depende_de: { clave: string; etiqueta: string }[];
   origen: OrigenAjuste;
   // Los ajustes NO secretos traen `valor` (number|boolean|string según `tipo`).
   valor?: number | boolean | string;
@@ -408,7 +414,16 @@ export interface AjusteConfig {
 
 export interface GrupoConfig {
   grupo: string;
+  descripcion: string;
   ajustes: AjusteConfig[];
+}
+
+/** Qué depende del correo y si está operativo (panel «Estado del correo»). */
+export interface EstadoCorreo {
+  operativo: boolean;
+  motivo: string;
+  avisos: string[];
+  funciones: { nombre: string; activa: boolean; detalle: string }[];
 }
 
 export interface InfoSistemaItem {
@@ -419,6 +434,7 @@ export interface InfoSistemaItem {
 export interface ConfiguracionResp {
   grupos: GrupoConfig[];
   info_sistema: InfoSistemaItem[];
+  correo: EstadoCorreo;
 }
 
 // --- Verificación en dos pasos ---

@@ -60,7 +60,8 @@ async def configuracion_guardar(
             valor = str(formulario.get(ajuste.clave) or "")
             if valor:  # un secreto vacío significa «no cambiar»
                 cambios[ajuste.clave] = valor
-        else:
+        elif ajuste.clave in formulario:
+            # Solo lo que el formulario envía: un campo ausente no se toca.
             cambios[ajuste.clave] = str(formulario.get(ajuste.clave, ""))
     try:
         modificadas = ajustes.guardar(db, cambios, usuario, request=request)

@@ -23,13 +23,17 @@ Todas las rutas cuelgan de `/api/web`.
 |---|---|---|---|
 | GET | `/csrf` | — | Fija cookie `passwd_csrf_login`; `{ "csrf_login": "..." }` |
 | POST | `/login` | `{username, password, csrf_login}` | `{ "stage": "cambio_password\|mfa_enrolamiento\|mfa_pendiente", "next": "/..." }`; fija cookie de sesión |
-| GET | `/session` | — | `{ authenticated, stage, csrf_token, usuario?: Usuario, permisos?: {clave:bool} }` (siempre 200; si no hay sesión `authenticated=false`) |
+| GET | `/session` | — | `{ authenticated, stage, csrf_token, usuario?, permisos?, sesion?: {idle_expires_in, absolute_expires_in, idle_timeout, margin}, password_min_length? }` (siempre 200). Es un sondeo: **no cuenta como actividad**. Si la cookie ya no abre ninguna sesión, la borra |
+| POST | `/session/extender` | — + `X-CSRF-Token` | `{ ok, sesion }`: renueva la inactividad (nunca la vida máxima) |
 | POST | `/password/cambiar` | `{password_actual, password_nueva, password_confirmacion}` | `{ stage?, next?, ok? }` |
+| GET | `/mfa/configurar/metodos` | — | `{ metodos: ("totp"\|"correo")[], correo: {disponible, destino, motivo}, obligado_totp }` (stage `mfa_enrolamiento`) |
 | GET | `/mfa/configurar` | — | `{ qr_data_uri, secreto }` (stage `mfa_enrolamiento`) |
 | POST | `/mfa/configurar` | `{codigo}` | `{ codigos_recuperacion: string[] }` (única vez; stage→activa) |
+| POST | `/mfa/configurar/correo/enviar` | — + `X-CSRF-Token` | `{ ok, destino, vigencia_minutos }`: código para elegir el correo como método principal. 409 si la política o el servicio de correo no lo permiten |
+| POST | `/mfa/configurar/correo` | `{codigo}` | `{ codigos_recuperacion, metodo }` (stage→activa) |
 | GET | `/mfa/verificar` | — | `{ ok: true }` (solo confirma stage) |
-| POST | `/mfa/verificar` | `{codigo}` | `{ ok, aviso? }`. Acepta, por este orden: TOTP, código de recuperación y OTP enviado al correo |
-| GET | `/mfa/metodos` | — | `{ totp, codigos_recuperacion, otp_correo }` (stage `mfa_pendiente`): qué vías de 2.º factor ofrecer |
+| POST | `/mfa/verificar` | `{codigo}` | `{ ok, stage, next, aviso? }`. Acepta TOTP (si es el método del usuario), código de recuperación y código por correo. `stage` puede ser `mfa_enrolamiento` si la cuenta debe pasar a aplicación autenticadora. 423 si la cuenta se bloquea; 429 por límite de tasa |
+| GET | `/mfa/metodos` | — | `{ principal, totp, codigos_recuperacion, otp_correo, destino }` (stage `mfa_pendiente`): qué vías de 2.º factor ofrecer |
 | POST | `/mfa/otp-correo` | — + cabecera `X-CSRF-Token` | `{ ok, destino, vigencia_minutos }`: envía un OTP de un solo uso al correo registrado (**MFA de respaldo**). `destino` va enmascarado y el código **nunca** viaja en la respuesta. 409 si el método está desactivado; 429 si se supera el límite (3 por cuenta y 3 por IP cada 15 min); 502 si SMTP falla |
 | POST | `/password/recuperar/iniciar` | `{username, email, csrf_login}` | `{ ok: true, csrf }`; fija cookie efímera `passwd_recuperacion`. **Anti-enumeración**: responde igual exista o no la cuenta. `csrf` es el token del desafío para los pasos siguientes |
 | POST | `/password/recuperar/verificar` | `{codigo}` + cabecera `X-CSRF-Token: <csrf del desafío>` | `{ ok: true }`. Acepta TOTP en vivo o un código de recuperación. 400 si el desafío caducó/se agotó; 401 código incorrecto |
@@ -39,7 +43,13 @@ Todas las rutas cuelgan de `/api/web`.
 `stage`→`next`: `cambio_password`→`/password/cambiar`, `mfa_enrolamiento`→`/mfa/configurar`,
 `mfa_pendiente`→`/mfa/verificar`, `activa`→`/`.
 
-`Usuario`: `{ id, username, email, nombre_completo, rol, rol_label, mfa_habilitado, activo, ultimo_acceso }`.
+`Usuario`: `{ id, username, email, nombre_completo, rol, rol_label, mfa_habilitado, mfa_metodo, activo, ultimo_acceso }`.
+
+**Sesión vencida.** Un 401 con `code: "sesion_expirada"` (y `Set-Cookie` que borra la cookie) indica que la sesión ya no existe: el cliente cierra la interfaz y va a `/login?motivo=expirada`.
+
+**Mi seguridad** (sesión activa, `X-CSRF-Token`): `GET /cuenta/seguridad`; `POST /cuenta/mfa/correo/enviar`; `POST /cuenta/mfa/correo/activar {password, codigo}`; `POST /cuenta/mfa/totp/iniciar {password}` → `{qr_data_uri, secreto}`; `POST /cuenta/mfa/totp/activar {codigo}`; `POST /cuenta/mfa/codigos {password, codigo}` → `{codigos_recuperacion}`.
+
+**Configuración**: `GET /configuracion` añade `correo` (estado) y, por ajuste, `unidad`, `opciones` y `depende_de`; `POST /configuracion/probar-conexion {valores}` → `{ok, detalle}` prueba el SMTP con los valores del formulario sin guardarlos.
 
 `permisos`: mapa con las claves de `app.rbac` evaluadas para el rol actual:
 `inventario.ver, inventario.gestionar, credenciales.ver_lista, credenciales.revelar,

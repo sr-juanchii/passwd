@@ -101,7 +101,7 @@ export default function UsuariosPage() {
   const [guardandoRol, setGuardandoRol] = useState(false);
   const [mfaUsuario, setMfaUsuario] = useState<Usuario | null>(null);
   const [resetUsuario, setResetUsuario] = useState<Usuario | null>(null);
-  const [passwordTemporal, setPasswordTemporal] = useState<{ username: string; password: string } | null>(null);
+  const [passwordTemporal, setPasswordTemporal] = useState<{ username: string; password: string; aviso?: string } | null>(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -173,7 +173,18 @@ export default function UsuariosPage() {
     setResetUsuario(null);
     try {
       const r = await api.resetPassword(u.id);
-      setPasswordTemporal({ username: r.username, password: r.password_temporal });
+      if (r.correo_enviado || !r.password_temporal) {
+        // Lo normal: la contraseña temporal llegó al buzón del usuario y el
+        // administrador nunca la ve.
+        toast.success(
+          `Contraseña restablecida. La temporal se envió a ${r.destino ?? "su correo"}; ` +
+            "el usuario deberá cambiarla al entrar.",
+          { duration: 8000 },
+        );
+      } else {
+        // Contingencia: el correo no salió y hay que entregarla a mano.
+        setPasswordTemporal({ username: r.username, password: r.password_temporal, aviso: r.aviso });
+      }
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "No se pudo restablecer la contraseña.");
     }
@@ -433,8 +444,9 @@ export default function UsuariosPage() {
           <DialogHeader>
             <DialogTitle>Contraseña temporal</DialogTitle>
             <DialogDescription>
-              Entréguela al usuario <strong>{passwordTemporal?.username}</strong> por un canal seguro.
-              Se muestra una sola vez.
+              {passwordTemporal?.aviso ??
+                "No se pudo enviar por correo. Entréguela al usuario por un canal seguro."}{" "}
+              Usuario: <strong>{passwordTemporal?.username}</strong>. Se muestra una sola vez.
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2">
