@@ -47,4 +47,5 @@ desplegada es siempre verificable en caliente.
 
 [`hoja-de-ruta.md`](hoja-de-ruta.md) describe **qué** se construye y en qué fases; este documento y
 `CHANGELOG.md` registran **cuándo** se publicó y bajo qué versión. La v1.0.0 recoge las fases 0–7,
-las funcionalidades de preproducción, el rediseño del frontend y la auto-recuperación.
+las funcionalidades de preproducción, el rediseño del frontend y la auto-recuperación. La v1.2.0
+recoge la fase 8 (sesión, segundo factor elegible y configuración coherente).

@@ -12,6 +12,28 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
+_Sin cambios pendientes de publicar._
+
+## [1.2.0] - 2026-11-14
+
+**Sesión, segundo factor elegible y configuración coherente.** Versión MENOR: añade
+funcionalidad y corrige un fallo de control de acceso sin romper integraciones, datos ni
+configuración existentes (la migración `0009` es aditiva y las variables antiguas se siguen
+aceptando). Corresponde a la **Fase 8** de la [hoja de ruta](docs/hoja-de-ruta.md).
+
+**Al actualizar desde 1.1.0** (detalle en [`docs/notas-version-1.2.0.md`](docs/notas-version-1.2.0.md)):
+
+- Se recomienda actualizar cuanto antes: corrige la exportación que entregaba a un operador las
+  contraseñas de activos restringidos.
+- `PASSWD_NOTIFY_ENABLED` pasa a controlar solo las alertas a administradores; el servicio de
+  correo se enciende con `PASSWD_SMTP_ENABLED` (hereda el valor anterior si no se define).
+- El correo como método principal de segundo factor queda **permitido por defecto** para los
+  no administradores cuando el servicio de correo está activo. Se desactiva en
+  Configuración → Verificación en dos pasos (`PASSWD_EMAIL_OTP_PRIMARY_ENABLED=false`).
+- Aplique la migración `0009` (`alembic upgrade head`); en despliegues por contenedor la
+  columna se añade sola al arrancar.
+
+
 ### Seguridad
 
 - **Corregida una fuga de control de acceso en la exportación.** `POST /api/web/exportar`
@@ -61,7 +83,9 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   enviaba.
 - El texto «Mínimo 12 caracteres» del cambio de contraseña ignoraba la longitud configurada.
 
-### Añadido (documentación)
+### Incluido también en esta versión (integrado en `main` tras la 1.1.0)
+
+#### Añadido
 
 - **Manual de uso, funciones y procedimientos** ([`docs/manual-operativo.md`](docs/manual-operativo.md)):
   documento único, apto para aprobación formal, que cubre **todas** las funciones del
@@ -141,7 +165,7 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   [`docs/notificaciones-y-mfa-correo.md`](docs/notificaciones-y-mfa-correo.md) y
   `tests/test_avisos_dinamicos.py` (25 pruebas).
 
-### Cambiado
+#### Cambiado
 
 - **Comportamiento del correo al actualizar**: en despliegues que ya tuvieran
   `PASSWD_NOTIFY_ENABLED=true`, los **usuarios finales** empezarán a recibir avisos
@@ -155,7 +179,7 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   completo acción por acción. La deduplicación se apoya en el limitador de tasa, así
   que con más de un worker conviene `PASSWD_RATE_LIMIT_BACKEND=bd`.
 
-### Seguridad
+#### Seguridad
 
 - **Corregida la reutilización del código TOTP de enrolamiento** (severidad alta;
   OWASP A07 — fallos de identificación y autenticación; RFC 6238 §5.2). La
@@ -197,7 +221,7 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   - **Indexación**: cabecera `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` en las páginas
     del frontend, para que una aplicación interna no quede en cachés públicas de terceros.
 
-### Añadido
+#### Añadido
 
 - **Control automático de exposición del build del frontend**:
   [`scripts/verificar-build-frontend.sh`](scripts/verificar-build-frontend.sh), integrado en el CI
@@ -325,6 +349,7 @@ Primera versión estable. Establece la línea base sobre la que se versionan los
 
 El detalle del alcance por fases está en [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md).
 
-[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.1.0...HEAD
+[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/sr-juanchii/passwd/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.1.0
 [1.0.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.0.0

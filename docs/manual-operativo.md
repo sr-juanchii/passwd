@@ -1,7 +1,9 @@
 # Manual de uso, funciones y procedimientos
 
 **Sistema:** Gestor de Contraseñas de Servidores (`passwd`)
-**Versión del sistema documentada:** 1.1.0
+**Versión del sistema documentada:** 1.1.0 — las novedades de la 1.2.0 (aviso de expiración de sesión,
+segundo factor elegible, «Mi seguridad» y la consola de configuración reorganizada) se describen en
+[`notas-version-1.2.0.md`](notas-version-1.2.0.md) hasta la próxima revisión de este manual.
 **Ámbito del documento:** manual único de referencia para **usar, configurar y operar** el sistema
 en producción. Cubre **todas** las funciones existentes en el código —interfaz web, API JSON,
 API REST de integración, línea de comandos y avisos automáticos—, con **capturas de pantalla** de

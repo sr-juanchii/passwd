@@ -140,7 +140,7 @@ política de privacidad), **HA multi-nodo con MySQL replicado** (ESC-8: orquesta
 **firma de imágenes cosign/SLSA** (OPS-2: registry + claves), y la **capa de servicios** que unifique
 `routes/`↔`api_web/` (CAL-1: refactor transversal, mejor en su propia entrega).
 
-## Fase 8 — Sesión, método de segundo factor y configuración coherente ✅ (entregada)
+## Fase 8 — Sesión, método de segundo factor y configuración coherente ✅ (entregada en la v1.2.0)
 
 Seguridad:
 - ✅ **Fuga de activos restringidos en la exportación JSON, corregida.** `POST /api/web/exportar`
