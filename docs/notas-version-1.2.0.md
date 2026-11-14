@@ -31,6 +31,7 @@ Cada cambio lleva un identificador para poder citarlo en revisiones y auditoría
 | SEG-06 | `recifrar` incluye los secretos guardados en la configuración (contraseña SMTP). | `app/cli.py` |
 | SEG-07 | El inicio de sesión muestra mensajes fijos por motivo; deja de mostrar texto libre tomado de la URL. | `frontend/src/app/(auth)/login` |
 | SEG-08 | Los errores SMTP se explican sin exponer detalles internos del servidor. | `app/notifications.py` |
+| SEG-09 | Dependencias del frontend actualizadas por avisos de seguridad: Next.js 16.2.11 → 16.4.6 (críticas), `sharp` 0.35.5 y cuatro transitivas. Auditoría de producción sin hallazgos. | `frontend/package.json`, `pnpm-lock.yaml` |
 
 ### Sesión
 
@@ -133,5 +134,8 @@ de configuración, y exportación sin activos restringidos para un operador.
 - El CSV del inventario no neutraliza fórmulas: hacerlo rompería la reimportación de
   contraseñas que empiezan por `=`.
 - El **manual operativo** y sus capturas describen la 1.1.0; este documento cubre las novedades.
+- Quedan avisos de seguridad en **herramientas de desarrollo** del frontend (eslint, vitest y
+  sus transitivas), que no forman parte de lo desplegado; corregirlos exige saltos de versión
+  mayor de esas herramientas.
 
 Todas están recogidas en la [hoja de ruta](hoja-de-ruta.md).

@@ -46,6 +46,10 @@ aceptando). Corresponde a la **Fase 8** de la [hoja de ruta](docs/hoja-de-ruta.m
 - **TOTP**: se rechaza cualquier código de un paso temporal igual o anterior al último aceptado;
   los fallos durante el alta cuentan para el bloqueo; límite de tasa propio en la verificación.
 - `recifrar` recifra también los **secretos guardados en la configuración** (contraseña SMTP).
+- **Dependencias del frontend actualizadas** por avisos de seguridad publicados tras la 1.1.0:
+  Next.js 16.2.11 → 16.4.6 (incluye vulnerabilidades críticas), `sharp` 0.35.0 → 0.35.5 y las
+  transitivas `source-map-js`, `nanoid`, `browserslist` y `baseline-browser-mapping`. La auditoría
+  de dependencias de producción queda sin hallazgos.
 
 ### Añadido
 
