@@ -57,6 +57,7 @@ corresponda a su rol.
 | Documento | Para qué |
 |---|---|
 | [`notas-version-1.2.0.md`](notas-version-1.2.0.md) | **Notas de la versión 1.2.0**: catálogo de cambios, pasos de actualización desde la 1.1.0, verificación y limitaciones conocidas. |
+| [`plan-v2.0.md`](plan-v2.0.md) | **Plan de la versión 2.0** (propuesta): objetivos, qué rompe, alcance por bloques, orden, riesgos y decisiones pendientes. |
 | [`hoja-de-ruta.md`](hoja-de-ruta.md) | Estado de las mejoras y plan de evolución por fases. |
 | [`analisis-mejoras.md`](analisis-mejoras.md) | **Análisis integral de mejoras** (seguridad, escalabilidad, calidad y DevSecOps), priorizado y con evidencia. |
 

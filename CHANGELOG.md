@@ -12,7 +12,9 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
-_Sin cambios pendientes de publicar._
+### Añadido
+
+- [`docs/plan-v2.0.md`](docs/plan-v2.0.md): plan de la versión 2.0 (propuesta para aprobación).
 
 ## [1.2.0] - 2026-11-14
 

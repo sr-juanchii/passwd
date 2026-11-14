@@ -175,6 +175,9 @@ Configuración:
   **«Estado del correo»**. Mantenimiento periódico (la retención de auditoría surte efecto sin
   reiniciar) y la CLI aplica los ajustes guardados.
 
+> Las fases 9 a 12 se ordenan, con sus roturas, dependencias y criterios de aceptación, como
+> **versión 2.0** en [`plan-v2.0.md`](plan-v2.0.md).
+
 ## Fase 9 — Unificación de interfaces 🔜
 
 La lógica duplicada entre `app/routes/` (interfaz clásica) y `app/api_web/` (JSON) ya causó una
