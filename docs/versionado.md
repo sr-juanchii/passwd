@@ -38,7 +38,11 @@ Al publicar `X.Y.Z`:
    debe llevar el mismo valor (una prueba lo verifica, ver `tests/test_version.py`).
 2. En `CHANGELOG.md`, mueva el contenido de `## [Sin publicar]` a una nueva sección
    `## [X.Y.Z] - AAAA-MM-DD` y añada los enlaces de comparación al pie.
-3. Etiquete el commit de publicación como `vX.Y.Z` (`git tag vX.Y.Z`).
+3. **Fusione el PR en `main`.** El flujo [`publicar.yml`](../.github/workflows/publicar.yml) detecta el
+   cambio de `app/__init__.py`, crea la etiqueta `vX.Y.Z` sobre el commit de `main` y publica la
+   Release de GitHub con las notas de esa versión tomadas de `CHANGELOG.md`. Es idempotente (si la
+   etiqueta existe no hace nada) y puede relanzarse a mano desde la pestaña *Actions*. Como
+   alternativa manual: `git tag -a vX.Y.Z -m "Versión X.Y.Z" && git push origin vX.Y.Z`.
 
 `GET /healthz` y la metadata de la API OpenAPI exponen `__version__`, de modo que la versión
 desplegada es siempre verificable en caliente.

@@ -69,6 +69,8 @@ aceptando). Corresponde a la **Fase 8** de la [hoja de ruta](docs/hoja-de-ruta.m
   del código por correo, los avisos a usuarios y el preaviso de rotación.
 - **Mantenimiento periódico** (cada 6 h): la retención de auditoría surte efecto sin reiniciar.
 - El respaldo incluye los ajustes guardados y el método de segundo factor.
+- **Publicación automática**: al fusionar en `main` un cambio de versión, el flujo
+  `publicar.yml` crea la etiqueta `vX.Y.Z` y la Release de GitHub con las notas del changelog.
 
 ### Cambiado
 
