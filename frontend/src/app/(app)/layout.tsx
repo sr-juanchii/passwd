@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
+import { SessionGuard } from "@/components/session-guard";
+import { rutaLogin } from "@/lib/expiracion";
 import { useSession } from "@/lib/session";
 
 const DESTINO_ETAPA: Record<string, string> = {
@@ -26,19 +28,23 @@ function sidebarAbiertaInicial(): boolean {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { authenticated, stage, cargando } = useSession();
+  const pathname = usePathname();
+  const { authenticated, stage, cargando, salida } = useSession();
   const [sidebarAbierta] = useState(sidebarAbiertaInicial);
 
   useEffect(() => {
     if (cargando) return;
     if (!authenticated) {
-      router.replace("/login");
+      // Con motivo (sesión vencida o cerrada) el login explica qué pasó y, si
+      // venció, devuelve al usuario a la página en la que estaba.
+      const actual = `${pathname}${window.location.search}`;
+      router.replace(rutaLogin(salida, actual));
       return;
     }
     if (stage && stage !== "activa") {
       router.replace(DESTINO_ETAPA[stage] ?? "/login");
     }
-  }, [authenticated, stage, cargando, router]);
+  }, [authenticated, stage, cargando, salida, pathname, router]);
 
   if (cargando || !authenticated || (stage && stage !== "activa")) {
     return (
@@ -51,6 +57,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider defaultOpen={sidebarAbierta}>
+      <SessionGuard />
       <AppSidebar />
       <SidebarInset>
         <AppHeader />

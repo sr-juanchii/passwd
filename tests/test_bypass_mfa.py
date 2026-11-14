@@ -63,6 +63,13 @@ RUTAS_PRE_MFA_LEGITIMAS = {
     # correctos. Solo informa al titular de una sesión cuya contraseña ya se
     # validó, y sobre su propia cuenta.
     "/api/web/mfa/metodos",
+    # Alta del segundo factor con método elegible (solo en 'mfa_enrolamiento',
+    # con la contraseña ya validada): qué métodos puede elegir el usuario y, si
+    # elige el correo, el envío y la confirmación del código. Ninguno entrega
+    # datos del inventario ni abre la sesión sin un código válido.
+    "/api/web/mfa/configurar/metodos",
+    "/api/web/mfa/configurar/correo/enviar",
+    "/api/web/mfa/configurar/correo",
     "/api/web/password/recuperar/iniciar",
     "/api/web/password/recuperar/verificar",
     "/api/web/password/recuperar/cambiar",

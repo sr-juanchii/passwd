@@ -18,19 +18,38 @@ from app import audit
 from app.database import get_db
 from app.models import ETAPA_ACTIVA, SesionWeb, Usuario
 from app.rbac import tiene_permiso
-from app.security.sessions import COOKIE_SESION, buscar_sesion_valida
+from app.security.sessions import COOKIE_SESION, buscar_sesion_valida, cabecera_borrar_cookie
+
+CODIGO_SESION_EXPIRADA = "sesion_expirada"
 
 
-def _sesion_de_cookie(request: Request, db: Session) -> SesionWeb | None:
+def _sesion_de_cookie(request: Request, db: Session, tocar: bool = True) -> SesionWeb | None:
     token = request.cookies.get(COOKIE_SESION, "")
-    return buscar_sesion_valida(db, token)
+    return buscar_sesion_valida(db, token, tocar=tocar)
+
+
+def no_autenticado(request: Request, db: Session, sesion: SesionWeb | None) -> HTTPException:
+    """401 JSON. Si la cookie ya no corresponde a ninguna sesión viva (vencida o
+    revocada) se ordena al navegador borrarla y se marca el error con un código
+    que el frontend reconoce para cerrar la interfaz y volver al login."""
+    if sesion is None and request.cookies.get(COOKIE_SESION):
+        # Persistir la revocación que haya marcado ``buscar_sesion_valida``: el
+        # rollback del error la descartaría.
+        db.commit()
+        return HTTPException(
+            status_code=401,
+            detail={"mensaje": "Su sesión se cerró por seguridad. Inicie sesión de nuevo.",
+                    "code": CODIGO_SESION_EXPIRADA},
+            headers=cabecera_borrar_cookie(),
+        )
+    return HTTPException(status_code=401, detail="No autenticado")
 
 
 def sesion_activa_json(request: Request, db: Annotated[Session, Depends(get_db)]) -> SesionWeb:
     """Exige una sesión que completó contraseña + MFA y un usuario activo (401 JSON)."""
     sesion = _sesion_de_cookie(request, db)
     if sesion is None or sesion.etapa != ETAPA_ACTIVA:
-        raise HTTPException(status_code=401, detail="No autenticado")
+        raise no_autenticado(request, db, sesion)
     usuario = db.get(Usuario, sesion.usuario_id)
     if usuario is None or not usuario.activo:
         sesion.revocada_en = sesion.ultima_actividad

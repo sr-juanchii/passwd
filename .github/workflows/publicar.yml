@@ -1,0 +1,77 @@
+name: Publicar versión
+
+# Crea la etiqueta vX.Y.Z y la Release de GitHub cuando llega a `main` un cambio
+# de versión (app/__init__.py es la fuente de verdad; ver docs/versionado.md).
+# Es idempotente: si la etiqueta ya existe no hace nada. También puede lanzarse
+# a mano desde la pestaña Actions.
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/__init__.py"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publicar-version
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    name: Etiqueta y Release
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Leer la versión
+        id: version
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' app/__init__.py)
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::__version__ no es SemVer: '$version'"; exit 1
+          fi
+          if ! grep -q "^version = \"$version\"$" pyproject.toml; then
+            echo "::error::pyproject.toml no coincide con __version__ ($version)"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "etiqueta=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: ¿Ya está publicada?
+        id: existe
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ steps.version.outputs.etiqueta }}" >/dev/null; then
+            echo "La etiqueta ${{ steps.version.outputs.etiqueta }} ya existe: nada que publicar."
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extraer las notas del CHANGELOG
+        if: steps.existe.outputs.existe == 'false'
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { dentro = 1; next }
+            dentro && /^## \[/ { exit }
+            dentro { print }
+          ' CHANGELOG.md > notas.md
+          if ! grep -q '[^[:space:]]' notas.md; then
+            echo "::error::CHANGELOG.md no tiene una sección para la versión $version"; exit 1
+          fi
+          wc -l notas.md
+
+      - name: Crear la etiqueta y la Release
+        if: steps.existe.outputs.existe == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.etiqueta }}" \
+            --target "$GITHUB_SHA" \
+            --title "Versión ${{ steps.version.outputs.version }}" \
+            --notes-file notas.md

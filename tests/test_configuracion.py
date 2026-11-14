@@ -29,8 +29,10 @@ def test_ver_configuracion_agrupada_y_origen(client):
     autenticar_admin(client)
     datos = client.get("/api/web/configuracion").json()
     grupos = {g["grupo"] for g in datos["grupos"]}
-    assert "Sesión y comportamiento" in grupos
-    assert "Notificaciones por correo" in grupos
+    assert grupos == {"Sesión", "Cuentas y contraseñas", "Verificación en dos pasos",
+                      "Servidor de correo (SMTP)", "Notificaciones", "Límites anti-abuso",
+                      "Inventario y auditoría"}
+    assert all(g["descripcion"] for g in datos["grupos"])
     assert datos["info_sistema"]  # información de solo lectura presente
     # Todos los ajustes parten del valor base (por defecto) al inicio.
     todos = [a for g in datos["grupos"] for a in g["ajustes"]]
@@ -234,10 +236,13 @@ def test_probar_correo_ok_con_smtp_simulado(client, monkeypatch):
     )
     csrf = _csrf_json(client)
     client.put("/api/web/configuracion", headers={"X-CSRF-Token": csrf},
-               json={"cambios": {"smtp_host": "smtp.local", "notify_to": "seguridad@empresa.local"}})
+               json={"cambios": {"smtp_host": "smtp.local", "smtp_from": "passwd@empresa.local",
+                                 "notify_to": "seguridad@empresa.local"}})
     r = client.post("/api/web/configuracion/probar-correo", headers={"X-CSRF-Token": csrf},
                     json={"destinatario": ""})
     assert r.status_code == 200 and r.json()["ok"] is True
+    # El servicio sigue apagado: la prueba sale, pero se advierte de ello.
+    assert "apagado" in r.json()["aviso"]
     assert enviados["dest"] == ["seguridad@empresa.local"]
     # El cuerpo del correo no contiene secretos (verificación básica).
     db = sesion_bd()
@@ -253,16 +258,18 @@ def test_configuracion_via_web_jinja(client):
     autenticar_admin(client)
     # La página carga y muestra el grupo de correo.
     pagina = client.get("/configuracion")
-    assert pagina.status_code == 200 and "Notificaciones por correo" in pagina.text
+    assert pagina.status_code == 200 and "Servidor de correo (SMTP)" in pagina.text
     csrf = csrf_de(client, "/configuracion")
     r = client.post("/configuracion", data={"csrf_token": csrf, "session_idle_minutes": "25",
-                                            "session_max_hours": "8", "activity_throttle_seconds": "60",
+                                            "session_max_hours": "8",
                                             "password_min_length": "12", "max_failed_attempts": "5",
                                             "lockout_minutes": "15", "login_rate_limit": "15",
                                             "login_rate_window_minutes": "5", "reveal_rate_limit": "20",
                                             "reveal_rate_window_minutes": "5", "rotation_max_days": "90",
                                             "password_history_max": "5", "audit_retention_days": "365",
                                             "smtp_port": "587", "totp_issuer": "Gestor-Passwd",
+                                            "smtp_security": "starttls", "email_otp_ttl_minutes": "10",
+                                            "rotation_warning_days": "14",
                                             "smtp_host": "", "smtp_user": "", "smtp_from": "", "notify_to": ""})
     assert r.status_code == 303
     from app.config import get_settings

@@ -36,6 +36,7 @@ export interface Usuario {
   rol: Rol;
   rol_label: string;
   mfa_habilitado: boolean;
+  mfa_metodo?: MetodoMfa;
   activo: boolean;
   ultimo_acceso: string | null;
 }
@@ -46,6 +47,10 @@ export interface SessionState {
   csrf_token: string;
   usuario?: Usuario;
   permisos?: Record<Permiso, boolean>;
+  /** Plazos de expiración (solo con sesión activa). */
+  sesion?: import("./expiracion").PlazosSesion;
+  /** Longitud mínima vigente de las contraseñas de usuario. */
+  password_min_length?: number;
 }
 
 export interface Credencial {
@@ -384,7 +389,7 @@ export interface VaultInput {
 }
 
 // Configuración del sistema en tiempo de ejecución (solo administradores).
-export type TipoAjuste = "entero" | "booleano" | "texto" | "secreto";
+export type TipoAjuste = "entero" | "booleano" | "texto" | "secreto" | "opcion";
 export type OrigenAjuste = "configurado" | "entorno" | "defecto";
 
 export interface AjusteConfig {
@@ -394,6 +399,12 @@ export interface AjusteConfig {
   tipo: TipoAjuste;
   minimo: number | null;
   maximo: number | null;
+  /** Unidad del valor (min, h, días…), para mostrarla junto al campo. */
+  unidad: string;
+  /** Valores admitidos por un ajuste de tipo «opcion». */
+  opciones: { valor: string; etiqueta: string }[];
+  /** Ajustes que deben estar activos para que este surta efecto. */
+  depende_de: { clave: string; etiqueta: string }[];
   origen: OrigenAjuste;
   // Los ajustes NO secretos traen `valor` (number|boolean|string según `tipo`).
   valor?: number | boolean | string;
@@ -403,7 +414,16 @@ export interface AjusteConfig {
 
 export interface GrupoConfig {
   grupo: string;
+  descripcion: string;
   ajustes: AjusteConfig[];
+}
+
+/** Qué depende del correo y si está operativo (panel «Estado del correo»). */
+export interface EstadoCorreo {
+  operativo: boolean;
+  motivo: string;
+  avisos: string[];
+  funciones: { nombre: string; activa: boolean; detalle: string }[];
 }
 
 export interface InfoSistemaItem {
@@ -414,4 +434,39 @@ export interface InfoSistemaItem {
 export interface ConfiguracionResp {
   grupos: GrupoConfig[];
   info_sistema: InfoSistemaItem[];
+  correo: EstadoCorreo;
+}
+
+// --- Verificación en dos pasos ---
+export type MetodoMfa = "totp" | "correo";
+
+export interface MetodosAltaMfa {
+  metodos: MetodoMfa[];
+  correo: { disponible: boolean; destino: string; motivo: string };
+  /** La cuenta se enroló por correo y ahora debe pasar a aplicación autenticadora. */
+  obligado_totp: boolean;
+}
+
+export interface MetodosAccesoMfa {
+  principal: MetodoMfa;
+  totp: boolean;
+  codigos_recuperacion: boolean;
+  otp_correo: boolean;
+  destino: string;
+}
+
+export interface EnvioCodigoCorreo {
+  ok: boolean;
+  destino: string;
+  vigencia_minutos: number;
+}
+
+export interface SeguridadCuenta {
+  metodo: MetodoMfa;
+  codigos_restantes: number;
+  destino: string;
+  puede_cambiar_a_correo: boolean;
+  motivo_correo: string;
+  puede_cambiar_a_totp: boolean;
+  correo_operativo: boolean;
 }

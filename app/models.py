@@ -55,6 +55,12 @@ ROL_ANALISTA = "analista"
 ROLES_VALIDOS = (ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA)
 
 
+# Método principal del segundo factor de cada usuario.
+MFA_TOTP = "totp"      # aplicación autenticadora (RFC 6238)
+MFA_CORREO = "correo"  # código de un solo uso enviado al buzón registrado
+MFA_METODOS = (MFA_TOTP, MFA_CORREO)
+
+
 class Usuario(Base):
     """Cuenta de usuario con MFA obligatorio (CIS 5.x / 6.x)."""
 
@@ -77,6 +83,13 @@ class Usuario(Base):
     totp_secret_cifrado: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     mfa_habilitado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     ultimo_otp_usado: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # Paso temporal (contador RFC 6238) del último TOTP aceptado: un código de
+    # un paso igual o anterior se rechaza aunque siga dentro de la ventana.
+    ultimo_totp_paso: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Método principal elegido por el usuario al enrolarse.
+    mfa_metodo: Mapped[str] = mapped_column(
+        String(8), nullable=False, default=MFA_TOTP, server_default=MFA_TOTP
+    )
 
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     debe_cambiar_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

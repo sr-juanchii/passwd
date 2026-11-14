@@ -2,7 +2,9 @@
 
 Devuelve un CSV descargable con las credenciales y su contraseña en claro, en el
 formato del importador (round-trip). Restringido a ``inventario.exportar``,
-auditado y con ``Cache-Control: no-store``. La plantilla de ejemplo no lleva
+auditado, con límite de tasa y ``Cache-Control: no-store``. Los activos
+restringidos a administradores solo los exporta quien puede gestionarlos
+(la decisión vive en ``app.exporter.exportar_auditado``, común a ambas interfaces). La plantilla de ejemplo no lleva
 secretos y solo exige el permiso de gestión (ayuda para importar).
 """
 
@@ -10,14 +12,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app import audit
 from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.database import get_db
-from app.exporter import exportar_csv, plantilla_csv
+from app.exporter import LimiteExportacion, exportar_auditado, plantilla_csv
 from app.models import Usuario
 
 router = APIRouter()
@@ -44,9 +45,10 @@ def exportar(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, EXPORTAR],
 ):
-    texto = exportar_csv(db)
-    audit.registrar(db, audit.INVENTARIO_EXPORTADO, request=request, usuario=usuario,
-                    detalle="Export en claro del inventario (CSV de migración).")
+    try:
+        texto = exportar_auditado(db, request, usuario)
+    except LimiteExportacion as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from None
     return _csv(texto, "inventario-passwd.csv")
 
 

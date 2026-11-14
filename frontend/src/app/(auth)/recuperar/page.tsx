@@ -99,7 +99,7 @@ export default function RecuperarPage() {
     setEnviando(true);
     try {
       await api.recuperarCambiar(password, confirmacion, csrfDesafio);
-      router.replace("/login?msg=" + encodeURIComponent("Contraseña restablecida. Inicie sesión."));
+      router.replace("/login?motivo=restablecida");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo cambiar la contraseña.");
       setEnviando(false);

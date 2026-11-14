@@ -19,7 +19,7 @@ from app import audit, avisos
 from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.api_web.serializers import serializar_usuario
 from app.database import get_db
-from app.models import ROLES_VALIDOS, Usuario
+from app.models import MFA_TOTP, ROLES_VALIDOS, Usuario
 from app.notifications import enviar_alerta
 from app.security.passwords import hashear_password
 from app.security.recovery import eliminar_codigos
@@ -200,6 +200,8 @@ def usuario_reset_mfa(
     objetivo.mfa_habilitado = False
     objetivo.totp_secret_cifrado = None
     objetivo.ultimo_otp_usado = None
+    objetivo.ultimo_totp_paso = None
+    objetivo.mfa_metodo = MFA_TOTP  # elegirá método al volver a enrolarse
     eliminar_codigos(db, objetivo.id)
     revocar_sesiones_de_usuario(db, objetivo.id)
     audit.registrar(db, audit.MFA_REINICIADO, request=request, usuario=usuario,

@@ -27,6 +27,7 @@ def test_alerta_se_envia_cuando_esta_configurada(aplicacion, monkeypatch):
     from app.config import get_settings
 
     s = get_settings()
+    monkeypatch.setattr(s, "smtp_enabled", True)
     monkeypatch.setattr(s, "notify_enabled", True)
     monkeypatch.setattr(s, "smtp_host", "smtp.local")
     monkeypatch.setattr(s, "notify_to", "seguridad@org.tld")
@@ -44,6 +45,7 @@ def test_alerta_fallo_smtp_no_rompe(aplicacion, monkeypatch):
     from app.config import get_settings
 
     s = get_settings()
+    monkeypatch.setattr(s, "smtp_enabled", True)
     monkeypatch.setattr(s, "notify_enabled", True)
     monkeypatch.setattr(s, "smtp_host", "smtp.local")
     monkeypatch.setattr(s, "notify_to", "x@org.tld")

@@ -124,6 +124,59 @@ el formato del código.
 
 ---
 
+## 1 bis. Método elegible: el correo como método principal
+
+Desde esta versión cada usuario **elige su método principal** al configurar la verificación
+en dos pasos:
+
+| Método | Qué necesita el usuario | Cuándo conviene |
+|---|---|---|
+| **Aplicación autenticadora** (TOTP) | Un teléfono con Google/Microsoft Authenticator, Aegis… | Siempre que sea posible: es el más seguro y funciona sin conexión |
+| **Código por correo** | Acceso a su buzón registrado | Usuarios sin teléfono corporativo o sin posibilidad de instalar una aplicación |
+
+Quien elige el correo **no necesita aplicación autenticadora**: en cada acceso, tras la
+contraseña, recibe un código de 8 dígitos de un solo uso. Sigue disponiendo de sus códigos
+de recuperación, que son su única vía de entrada si el correo deja de funcionar.
+
+### Política (la decide el administrador)
+
+- `email_otp_primary_enabled` — permite o no elegir el correo como método principal.
+- `mfa_totp_required_admin` (activo por defecto) — las cuentas de **administrador** deben
+  usar aplicación autenticadora. El correo es un factor más débil y esas cuentas son las de
+  mayor privilegio.
+- `email_otp_enabled` — el correo como **respaldo** de quien usa aplicación (sección 1).
+
+### Qué ocurre si la política cambia
+
+Una cuenta enrolada por correo que deja de poder usarlo (se deshabilita la opción, o la
+cuenta pasa a ser administradora) **debe configurar una aplicación autenticadora**, pero solo
+**después de acreditar sus dos factores** (contraseña y código por correo). Mientras no
+complete la nueva configuración su verificación en dos pasos sigue activa con el correo: en
+ningún momento se puede entrar solo con la contraseña.
+
+### «Mi seguridad»
+
+En el menú de usuario, **Mi seguridad** permite al propio titular:
+
+- **Cambiar de método.** De aplicación a correo exige la contraseña y un código recibido en
+  el buzón; de correo a aplicación exige la contraseña y confirmar un código de la aplicación
+  recién configurada. Se cierran las demás sesiones y el titular recibe un aviso.
+- **Regenerar los códigos de recuperación** (contraseña + código vigente). Los anteriores
+  dejan de valer.
+
+Los fallos de reautenticación cuentan para el bloqueo de la cuenta. Para cambiar de teléfono
+conservando el método «aplicación», el administrador reinicia la verificación en dos pasos
+del usuario, que vuelve a elegir método en su siguiente acceso.
+
+### Recuperación de contraseña
+
+La auto-recuperación sigue exigiendo un código de la **aplicación** o un **código de
+recuperación**. El código por correo no vale ahí: la identidad ya se acredita con la
+dirección de correo, y aceptarlo dejaría la recuperación en un único factor. Un usuario con
+método «correo» que haya perdido sus códigos debe acudir al administrador.
+
+---
+
 ## 2. Restablecimiento administrativo con envío automático
 
 ### Qué cambió
@@ -240,15 +293,27 @@ distingue «rotación próxima» de «rotación VENCIDA».
 
 | Variable | Defecto | Para qué |
 |---|---|---|
-| `PASSWD_NOTIFY_ENABLED` | `false` | Interruptor general del correo. **Sin él no sale nada.** |
-| `PASSWD_NOTIFY_USERS_ENABLED` | `true` | Avisos dinámicos por usuario (dentro del anterior) |
+| `PASSWD_SMTP_ENABLED` | hereda `NOTIFY_ENABLED` | **Interruptor del servicio de correo.** Sin él no sale nada. |
+| `PASSWD_NOTIFY_ENABLED` | `false` | Alertas de seguridad a la lista de administradores (solo eso) |
 | `PASSWD_NOTIFY_TO` | — | Lista fija del equipo de seguridad |
+| `PASSWD_NOTIFY_USERS_ENABLED` | `true` | Avisos dinámicos por usuario |
 | `PASSWD_ROTATION_WARNING_DAYS` | `14` | Antelación del preaviso de rotación |
 | `PASSWD_ROTATION_MAX_DAYS` | `90` | Política de rotación obligatoria |
-| `PASSWD_EMAIL_OTP_ENABLED` | `true` | MFA de respaldo por correo |
-| `PASSWD_EMAIL_OTP_TTL_MINUTES` | `10` | Vida del OTP de correo |
+| `PASSWD_EMAIL_OTP_PRIMARY_ENABLED` | `true` | Correo como método principal del segundo factor |
+| `PASSWD_MFA_TOTP_REQUIRED_ADMIN` | `true` | Los administradores deben usar aplicación autenticadora |
+| `PASSWD_EMAIL_OTP_ENABLED` | `true` | Correo como respaldo de quien usa aplicación |
+| `PASSWD_EMAIL_OTP_TTL_MINUTES` | `10` | Vida del código de correo |
 
-Todas son modificables **en caliente** desde la consola de configuración.
+Todas son modificables **en caliente** desde la consola de configuración, que además
+indica de qué depende cada una y muestra en el panel «Estado del correo» qué funciones
+están operativas.
+
+> **Interruptores separados.** Antes `PASSWD_NOTIFY_ENABLED` apagaba *todo* el correo,
+> también el código de verificación y las contraseñas temporales, aunque su nombre solo
+> hablaba de alertas. Ahora el servicio se enciende con `PASSWD_SMTP_ENABLED` y las alertas
+> a administradores son un interruptor independiente. Al actualizar, una instalación que ya
+> enviaba correo lo sigue haciendo: `SMTP_ENABLED` hereda el valor de `NOTIFY_ENABLED` si no
+> se define, y un ajuste guardado en la consola se migra una sola vez al arrancar.
 
 ### ⚠️ Cambio de comportamiento al actualizar
 

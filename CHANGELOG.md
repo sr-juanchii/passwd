@@ -14,6 +14,87 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ### Añadido
 
+- [`docs/plan-v2.0.md`](docs/plan-v2.0.md): plan de la versión 2.0 (propuesta para aprobación).
+
+## [1.2.0] - 2026-11-14
+
+**Sesión, segundo factor elegible y configuración coherente.** Versión MENOR: añade
+funcionalidad y corrige un fallo de control de acceso sin romper integraciones, datos ni
+configuración existentes (la migración `0009` es aditiva y las variables antiguas se siguen
+aceptando). Corresponde a la **Fase 8** de la [hoja de ruta](docs/hoja-de-ruta.md).
+
+**Al actualizar desde 1.1.0** (detalle en [`docs/notas-version-1.2.0.md`](docs/notas-version-1.2.0.md)):
+
+- Se recomienda actualizar cuanto antes: corrige la exportación que entregaba a un operador las
+  contraseñas de activos restringidos.
+- `PASSWD_NOTIFY_ENABLED` pasa a controlar solo las alertas a administradores; el servicio de
+  correo se enciende con `PASSWD_SMTP_ENABLED` (hereda el valor anterior si no se define).
+- El correo como método principal de segundo factor queda **permitido por defecto** para los
+  no administradores cuando el servicio de correo está activo. Se desactiva en
+  Configuración → Verificación en dos pasos (`PASSWD_EMAIL_OTP_PRIMARY_ENABLED=false`).
+- Aplique la migración `0009` (`alembic upgrade head`); en despliegues por contenedor la
+  columna se añade sola al arrancar.
+
+
+### Seguridad
+
+- **Corregida una fuga de control de acceso en la exportación.** `POST /api/web/exportar`
+  entregaba a un operador las contraseñas en claro de los activos **restringidos a
+  administradores**; la interfaz clásica sí los excluía. La decisión vive ahora en un único
+  punto compartido y `exportar_csv` es seguro por defecto. La exportación gana límite de tasa
+  (5 por hora y usuario) y aviso de actividad sensible al titular.
+- La **importación CSV** ya no permite a quien no puede restringir crear máquinas virtuales ni
+  credenciales bajo activos restringidos.
+- **TOTP**: se rechaza cualquier código de un paso temporal igual o anterior al último aceptado;
+  los fallos durante el alta cuentan para el bloqueo; límite de tasa propio en la verificación.
+- `recifrar` recifra también los **secretos guardados en la configuración** (contraseña SMTP).
+- **Dependencias del frontend actualizadas** por avisos de seguridad publicados tras la 1.1.0:
+  Next.js 16.2.11 → 16.4.6 (incluye vulnerabilidades críticas), `sharp` 0.35.0 → 0.35.5 y las
+  transitivas `source-map-js`, `nanoid`, `browserslist` y `baseline-browser-mapping`. La auditoría
+  de dependencias de producción queda sin hallazgos.
+
+### Añadido
+
+- **Aviso de expiración de sesión.** Poco antes de vencer, un diálogo con cuenta atrás permite
+  extender la sesión o cerrarla; al vencer, la interfaz se cierra y lleva al inicio de sesión
+  con un mensaje claro, conservando la página de origen. Nuevos `POST /api/web/session/extender`
+  y plazos en `GET /api/web/session`, que deja de contar como actividad.
+- **Método de segundo factor elegible**: aplicación autenticadora o **código por correo** como
+  método principal, con política del administrador y vista **«Mi seguridad»** (cambio de método
+  y regeneración de códigos de recuperación). Migración `0009`.
+- **Configuración**: interruptor propio del servicio de correo (`PASSWD_SMTP_ENABLED`), modo de
+  cifrado `PASSWD_SMTP_SECURITY` (`starttls` / `ssl` / `ninguna`), **«Probar conexión»** con los
+  valores sin guardar, panel **«Estado del correo»**, dependencias visibles entre ajustes y
+  validación de formato y coherencia. Pasan a ser editables en pantalla el respaldo y la validez
+  del código por correo, los avisos a usuarios y el preaviso de rotación.
+- **Mantenimiento periódico** (cada 6 h): la retención de auditoría surte efecto sin reiniciar.
+- El respaldo incluye los ajustes guardados y el método de segundo factor.
+- **Publicación automática**: al fusionar en `main` un cambio de versión, el flujo
+  `publicar.yml` crea la etiqueta `vX.Y.Z` y la Release de GitHub con las notas del changelog.
+
+### Cambiado
+
+- `PASSWD_NOTIFY_ENABLED` controla **solo las alertas a administradores**; ya no apaga el resto
+  del correo. Compatibilidad: `PASSWD_SMTP_ENABLED` hereda su valor si no se define, y los
+  ajustes guardados se migran una vez al arrancar.
+- `PASSWD_SMTP_TLS` queda **obsoleta** (se sigue aceptando) en favor de `PASSWD_SMTP_SECURITY`.
+- `ACTIVITY_THROTTLE_SECONDS` deja de editarse en pantalla (solo por entorno) y se acota a la
+  mitad de la ventana de inactividad.
+- La CLI (`respaldo`, `avisar-rotacion`) aplica los ajustes guardados en la consola.
+- El inicio de sesión muestra mensajes fijos por motivo en lugar de texto libre de la URL.
+- El 401 de una sesión vencida incluye `code: "sesion_expirada"` y borra la cookie.
+
+### Corregido
+
+- La interfaz quedaba aparentemente abierta, mostrando «No autenticado», tras caducar la sesión.
+- El diálogo de restablecer contraseña mostraba una contraseña vacía cuando el correo sí se
+  enviaba.
+- El texto «Mínimo 12 caracteres» del cambio de contraseña ignoraba la longitud configurada.
+
+### Incluido también en esta versión (integrado en `main` tras la 1.1.0)
+
+#### Añadido
+
 - **Manual de uso, funciones y procedimientos** ([`docs/manual-operativo.md`](docs/manual-operativo.md)):
   documento único, apto para aprobación formal, que cubre **todas** las funciones del
   sistema —interfaz web, API JSON, API REST, CLI y avisos— con **52 capturas de pantalla**
@@ -92,7 +173,7 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   [`docs/notificaciones-y-mfa-correo.md`](docs/notificaciones-y-mfa-correo.md) y
   `tests/test_avisos_dinamicos.py` (25 pruebas).
 
-### Cambiado
+#### Cambiado
 
 - **Comportamiento del correo al actualizar**: en despliegues que ya tuvieran
   `PASSWD_NOTIFY_ENABLED=true`, los **usuarios finales** empezarán a recibir avisos
@@ -106,7 +187,7 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   completo acción por acción. La deduplicación se apoya en el limitador de tasa, así
   que con más de un worker conviene `PASSWD_RATE_LIMIT_BACKEND=bd`.
 
-### Seguridad
+#### Seguridad
 
 - **Corregida la reutilización del código TOTP de enrolamiento** (severidad alta;
   OWASP A07 — fallos de identificación y autenticación; RFC 6238 §5.2). La
@@ -148,7 +229,7 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   - **Indexación**: cabecera `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` en las páginas
     del frontend, para que una aplicación interna no quede en cachés públicas de terceros.
 
-### Añadido
+#### Añadido
 
 - **Control automático de exposición del build del frontend**:
   [`scripts/verificar-build-frontend.sh`](scripts/verificar-build-frontend.sh), integrado en el CI
@@ -276,6 +357,7 @@ Primera versión estable. Establece la línea base sobre la que se versionan los
 
 El detalle del alcance por fases está en [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md).
 
-[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.1.0...HEAD
+[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/sr-juanchii/passwd/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.1.0
 [1.0.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.0.0

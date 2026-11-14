@@ -28,7 +28,9 @@ from app.models import (
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
+    Usuario,
 )
+from app.rbac import tiene_permiso
 from app.security.crypto import descifrar
 
 # Cabecera canónica: unión de todas las columnas que entiende el importador.
@@ -60,7 +62,7 @@ def _fila() -> dict[str, str]:
     return dict.fromkeys(COLUMNAS, "")
 
 
-def _serializar_a_filas(db: Session, incluir_restringidos: bool = True) -> list[dict[str, str]]:
+def _serializar_a_filas(db: Session, incluir_restringidos: bool = False) -> list[dict[str, str]]:
     """Filas del inventario. Si ``incluir_restringidos`` es False, se omiten los
     activos restringidos a administradores (y las VMs de hipervisores
     restringidos) junto con sus credenciales: es lo que ve un operador."""
@@ -166,12 +168,68 @@ def _a_csv(filas: list[dict[str, str]]) -> str:
     return buffer.getvalue()
 
 
-def exportar_csv(db: Session, incluir_restringidos: bool = True) -> str:
+def exportar_csv(db: Session, incluir_restringidos: bool = False) -> str:
     """CSV en claro del inventario, listo para editar y re-importar.
 
-    ``incluir_restringidos=False`` omite los activos restringidos a
-    administradores (lo que corresponde a un operador que exporta)."""
+    Seguro por defecto: los activos restringidos a administradores solo se
+    incluyen si se pide de forma explícita (``incluir_restringidos=True``)."""
     return _a_csv(_serializar_a_filas(db, incluir_restringidos))
+
+
+def exportar_para(db: Session, usuario: Usuario) -> tuple[str, bool]:
+    """Export que corresponde a ``usuario``: devuelve ``(csv, incluye_restringidos)``.
+
+    ÚNICO punto que decide si un export interactivo lleva los activos
+    restringidos (solo quien tiene ``inventario.restringir``). Lo usan las dos
+    interfaces para que no puedan divergir."""
+    incluir = tiene_permiso(usuario.rol, "inventario.restringir")
+    return exportar_csv(db, incluir_restringidos=incluir), incluir
+
+
+# Exportar es la operación de mayor volumen de secretos: se limita a unas pocas
+# descargas por usuario y hora (una migración no necesita más).
+EXPORT_LIMITE = 5
+EXPORT_VENTANA_MINUTOS = 60
+
+
+class LimiteExportacion(Exception):
+    """Se superó el límite de exportaciones (mensaje apto para el usuario)."""
+
+
+def exportar_auditado(db: Session, request, usuario: Usuario) -> str:
+    """Export interactivo completo: límite de tasa, auditoría y aviso al titular.
+
+    Común a la API JSON y a la interfaz Jinja. Lanza ``LimiteExportacion``."""
+    from app import audit, avisos
+    from app.notifications import enviar_alerta
+    from app.security import ratelimit
+
+    if not ratelimit.permitir_intento(
+        f"exportar:{usuario.id}", limite=EXPORT_LIMITE,
+        ventana_minutos=EXPORT_VENTANA_MINUTOS, db=db,
+    ):
+        audit.registrar(db, audit.REVELADO_TASA_EXCEDIDA, request=request, usuario=usuario,
+                        detalle=f"Límite de {EXPORT_LIMITE} exportaciones en "
+                                f"{EXPORT_VENTANA_MINUTOS} min superado.", exito=False)
+        db.commit()  # conservar la evidencia pese al error que sigue
+        enviar_alerta(
+            "Exportaciones repetidas del inventario",
+            f"El usuario «{usuario.username}» superó el límite de exportaciones en claro "
+            f"({EXPORT_LIMITE} en {EXPORT_VENTANA_MINUTOS} min).",
+        )
+        raise LimiteExportacion("Límite de exportaciones alcanzado; espere antes de reintentar.")
+
+    texto, incluye = exportar_para(db, usuario)
+    audit.registrar(db, audit.INVENTARIO_EXPORTADO, request=request, usuario=usuario,
+                    detalle="Export en claro del inventario (CSV de migración)."
+                            + ("" if incluye else " Sin activos restringidos."))
+    sesion = getattr(request.state, "sesion", None)
+    if sesion is not None:
+        avisos.aviso_actividad_sensible(
+            db, usuario, sesion.id, "exportacion",
+            "exportó el inventario con las contraseñas en claro (CSV de migración)",
+        )
+    return texto
 
 
 def plantilla_csv() -> str:

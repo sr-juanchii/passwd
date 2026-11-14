@@ -9,6 +9,8 @@ sin depender de servicios externos.
 from __future__ import annotations
 
 import base64
+import datetime
+import hmac
 import io
 
 import pyotp
@@ -60,3 +62,24 @@ def verificar_codigo(secreto: str, codigo: str) -> bool:
         return False
     # valid_window=1 tolera un desfase de reloj de ±30 s
     return pyotp.TOTP(secreto).verify(codigo, valid_window=1)
+
+
+def paso_de_codigo(secreto: str, codigo: str) -> int | None:
+    """Paso temporal (contador RFC 6238) al que corresponde un código válido.
+
+    Acepta el paso actual y los adyacentes (±30 s de desfase de reloj), igual que
+    ``verificar_codigo``. Devuelve ``None`` si el código no es válido. Conocer el
+    paso permite rechazar códigos de un paso igual o anterior al último aceptado
+    (RFC 6238 §5.2), no solo la repetición literal del último código.
+    """
+    codigo = normalizar_codigo(codigo)
+    if not codigo.isdigit() or len(codigo) != 6:
+        return None
+    totp = pyotp.TOTP(secreto)
+    actual = totp.timecode(datetime.datetime.now())
+    encontrado: int | None = None
+    for paso in (actual, actual - 1, actual + 1):
+        # Sin salida anticipada: el tiempo no depende de qué paso coincide.
+        if hmac.compare_digest(totp.generate_otp(paso), codigo) and encontrado is None:
+            encontrado = paso
+    return encontrado

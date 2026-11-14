@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, Search, SearchX, Wallet } from "lucide-react";
-import { api } from "@/lib/api";
+import { toast } from "sonner";
+import { api, ApiError } from "@/lib/api";
 import type { VaultEntrada } from "@/lib/types";
 import { ETIQUETAS_CATEGORIA_VAULT } from "@/lib/constants";
 import { PageHeader } from "@/components/page-header";
@@ -18,7 +19,13 @@ export default function VaultPage() {
   const [q, setQ] = useState("");
 
   const cargar = useCallback(() => {
-    api.vault().then((d) => setEntradas(d.entradas)).catch(() => setEntradas([]));
+    api
+      .vault()
+      .then((d) => setEntradas(d.entradas))
+      .catch((err) => {
+        setEntradas([]);
+        toast.error(err instanceof ApiError ? err.message : "No se pudo cargar su vault.");
+      });
   }, []);
 
   useEffect(() => {

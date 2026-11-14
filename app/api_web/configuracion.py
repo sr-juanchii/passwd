@@ -2,7 +2,8 @@
 
 Replica ``app/routes/configuracion.py`` para el frontend Next.js: consultar los
 ajustes agrupados (con su valor efectivo y origen), guardar un lote de cambios,
-restablecer una clave a su valor base y enviar un correo de prueba. Los secretos
+restablecer una clave a su valor base, probar la conexión SMTP con los valores
+del formulario y enviar un correo de prueba. Los secretos
 (p. ej. la contraseña SMTP) nunca se devuelven en claro.
 """
 
@@ -39,6 +40,12 @@ class PruebaCorreoInput(BaseModel):
     destinatario: str = ""
 
 
+class PruebaConexionInput(BaseModel):
+    # Valores SMTP del formulario, aún sin guardar (los ausentes se toman de la
+    # configuración vigente; una contraseña vacía significa «la guardada»).
+    valores: dict[str, object] = {}
+
+
 @router.get("/configuracion")
 def configuracion_ver(
     request: Request,
@@ -48,6 +55,7 @@ def configuracion_ver(
     return {
         "grupos": ajustes.snapshot(db),
         "info_sistema": ajustes.info_sistema(),
+        "correo": ajustes.estado_correo(),
     }
 
 
@@ -79,6 +87,28 @@ def configuracion_restablecer(
     return {"restablecido": cambiado}
 
 
+@router.post("/configuracion/probar-conexion", dependencies=[CSRF])
+def configuracion_probar_conexion(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, GESTIONAR],
+    cuerpo: PruebaConexionInput,
+):
+    """Comprueba la conexión y la autenticación SMTP con los valores del
+    formulario SIN guardarlos ni enviar ningún mensaje."""
+    try:
+        parametros = ajustes.ajustes_smtp_de_formulario(db, cuerpo.valores)
+        detalle = notifications.probar_conexion(parametros)
+    except (ajustes.ErrorAjuste, notifications.ErrorCorreo) as exc:
+        audit.registrar(db, audit.CORREO_PRUEBA, request=request, usuario=usuario,
+                        detalle=f"Prueba de conexión SMTP fallida: {exc}", exito=False)
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    audit.registrar(db, audit.CORREO_PRUEBA, request=request, usuario=usuario,
+                    detalle="Prueba de conexión SMTP correcta.")
+    return {"ok": True, "detalle": detalle}
+
+
 @router.post("/configuracion/probar-correo", dependencies=[CSRF])
 def configuracion_probar_correo(
     request: Request,
@@ -95,4 +125,10 @@ def configuracion_probar_correo(
         raise HTTPException(status_code=400, detail=str(exc)) from None
     audit.registrar(db, audit.CORREO_PRUEBA, request=request, usuario=usuario,
                     detalle=f"Correo de prueba enviado a {len(enviados)} destinatario(s).")
-    return {"ok": True, "destinatarios": len(enviados)}
+    respuesta: dict = {"ok": True, "destinatarios": len(enviados)}
+    if not notifications.correo_operativo():
+        # La prueba usa el servidor configurado aunque el servicio esté apagado:
+        # se advierte para que un «funciona» no se confunda con «está en marcha».
+        respuesta["aviso"] = ("El correo de prueba salió, pero el servicio de correo está "
+                              "apagado: la aplicación no enviará nada hasta activarlo.")
+    return respuesta

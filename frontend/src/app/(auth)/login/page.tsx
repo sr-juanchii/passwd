@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { MENSAJES_LOGIN, consumirRetorno, guardarRetorno } from "@/lib/expiracion";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,10 +27,14 @@ export default function LoginPage() {
       .csrfLogin()
       .then((r) => setCsrfLogin(r.csrf_login))
       .catch(() => setError("No se pudo contactar al servidor."));
-    // Aviso tras un flujo externo (p. ej. recuperación de contraseña). Se lee de
-    // window (client-only) para no exigir Suspense de useSearchParams.
-    const msg = new URLSearchParams(window.location.search).get("msg");
-    if (msg) setAviso(msg.slice(0, 200));
+    // Aviso según el MOTIVO de llegada (sesión vencida, cierre, recuperación…).
+    // Solo se aceptan códigos conocidos con texto fijo: nunca se muestra texto
+    // libre de la URL. Se lee de window (client-only) para no exigir Suspense.
+    const params = new URLSearchParams(window.location.search);
+    const motivo = params.get("motivo") ?? "";
+    if (Object.hasOwn(MENSAJES_LOGIN, motivo)) setAviso(MENSAJES_LOGIN[motivo]);
+    // Página a la que volver tras entrar (solo rutas internas validadas).
+    guardarRetorno(params.get("next"));
   }, []);
 
   async function enviar(e: React.FormEvent) {
@@ -39,7 +44,7 @@ export default function LoginPage() {
     try {
       const r = await api.login(username, password, csrfLogin);
       await refrescar();
-      router.replace(r.next || "/");
+      router.replace(r.next && r.next !== "/" ? r.next : consumirRetorno());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al iniciar sesión.");
       api.csrfLogin().then((c) => setCsrfLogin(c.csrf_login)).catch(() => {});

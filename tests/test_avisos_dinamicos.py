@@ -67,6 +67,7 @@ def correos(aplicacion, monkeypatch):
 
     monkeypatch.setattr(notifications, "_enviar_smtp", _capturar)
     settings = get_settings()
+    monkeypatch.setattr(settings, "smtp_enabled", True, raising=False)
     monkeypatch.setattr(settings, "notify_enabled", True, raising=False)
     monkeypatch.setattr(settings, "notify_users_enabled", True, raising=False)
     monkeypatch.setattr(settings, "smtp_host", "smtp.pruebas.local", raising=False)

@@ -140,6 +140,95 @@ política de privacidad), **HA multi-nodo con MySQL replicado** (ESC-8: orquesta
 **firma de imágenes cosign/SLSA** (OPS-2: registry + claves), y la **capa de servicios** que unifique
 `routes/`↔`api_web/` (CAL-1: refactor transversal, mejor en su propia entrega).
 
+## Fase 8 — Sesión, método de segundo factor y configuración coherente ✅ (entregada en la v1.2.0)
+
+Seguridad:
+- ✅ **Fuga de activos restringidos en la exportación JSON, corregida.** `POST /api/web/exportar`
+  entregaba al operador las contraseñas de los activos restringidos a administradores (la
+  interfaz clásica sí los filtraba). La decisión vive en un único punto (`exportar_auditado`),
+  `exportar_csv` es seguro por defecto, y la exportación tiene límite de tasa y aviso al titular.
+- ✅ **Importación CSV respeta la restricción**: quien no puede restringir no cuelga máquinas
+  virtuales ni credenciales de activos restringidos; el procesado de filas es común a las dos
+  interfaces (`app/importacion.py`).
+- ✅ **TOTP: rechazo por paso temporal** (no solo por repetición literal del último código),
+  fallos de alta que cuentan para el bloqueo y límite de tasa propio en la verificación.
+- ✅ **`recifrar` y el respaldo incluyen los ajustes guardados** (la contraseña SMTP ya no queda
+  ilegible al rotar la clave) y el respaldo conserva el método de segundo factor.
+
+Sesión:
+- ✅ **Aviso de expiración con cuenta atrás** («Extender sesión» / «Cerrar sesión ahora») y, al
+  vencer, cierre de la interfaz con redirección al inicio de sesión y regreso a la página de
+  origen. Tratamiento único del 401 en el frontend; el servidor borra la cookie vencida;
+  sincronización entre pestañas. Ya no queda la interfaz «abierta» sin sesión.
+
+Verificación en dos pasos:
+- ✅ **Método elegible por usuario**: aplicación autenticadora o código por correo, con política
+  del administrador (correo como principal, correo como respaldo, TOTP obligatorio para
+  administradores) y vista **«Mi seguridad»** (cambio de método y regeneración de códigos con
+  reautenticación). Comprobación única del segundo factor para ambas interfaces
+  (`app/security/segundo_factor.py`).
+
+Configuración:
+- ✅ **Consola reorganizada por función**, con dependencias visibles, validación de formato y
+  entre ajustes, interruptor propio del servicio de correo (`smtp_enabled`), modos
+  STARTTLS / SSL / sin cifrado, **«Probar conexión»** con los valores sin guardar y panel
+  **«Estado del correo»**. Mantenimiento periódico (la retención de auditoría surte efecto sin
+  reiniciar) y la CLI aplica los ajustes guardados.
+
+> Las fases 9 a 12 se ordenan, con sus roturas, dependencias y criterios de aceptación, como
+> **versión 2.0** en [`plan-v2.0.md`](plan-v2.0.md).
+
+## Fase 9 — Unificación de interfaces 🔜
+
+La lógica duplicada entre `app/routes/` (interfaz clásica) y `app/api_web/` (JSON) ya causó una
+divergencia de seguridad (la exportación de la Fase 8). Plan:
+
+1. 🔜 Extraer los casos de uso a `app/servicios/` (autenticación, credenciales, inventario,
+   usuarios, accesos), como ya se hizo con la exportación, la importación y el segundo factor.
+2. 🔜 Dejar `api_web` como única interfaz de aplicación y **retirar la interfaz clásica**
+   (`app/routes` salvo `/api/v1`, `app/templates`, `app/static`), migrando antes las pruebas
+   que hoy la usan como vía de entrada.
+3. 🔜 Matriz de pruebas **restricciones × endpoints JSON** para que ninguna ruta nueva quede
+   sin cubrir.
+
+## Fase 10 — Endurecimiento 🔜
+
+- 🔜 **Reautenticación (contraseña + código) para exportar** y otras acciones de alto impacto,
+  con el mecanismo ya usado en «Mi seguridad».
+- 🔜 **Cifrar las notas del vault personal** (hoy en claro en `EntradaVault.notas`).
+- 🔜 **Cadena de auditoría con clave (HMAC)** y escritura serializada, para que quien escriba
+  en la base de datos no pueda recalcularla ni bifurcarla.
+- 🔜 **CSP con nonce en el frontend** (retirar `'unsafe-inline'` de `script-src`).
+- 🔜 **Valores seguros por defecto**: `RATE_LIMIT_BACKEND=bd` y `REQUIRE_ENV_KEYS=true`.
+- 🔜 **Contenedores**: `read_only`, `cap_drop: ALL`, `no-new-privileges`.
+- 🔜 **Cadena de suministro**: lockfile de Python con hashes, Dependabot, CodeQL, Trivy sobre la
+  imagen y *actions* fijadas por SHA.
+- 🔜 Manejador global de excepciones; `/api/v1/inventario` respeta la marca `restringido`.
+- 🟡 **Neutralizar fórmulas en el CSV del inventario**: choca con el *round-trip* (una
+  contraseña puede empezar por `=`); requiere un formato de escape que el importador deshaga.
+- 🟡 **Cifrado del lado del cliente (zero-knowledge) para el vault personal**: cambia el modelo
+  de recuperación; decidir antes si el aislamiento frente al administrador es un requisito.
+
+## Fase 11 — Funciones nuevas 🔜
+
+- 🔜 **Sesiones activas**: ver y cerrar las propias sesiones; límite de sesiones concurrentes.
+- 🔜 **Contraseñas reutilizadas y filtradas** (k-anonimato, con opción sin conexión).
+- 🔜 **Papelera e historial de versiones en el vault personal**.
+- 🔜 **Generador configurable** (longitud, clases) y medidor de fortaleza con zxcvbn.
+- 🔜 **Compartir por enlace de un solo uso** con caducidad.
+- 🔜 **Bloqueo en el cliente** al ocultar la pestaña (ocultar secretos revelados).
+- 🔜 **Cola de correo con reintentos** y plantillas HTML; programación de `avisar-rotacion`.
+- 🔜 **WebAuthn / llaves de acceso** como tercer método elegible (ver Fase 4).
+
+## Fase 12 — Rendimiento y mejora continua 🔜
+
+- 🔜 Paginación del dashboard y del vault; eliminar las consultas repetidas de
+  `serializers.py` (`puede_revelar_credencial` por credencial) y `access.py`.
+- 🔜 Índice para la búsqueda por nombre sin distinguir mayúsculas.
+- 🔜 **Pruebas de navegador** (inicio de sesión, expiración, segundo factor, configuración) y
+  de componentes del frontend; cobertura ≥ 80 %.
+- 🔜 Revisión trimestral de dependencias y de esta hoja de ruta.
+
 ## Extras de bajo coste
 
 - ✅ **Modo oscuro** (atributo `data-tema` en `<html>` + `localStorage`, sin código embebido,

@@ -22,8 +22,10 @@ from sqlalchemy.orm import Session
 from app import audit
 from app.models import (
     ESTADO_ACTIVO,
+    MFA_TOTP,
     TIPO_DISPOSITIVO_SWITCH,
     CodigoRecuperacionMFA,
+    Configuracion,
     Credencial,
     DispositivoRed,
     EntradaVault,
@@ -86,12 +88,20 @@ def exportar(db: Session, frase: str) -> bytes:
                 "nombre_completo": u.nombre_completo, "password_hash": u.password_hash,
                 "rol": u.rol, "mfa_habilitado": u.mfa_habilitado,
                 "totp_secret": descifrar(u.totp_secret_cifrado) if u.totp_secret_cifrado else None,
-                "ultimo_otp_usado": u.ultimo_otp_usado, "activo": u.activo,
+                "ultimo_otp_usado": u.ultimo_otp_usado, "mfa_metodo": u.mfa_metodo,
+                "activo": u.activo,
                 "debe_cambiar_password": u.debe_cambiar_password,
                 "password_cambiada_en": _fecha(u.password_cambiada_en),
                 "ultimo_acceso": _fecha(u.ultimo_acceso), "creado_en": _fecha(u.creado_en),
             }
             for u in db.scalars(select(Usuario)).all()
+        ],
+        # Ajustes guardados desde la consola (los secretos viajan en claro DENTRO
+        # del respaldo cifrado, igual que el resto, y se recifran al restaurar).
+        "configuracion": [
+            {"clave": f.clave, "es_secreto": f.es_secreto,
+             "valor": (descifrar(f.valor.encode("ascii")) if f.es_secreto and f.valor else f.valor)}
+            for f in db.scalars(select(Configuracion)).all()
         ],
         "codigos_recuperacion": [
             {"usuario_id": c.usuario_id, "codigo_hash": c.codigo_hash,
@@ -227,7 +237,7 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
         raise ErrorRespaldo("La base de datos ya contiene información; use --sobrescribir para reemplazarla.")
 
     # Limpieza total en orden inverso de dependencias
-    for modelo in (SesionWeb, CodigoRecuperacionMFA, RegistroAuditoria, EntradaVault, Credencial,
+    for modelo in (Configuracion, SesionWeb, CodigoRecuperacionMFA, RegistroAuditoria, EntradaVault, Credencial,
                    MaquinaVirtual, Hipervisor, DispositivoRed, ServidorFisico, Usuario):
         for fila in db.scalars(select(modelo)).all():
             db.delete(fila)
@@ -239,13 +249,19 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             nombre_completo=u["nombre_completo"], password_hash=u["password_hash"],
             rol=u["rol"], mfa_habilitado=u["mfa_habilitado"],
             totp_secret_cifrado=cifrar(u["totp_secret"]) if u["totp_secret"] else None,
-            ultimo_otp_usado=u["ultimo_otp_usado"], activo=u["activo"],
+            ultimo_otp_usado=u["ultimo_otp_usado"],
+            mfa_metodo=u.get("mfa_metodo") or MFA_TOTP, activo=u["activo"],
             debe_cambiar_password=u["debe_cambiar_password"],
             password_cambiada_en=_parse_fecha(u["password_cambiada_en"]) or ahora_utc(),
             ultimo_acceso=_parse_fecha(u["ultimo_acceso"]),
             creado_en=_parse_fecha(u["creado_en"]) or ahora_utc(),
         ))
     db.flush()
+    for f in carga.get("configuracion", []):  # ausente en respaldos anteriores
+        valor = f["valor"]
+        if f["es_secreto"] and valor:
+            valor = cifrar(valor).decode("ascii")
+        db.add(Configuracion(clave=f["clave"], valor=valor, es_secreto=f["es_secreto"]))
     for c in carga.get("codigos_recuperacion", []):
         db.add(CodigoRecuperacionMFA(
             usuario_id=c["usuario_id"], codigo_hash=c["codigo_hash"],
