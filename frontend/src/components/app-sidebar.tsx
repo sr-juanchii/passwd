@@ -109,11 +109,12 @@ function Grupo({
 
 export function AppSidebar() {
   const { puede } = useSession();
+  const puedeVerMetricas = puede("metricas.ver");
   const [vencidas, setVencidas] = useState(0);
 
   // Recuento de credenciales con rotación vencida, para señalar Métricas.
   useEffect(() => {
-    if (!puede("metricas.ver")) return;
+    if (!puedeVerMetricas) return;
     let vivo = true;
     api
       .metricas()
@@ -124,7 +125,7 @@ export function AppSidebar() {
     return () => {
       vivo = false;
     };
-  }, [puede]);
+  }, [puedeVerMetricas]);
 
   return (
     <Sidebar collapsible="icon">
