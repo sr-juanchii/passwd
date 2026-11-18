@@ -195,4 +195,4 @@ def test_hash_auditoria_ignora_microsegundos():
     )
     con_micros = RegistroAuditoria(fecha=datetime(2026, 7, 13, 14, 25, 17, 750000), **comun)
     sin_micros = RegistroAuditoria(fecha=datetime(2026, 7, 13, 14, 25, 17, 0), **comun)
-    assert audit._hash(con_micros) == audit._hash(sin_micros)
+    assert audit._recalcular(con_micros) == audit._recalcular(sin_micros)

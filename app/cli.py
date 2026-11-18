@@ -270,6 +270,15 @@ def _cmd_verificar_auditoria(_args: argparse.Namespace) -> int:
         resultado = audit.verificar_cadena(db)
         if resultado["ok"]:
             print(f"Cadena de auditoría íntegra: {resultado['verificados']} registro(s) verificado(s).")
+            heredados = resultado.get("heredados", 0)
+            firmados = resultado.get("firmados", 0)
+            if heredados and firmados:
+                print(f"  Tramo heredado (SHA-256 sin clave): {heredados} registro(s).")
+                print(f"  Tramo firmado (HMAC-SHA256):        {firmados} registro(s), "
+                      f"desde el registro {resultado['corte_id']}.")
+            elif heredados:
+                print(f"  Todo el tramo es heredado (SHA-256 sin clave): {heredados} registro(s). "
+                      "Los registros nuevos se firmarán con HMAC.")
             return 0
         print(f"CADENA ROTA en el registro {resultado['id_roto']}: {resultado['motivo']}.", file=sys.stderr)
         return 1

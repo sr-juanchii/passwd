@@ -55,6 +55,7 @@ GRUPO_SMTP = "Servidor de correo (SMTP)"
 GRUPO_AVISOS = "Notificaciones"
 GRUPO_TASA = "Límites anti-abuso"
 GRUPO_INVENTARIO = "Inventario y auditoría"
+GRUPO_ROTACION = "Gobernanza de rotación"
 
 _DESCRIPCION_GRUPO = {
     GRUPO_SESION: "Cuánto dura una sesión abierta y cuándo se cierra sola.",
@@ -65,6 +66,7 @@ _DESCRIPCION_GRUPO = {
     GRUPO_AVISOS: "Qué correos envía la aplicación y a quién.",
     GRUPO_TASA: "Topes que frenan los intentos automatizados y la extracción masiva.",
     GRUPO_INVENTARIO: "Rotación e historial de credenciales y conservación de la bitácora.",
+    GRUPO_ROTACION: "Cómo se autoriza y se vigila cada rotación de contraseña del inventario.",
 }
 
 _RE_HOST = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$|^\[[0-9A-Fa-f:.]+\]$")
@@ -222,6 +224,23 @@ REGISTRO: tuple[Ajuste, ...] = (
     Ajuste("reveal_rate_window_minutes", GRUPO_TASA, "Ventana de los revelados",
            "Duración de la ventana del límite anterior.", 1, 1440, unidad="min"),
     # --- Inventario y auditoría ---
+    Ajuste("rotacion_temprana_pct", GRUPO_ROTACION, "Umbral de rotación temprana",
+           "Porcentaje de la vigencia por debajo del cual una rotación se marca como temprana "
+           "y exige un motivo reforzado. Con 90 días de vigencia, 25 % son 22 días.",
+           minimo=1, maximo=100, unidad="%"),
+    Ajuste("rotacion_emergencia_ventana_min", GRUPO_ROTACION, "Ventana de la vía de emergencia",
+           "Minutos, desde la solicitud, en los que un único administrador puede autorizar su "
+           "propia solicitud de emergencia cuando no hay un segundo administrador. Queda marcada "
+           "de forma imborrable y exige revisión posterior.",
+           minimo=5, maximo=1440, unidad="min"),
+    Ajuste("rotacion_emergencia_max_por_mes", GRUPO_ROTACION, "Emergencias sin segundo par admitidas",
+           "Número de rotaciones de emergencia sin segundo par en 30 días a partir del cual se "
+           "señala un patrón de abuso. Nunca bloquea una contención en curso: solo la señala.",
+           minimo=1, maximo=100),
+    Ajuste("rotacion_patrones_modo_observacion", GRUPO_ROTACION, "Reglas de patrón en observación",
+           "Las reglas de patrón se evalúan y se ven en métricas, pero no envían avisos. Déjelo "
+           "activo hasta calibrar los umbrales con los datos reales de esta instalación: una "
+           "regla que avisa de más acaba ignorándose.",),
     Ajuste("rotation_max_days", GRUPO_INVENTARIO, "Vigencia de las contraseñas",
            "Días tras los cuales una credencial sin rotar se marca como vencida.",
            1, 3650, unidad="días"),
@@ -235,7 +254,7 @@ REGISTRO: tuple[Ajuste, ...] = (
 _POR_CLAVE: dict[str, Ajuste] = {a.clave: a for a in REGISTRO}
 
 _GRUPOS_ORDEN = (GRUPO_SESION, GRUPO_CUENTAS, GRUPO_MFA, GRUPO_SMTP, GRUPO_AVISOS,
-                 GRUPO_TASA, GRUPO_INVENTARIO)
+                 GRUPO_TASA, GRUPO_INVENTARIO, GRUPO_ROTACION)
 
 # Refresco del singleton desde la BD: como máximo una lectura por este intervalo
 # y por proceso. Además, solo se RE-APLICA cuando la configuración en BD cambió
