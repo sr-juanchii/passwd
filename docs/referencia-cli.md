@@ -193,18 +193,36 @@ python -m app.cli exportar-csv --salida inventario.csv
 
 ## `verificar-auditoria`
 
-Recorre la bitácora y verifica su **encadenamiento por hash**: cada registro incluye el hash del
-anterior, de modo que alterar el contenido de una fila o eliminar/reordenar filas rompe la cadena.
+Recorre la bitácora y verifica su **encadenamiento**: cada registro incluye el hash del anterior,
+de modo que alterar el contenido de una fila o eliminar/reordenar filas rompe la cadena.
 
 ```bash
 python -m app.cli verificar-auditoria
 ```
 
+Desde la **1.3.0** la bitácora puede tener **dos tramos**, y el comando informa de ambos:
+
+```
+Cadena de auditoría íntegra: 1284 registro(s) verificado(s).
+  Tramo heredado (SHA-256 sin clave): 912 registro(s).
+  Tramo firmado (HMAC-SHA256):        372 registro(s), desde el registro 913.
+```
+
+- El **tramo heredado** es el anterior a la 1.3.0: encadenado con SHA-256 **sin clave**, de modo
+  que quien pudiera escribir en la base de datos podía recalcularlo entero. Se conserva y se sigue
+  verificando con su algoritmo, pero su valor probatorio es menor.
+- El **tramo firmado** usa HMAC-SHA256 con `PASSWD_AUDIT_KEY`, que vive fuera de la base de datos.
+- Un registro **sin firmar que aparezca después del corte** se trata como cadena rota: sería la
+  forma de degradar la firma, reescribiendo filas con el algoritmo público para poder recalcularlas
+  sin la clave.
 - Código de salida **0** si la cadena está íntegra; **1** e indica el `id` del primer registro roto y
-  el motivo (contenido alterado o eslabón roto) si detecta manipulación.
-- Los registros anteriores a esta función o restaurados desde un respaldo (sin hash) se omiten.
+  el motivo (contenido alterado, eslabón roto o firma degradada) si detecta manipulación.
+- Los registros restaurados desde un respaldo (sin encadenar) se omiten.
 - Complementa el reenvío a un SIEM (`/api/v1/auditoria`): la cadena da evidencia local de que la
   bitácora no se ha manipulado en la propia base de datos.
+
+> Si cambia `PASSWD_AUDIT_KEY`, el tramo firmado con la clave anterior dejará de verificarse.
+> Custódiela como las demás claves; la rotación de esta clave no está automatizada en esta serie.
 
 ---
 

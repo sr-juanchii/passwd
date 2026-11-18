@@ -46,9 +46,16 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 |---|---|---|
 | `PASSWD_SECRET_KEY` | autogenerada | Clave para firmar/derivar material de sesión. Genérela con `python -c "import secrets; print(secrets.token_urlsafe(48))"`. |
 | `PASSWD_ENCRYPTION_KEY` | autogenerada | Clave **Fernet** para el cifrado en reposo (contraseñas, semillas TOTP, notas). Genérela con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Admite **varias claves separadas por comas** para la rotación: la **primera** cifra y todas descifran (ver [`referencia-cli.md`](referencia-cli.md), comando `recifrar`). |
-| `PASSWD_REQUIRE_ENV_KEYS` | `false` | **Modo estricto de producción**: con `true`, la aplicación **no arranca** si las dos claves no llegan por variable de entorno y nunca las autogenera en el directorio de datos. |
+| `PASSWD_AUDIT_KEY` | autogenerada | Clave de **firma de la bitácora** (HMAC-SHA256). Sin ella el encadenamiento sería un SHA-256 público, recalculable por quien tenga escritura en la base de datos. Genérela con `python -c "import secrets; print(secrets.token_urlsafe(48))"`. |
+| `PASSWD_REQUIRE_ENV_KEYS` | `false` | **Modo estricto de producción**: con `true`, la aplicación **no arranca** si `SECRET_KEY` y `ENCRYPTION_KEY` no llegan por variable de entorno y nunca las autogenera en el directorio de datos. |
 
-> **Docker secrets:** cualquiera de estos secretos (`SECRET_KEY`, `ENCRYPTION_KEY`, `SMTP_PASSWORD`)
+> `PASSWD_AUDIT_KEY` **no entra todavía** en `REQUIRE_ENV_KEYS`: exigirla dejaría sin arrancar a una
+> instalación que hoy funciona en modo estricto, y eso sería una rotura en una versión menor. Si el
+> modo estricto está activo y la clave no llega por entorno, el arranque lo advierte y la
+> autogenera. **Defínala por entorno igualmente**: la evidencia de auditoría no debería compartir
+> volumen con la base de datos que atestigua. La 2.0 la incorpora al grupo obligatorio.
+
+> **Docker secrets:** cualquiera de estos secretos (`SECRET_KEY`, `ENCRYPTION_KEY`, `AUDIT_KEY`, `SMTP_PASSWORD`)
 > puede proveerse por fichero con la variante **`PASSWD_<NOMBRE>_FILE`** (ruta a un fichero montado,
 > p. ej. `/run/secrets/...`), que tiene prioridad sobre la variable en claro. Ver
 > [`docker-compose.secrets.yml`](../docker-compose.secrets.yml).
@@ -119,6 +126,19 @@ custodiarlas** en un gestor de secretos, y usar **claves distintas por ambiente*
 | `PASSWD_AUDIT_RETENTION_DAYS` | `365` | Retención de la bitácora. **Nunca baja de 90 días** aunque se configure menos (CIS 8.10). |
 | `PASSWD_ROTATION_MAX_DAYS` | `90` | Días sin rotar una credencial antes de mostrar la alerta de rotación. |
 | `PASSWD_PASSWORD_HISTORY_MAX` | `5` | Contraseñas anteriores conservadas por credencial. |
+
+### Gobernanza de rotación (desde la 1.3.0)
+
+`PASSWD_ROTATION_MAX_DAYS` es además el **intervalo de política** con el que se calcula la fecha
+programada de cada credencial y la desviación al rotar. No existe un segundo ajuste con el mismo
+significado, a propósito: dos verdades sobre lo mismo acaban divergiendo.
+
+| Variable | Por defecto | Descripción |
+|---|---|---|
+| `PASSWD_ROTACION_TEMPRANA_PCT` | `25` | Porcentaje de la vigencia por debajo del cual una rotación se marca **temprana** y exige motivo reforzado. Con 90 días, 25 % son 22 días. |
+| `PASSWD_ROTACION_EMERGENCIA_VENTANA_MIN` | `60` | Minutos, desde la solicitud, en los que un único administrador puede autorizar su propia solicitud **de emergencia**. Fuera de la ventana vuelve a exigirse la regla de dos personas. |
+| `PASSWD_ROTACION_EMERGENCIA_MAX_POR_MES` | `3` | Emergencias sin segundo par admitidas en 30 días antes de señalarlo como patrón de abuso. Nunca bloquea una contención en curso: solo la señala. |
+| `PASSWD_ROTACION_PATRONES_MODO_OBSERVACION` | `true` | Las reglas de patrón se evalúan y se ven en métricas, pero **no envían avisos**. Déjelo activo hasta calibrar los umbrales con datos reales. |
 
 ---
 
@@ -246,6 +266,7 @@ fija su valor base:
 | Notificaciones | `NOTIFY_ENABLED`, `NOTIFY_TO`, `NOTIFY_USERS_ENABLED`, `ROTATION_WARNING_DAYS` |
 | Límites anti-abuso | `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW_MINUTES`, `REVEAL_RATE_LIMIT`, `REVEAL_RATE_WINDOW_MINUTES` |
 | Inventario y auditoría | `ROTATION_MAX_DAYS`, `PASSWORD_HISTORY_MAX`, `AUDIT_RETENTION_DAYS` (mín. 90) |
+| Gobernanza de rotación | `ROTACION_TEMPRANA_PCT`, `ROTACION_EMERGENCIA_VENTANA_MIN`, `ROTACION_EMERGENCIA_MAX_POR_MES`, `ROTACION_PATRONES_MODO_OBSERVACION` |
 
 La **retención de auditoría** se aplica al arrancar y después cada 6 horas, de modo que un
 cambio desde la consola surte efecto sin reiniciar. La **CLI** (`respaldo`, `avisar-rotacion`)
@@ -255,7 +276,7 @@ también aplica los ajustes guardados aquí.
 define solo por entorno y que la aplicación acota a la mitad de la ventana de inactividad.
 
 **NO editables en caliente** (exclusivos de entorno; requieren reinicio o son secretos de
-despliegue): claves criptográficas (`SECRET_KEY`, `ENCRYPTION_KEY`, `REQUIRE_ENV_KEYS`), base de
+despliegue): claves criptográficas (`SECRET_KEY`, `ENCRYPTION_KEY`, `AUDIT_KEY`, `REQUIRE_ENV_KEYS`), base de
 datos (`DATABASE_URL`, pool), `COOKIE_SECURE`, `MAX_REQUEST_BYTES`, `TRUSTED_PROXIES`,
 `RATE_LIMIT_BACKEND`, `DATA_DIR` y el arranque del administrador. Se muestran como **información de
 solo lectura** en la misma pantalla.

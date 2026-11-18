@@ -90,7 +90,10 @@ app/
 ├── deps.py            # dependencias web: sesión activa, etapa, permisos, CSRF, render Jinja
 ├── rbac.py            # matriz de permisos por rol (estática)
 ├── access.py          # control de acceso por objeto (concesiones a analistas)
-├── audit.py           # registrar() y purgar_antiguos() de la bitácora
+├── audit.py           # registrar() y purgar_antiguos(); cadena firmada con HMAC
+├── servicios/         # casos de uso: rotacion.py (gobernanza y ÚNICO escritor de
+│                      #   password_cifrada), autenticacion.py (reautenticación),
+│                      #   patrones.py (reglas sobre el libro mayor)
 ├── notifications.py   # alertas por correo (opt-in, sin secretos)
 ├── backup.py          # exportar()/restaurar() cifrados (scrypt + Fernet)
 ├── cli.py             # comandos: init-db, crear-admin, respaldo, restaurar
@@ -112,9 +115,17 @@ app/
    la etapa correcta del login, comprueban el **permiso RBAC** y validan **CSRF**.
 3. **Autorización**: `rbac.py` (qué puede hacer un rol) + `access.py` (sobre qué objetos concretos,
    para el analista).
-4. **Servicios de seguridad** (`security/`): hashing, cifrado, TOTP, sesiones, límites de tasa.
-5. **Modelo y persistencia** (`models.py`, `database.py`): ORM SQLAlchemy y motor.
-6. **Transversales**: `audit.py` (registra cada acción), `notifications.py`, `backup.py`.
+4. **Servicios de caso de uso** (`servicios/`): aquí viven las **reglas**. Un control que vive en un
+   controlador solo protege a quien entra por ese controlador, y la duplicación entre `routes/` y
+   `api_web/` ya causó una divergencia de seguridad en la 1.2.0. Por eso la gobernanza de rotación
+   nace aquí: `servicios/rotacion.py` es el **único punto del sistema que escribe
+   `Credencial.password_cifrada`**, y una prueba de arquitectura falla si algún controlador o la
+   importación vuelve a hacerlo. Es la capa que la Fase 9 de [`plan-v2.0.md`](plan-v2.0.md) pide
+   generalizar al resto de casos de uso.
+5. **Servicios de seguridad** (`security/`): hashing, cifrado, TOTP, sesiones, límites de tasa.
+6. **Modelo y persistencia** (`models.py`, `database.py`): ORM SQLAlchemy y motor.
+7. **Transversales**: `audit.py` (registra cada acción, con la cadena firmada), `notifications.py`,
+   `avisos.py`, `backup.py`.
 
 ---
 

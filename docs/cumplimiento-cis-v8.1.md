@@ -36,6 +36,7 @@ interna de gestión de credenciales y su estado.
 | Salvaguarda | Descripción | Estado | Implementación / evidencia |
 |---|---|---|---|
 | 5.2 | Usar contraseñas únicas y robustas | ✅ | Política: mínimo 12 caracteres (CIS exige 8 con MFA), lista de contraseñas comunes prohibidas, sin nombre de usuario embebido; generador CSPRNG de 20 caracteres para credenciales de activos y alerta visual cuando una credencial supera el umbral configurable sin rotarse. `app/security/passwords.py`, `app/static/app.js`, `app/models.py` (`dias_sin_rotar`) |
+| 5.2 | Usar contraseñas únicas y rotarlas bajo control | ✅ | Toda rotación de una credencial del inventario pasa por un ciclo de autorización con **motivo obligatorio**, **regla de dos personas** y **reautenticación con segundo factor** del autorizador; el libro mayor conserva quién aprobó, cuándo se rotó y cuánto se desvió de la política. Ninguna contraseña del inventario se puede cambiar fuera de ese ciclo (prueba de arquitectura). `app/servicios/rotacion.py`, `tests/test_rotacion_gobernanza.py` |
 | 5.3 | Deshabilitar cuentas inactivas | ✅/📋 | Desactivación inmediata con revocación de sesiones desde la consola admin; la revisión periódica de cuentas sin uso (campo «último acceso» visible) es proceso organizativo. `app/routes/users.py` |
 | 5.4 | Restringir privilegios de administrador a cuentas dedicadas | ✅ | Rol `admin` separado; operación diaria posible con roles `operador`/`auditor` de menor privilegio. `app/rbac.py` |
 | 5.6 | Centralizar la gestión de cuentas | ✅ | Toda alta, baja, rol y restablecimiento se gestiona en un único módulo auditado. `app/routes/users.py` |
@@ -58,7 +59,7 @@ interna de gestión de credenciales y su estado.
 |---|---|---|---|
 | 8.1 | Establecer proceso de gestión de registros | ✅ | Bitácora estructurada con acciones normalizadas y retención configurada. `app/audit.py` |
 | 8.2 | Recolectar registros de auditoría | ✅ | Autenticación (éxitos y fallos), MFA, bloqueos, gestión de cuentas, CRUD de inventario, accesos denegados y revelados de contraseñas. `app/audit.py` |
-| 8.5 | Recolectar registros detallados | ✅ | Cada evento incluye fecha UTC, usuario, acción, objeto, detalle, IP, agente de usuario y resultado. `app/models.py` (`RegistroAuditoria`) |
+| 8.5 | Recolectar registros detallados | ✅ | Cada evento incluye fecha UTC, usuario, acción, objeto, detalle, IP, agente de usuario y resultado. Desde la 1.3.0 la cadena se **firma con HMAC-SHA256** y una clave fuera de la base de datos, de modo que quien tenga escritura en ella no puede recalcularla; el material anterior queda como tramo heredado y `verificar-auditoria` valida ambos. `app/models.py` (`RegistroAuditoria`), `app/audit.py` |
 | 8.10 | Retener registros ≥ 90 días | ✅ | Retención por defecto 365 días; el purgado nunca baja del mínimo de 90 días aunque se configure menos. `app/audit.py` (`purgar_antiguos`) |
 | 8.11 | Revisar los registros de auditoría | ✅/📋 | Vista dedicada con filtros por usuario y acción y **exportación a CSV** (auditada, con mitigación de inyección de fórmulas) para roles admin/auditor; **dashboard de métricas** de seguridad como apoyo a la revisión; la cadencia es proceso organizativo. `app/routes/audit_view.py`, `app/routes/metrics.py` |
 

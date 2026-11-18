@@ -312,7 +312,7 @@ Cómo queda cada camino desde la v1.3.0:
 |---|---|
 | Interfaz clásica | El formulario de credencial deja de aceptar cambio de contraseña suelto; delega en el servicio, que exige una solicitud autorizada abierta. Es una **duplicación deliberada y temporal** de la puerta: desaparece con la retirada de la interfaz clásica en la 2.0.0 (R1) |
 | API JSON | Igual, por el mismo servicio |
-| Importación CSV | **Alta** de credenciales nuevas sigue permitida (es migración). **Sobrescribir** la contraseña de una credencial existente queda prohibida por defecto; con el ajuste explícito que lo permita, genera un asiento en el libro mayor con `tipo = importacion` y notifica. Sin asiento silencioso |
+| Importación CSV | **Alta** de credenciales nuevas, que es su propósito (migración), y pasa por el servicio. Al implementar la v1.3.0 se comprobó que la importación **nunca sobrescribe** una credencial existente —solo inserta—, de modo que la prohibición de sobrescritura que este plan preveía no hacía falta y no se añadió: habría sido un ajuste de configuración sin nada que gobernar |
 | CLI y respaldo/restauración | `restaurar` repone estado, no rota: no genera asientos nuevos y nunca repone trabajos pendientes (§8.0) |
 
 **Criterio de aceptación (test de arquitectura):** una prueba recorre `app/routes/`,
@@ -458,16 +458,31 @@ documentan en [`referencia-configuracion.md`](referencia-configuracion.md).
 **Corrección H10:** el registro `CLAVES_EDITABLES` de `app/config.py:255-278` usa nombres **planos**
 (`rotation_max_days`, `reveal_rate_limit`…). Las claves nuevas siguen ese estilo, no uno anidado:
 
+Un ajuste solo se añade cuando hay algo que gobernar en esa versión: una clave que no lee nadie es
+configuración muerta que alguien tendrá que mantener y documentar. Los de la ejecución por agente
+llegan con el agente.
+
+**Entregados en la v1.3.0:**
+
 | Clave | Defecto | Para qué |
 |---|---|---|
-| `rotacion_intervalo_dias` | 90 | Coherente con `rotation_max_days` ya existente |
-| `rotacion_pre_aprobada_politica` | **false** | Modo pre-aprobado por política |
-| `rotacion_ventana_job_min` | 15 | Validez del trabajo despachado |
-| `rotacion_anti_thrash_horas` | 24 | Mínimo entre rotaciones de la misma cuenta |
-| `rotacion_jitter_horas` | 24 | Dispersión de las solicitudes programadas |
+| `rotacion_temprana_pct` | 25 | % de la vigencia por debajo del cual la rotación es temprana |
 | `rotacion_emergencia_ventana_min` | 60 | Ventana del break-glass (§2.3.1) |
 | `rotacion_emergencia_max_por_mes` | 3 | Umbral de la regla de abuso de emergencia |
 | `rotacion_patrones_modo_observacion` | **true** | Las reglas registran pero no notifican |
+
+El **intervalo de política** NO se duplica: es el `rotation_max_days` que ya existía y que rige las
+alertas de antigüedad. Dos ajustes con el mismo significado acaban divergiendo, y entonces nadie
+sabe cuál manda.
+
+**Pendientes, con su versión:**
+
+| Clave | Defecto | Versión |
+|---|---|---|
+| `rotacion_pre_aprobada_politica` | **false** | 2.1.0 (con la programación automática) |
+| `rotacion_ventana_job_min` | 15 | 1.4.0 (validez del trabajo despachado) |
+| `rotacion_anti_thrash_horas` | 24 | 1.4.0 |
+| `rotacion_jitter_horas` | 24 | 2.1.0 |
 | `agentes_telemetria_intervalo_min` | 15 | Cadencia de telemetría |
 | `agentes_umbral_sin_contacto_horas` | 24 | Paso a 🟡 y alerta |
 | `agentes_retencion_telemetria_dias` | 30 | Retención y purga |
@@ -475,7 +490,6 @@ documentan en [`referencia-configuracion.md`](referencia-configuracion.md).
 | `agentes_gracia_version_dias` | 14 | Gracia antes de dejar de despachar |
 | `agentes_token_vida_horas` | 24 | Caducidad del token del agente (§2.1) |
 | `agentes_alertar_ip_distinta` | true | Con nota de NAT |
-| `importacion_permite_sobrescribir` | **false** | Sobrescritura de contraseñas por CSV (§2.4) |
 
 ### 3.10 RBAC
 
@@ -719,8 +733,8 @@ versiones siguientes y la 2.0 necesitan.
   cancelación; invariantes 1–5 probadas.
 - **Break-glass acotado** (§2.3.1) con marca imborrable, notificación urgente, tarea de revisión y
   aviso en el arranque si hay menos de dos administradores activos.
-- **Punto único de escritura** aplicado a los tres caminos de §2.4, incluida la prohibición por
-  defecto de sobrescribir contraseñas desde la importación CSV.
+- **Punto único de escritura** aplicado a todos los caminos de §2.4, incluida el alta por
+  importación CSV.
 - Registro de `dias_al_rotar`, `fecha_programada`, `desvio_dias`, `reautenticado`, `verificacion`
   y edad al autorizar.
 - **Línea de tiempo por credencial** («a los 89 días, autorizada por X, motivo Y, aplicada a las
@@ -757,8 +771,7 @@ las rutas de escritura · frontend · pruebas de aceptación · documentación �
 - `dias_al_rotar` / `desvio_dias` correctos (casos de 2 días y de 90 exactos).
 - **Test de arquitectura**: ningún controlador ni la importación asignan `password_cifrada`, ni en
   alta ni en cambio.
-- Importación CSV: alta permitida, sobrescritura rechazada por defecto; con el ajuste activo, genera
-  asiento `tipo = importacion` y notifica.
+- Importación CSV: el alta funciona igual y **no** genera asiento (un alta no es una rotación).
 - La purga de nada borra el libro mayor; el respaldo incluye rotaciones históricas y no repone jobs.
 - Cadena de auditoría: HMAC verificado, tramo heredado reconocido, cadena manipulada detectada.
 - Matriz restricciones × endpoints JSON completa (regla de la Fase 9 de `plan-v2.0.md`).
@@ -770,8 +783,7 @@ las rutas de escritura · frontend · pruebas de aceptación · documentación �
 [`referencia-configuracion.md`](referencia-configuracion.md) (`rotacion_*`); matrices CIS/ISO/OWASP.
 
 **Feature flags y garantías.** `rotacion_pre_aprobada_politica` apagado;
-`rotacion_patrones_modo_observacion` encendido; `importacion_permite_sobrescribir` apagado. Flujo
-manual activo por defecto. Sin cambio de contrato en nada existente; la credencial se sigue
+`rotacion_patrones_modo_observacion` encendido. Flujo manual activo por defecto. Sin cambio de contrato en nada existente; la credencial se sigue
 editando igual salvo que el cambio de contraseña exige solicitud autorizada.
 
 **Dependencias.** Ninguna externa: parte del backend y del frontend existentes. Internamente,

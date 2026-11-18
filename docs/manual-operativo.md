@@ -478,27 +478,70 @@ Desde la ficha del activo, **+ Nueva credencial**.
 | Contraseña | Use **Generar**: 20 caracteres con CSPRNG. No reutilice contraseñas entre activos |
 | Puerto | El real del servicio; ayuda a documentar accesos no estándar |
 | Descripción | **A qué da acceso**; es lo que verá quien consulte la credencial |
+| Usada por | Servicios y automatismos que consumen la cuenta (cron, tareas programadas, respaldos, Ansible, monitorización). Se muestra al solicitar y al autorizar una rotación |
 
-### 7.4 Edición y rotación
+### 7.4 Edición de datos
 
-**Editar** (lápiz) o **Rotar** en una credencial vencida.
+**Editar** (lápiz) permite corregir usuario, servicio, puerto, descripción y «usada por» **sin
+tocar el secreto**.
 
 ![Edición y rotación de una credencial](capturas/32-credencial-edicion-rotacion.png)
 
-- **Dejar la contraseña vacía conserva la actual** y permite corregir usuario, puerto o descripción
-  sin tocar el secreto.
-- **Introducir una contraseña nueva la rota**: reinicia el contador de antigüedad y guarda la
-  anterior **cifrada** en el historial (por defecto, las **5** últimas).
-- El historial se consulta desde la propia credencial; cada revelado de una contraseña histórica
-  también queda auditado.
+El formulario de edición **ya no tiene campo de contraseña**. Cambiarla no es una edición: es una
+rotación, y tiene su propio circuito (7.5).
 
-> **Orden correcto de una rotación:** cambie primero la contraseña **en el sistema real** y a
-> continuación regístrela aquí; así el sistema nunca contiene una clave que el servidor no acepta.
+### 7.5 Rotación de la contraseña (ciclo de gobernanza)
 
-### 7.5 Baja de credencial
+Desde la 1.3.0, cambiar la contraseña de una credencial del inventario exige **dos personas** y
+deja un expediente permanente. El panel de rotación está en la ficha de la credencial, y la vista
+global en el menú **Rotación**.
+
+**Paso 1 — Solicitar.** Quien gestiona la credencial abre la solicitud con un **motivo obligatorio**
+y un tipo (programada, manual, emergencia o masiva). Si la contraseña lleva menos del 25 % de su
+vigencia, la rotación se marca **temprana** y el motivo debe ser más explícito.
+
+**Paso 2 — Autorizar.** **Otro** administrador la autoriza confirmando su contraseña y un código de
+su **aplicación autenticadora**. Nadie autoriza lo que pidió. El código por correo no sirve aquí.
+
+**Paso 3 — Aplicar y registrar.** Cambie la contraseña **en el sistema real** y a continuación
+regístrela en la aplicación. Ese es el único momento en que el sistema la guarda, de modo que nunca
+contiene una clave que el servidor no acepta. La anterior pasa al historial **cifrado** (por
+defecto, las 5 últimas) y el contador de antigüedad se reinicia.
+
+El asiento resultante dice **a los cuántos días** se rotó y **cuánto se desvió** de la fecha que
+marcaba la política. Es el dato que permite distinguir una rotación de rutina de una que se
+adelantó 88 días sin explicación.
+
+> **Antes de rotar, mire «usada por».** El fallo más frecuente de una rotación no es técnico: es
+> dejar sin servicio a un automatismo que usaba esa cuenta, o bloquearla por intentos fallidos.
+
+#### Vía de emergencia
+
+Ante un incidente puede no haber un segundo administrador. Una solicitud de tipo **emergencia** la
+puede autorizar su propio solicitante, dentro de una ventana corta (60 minutos por defecto). Esa
+rotación queda marcada de forma imborrable, alerta a todos los administradores y queda **pendiente
+de revisión** por otro administrador.
+
+No es un atajo: es el reconocimiento de que, sin una salida instrumentada, la contención ocurriría
+igual pero fuera del sistema, sin motivo ni registro. Revise las emergencias pendientes con la
+misma cadencia que la bitácora (21.1).
+
+> **El sistema necesita dos administradores activos.** Con uno solo, toda rotación cae por la vía
+> de emergencia marcada. La aplicación lo advierte en el arranque.
+
+### 7.6 Historial de contraseñas
+
+El historial se consulta desde la propia credencial; cada revelado de una contraseña histórica
+queda auditado.
+
+### 7.7 Baja de credencial
 
 El icono de papelera pide confirmación y elimina la credencial junto con su historial. Queda
 registrada en la bitácora.
+
+El **libro mayor de rotaciones no se borra**: los asientos de esa credencial sobreviven y siguen
+siendo legibles (conservan el nombre del activo y el usuario de acceso). La evidencia de quién
+aprobó qué no depende de que el objeto siga existiendo.
 
 ---
 

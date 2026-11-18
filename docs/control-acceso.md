@@ -18,6 +18,33 @@ contra la base de datos (nada se confía al navegador):
 | **auditor** | Lectura total del inventario (incluidos los restringidos) y de la bitácora; **nunca** revela contraseñas. |
 | **analista** | *Default-deny*: **no ve nada** hasta que un admin le concede acceso a activos concretos. |
 
+## Permisos de la gobernanza de rotación (desde la 1.3.0)
+
+Cambiar la contraseña de una credencial del inventario ya no es una edición: es un ciclo de
+autorización con dos personas (ver [`manual-administrador.md`](manual-administrador.md) §4 bis).
+Lo gobiernan cuatro permisos nuevos:
+
+| Permiso | admin | operador | auditor | analista |
+|---|:-:|:-:|:-:|:-:|
+| `rotacion.ver` | ✔ | ✔ (†) | ✔ | ✘ |
+| `rotacion.solicitar` | ✔ | ✔ (†) | ✘ | ✘ |
+| `rotacion.autorizar` | ✔ **otro** admin; jamás la propia | ✘ | ✘ | ✘ |
+| `rotacion.revisar` | ✔ **otro** admin | ✘ | ✘ | ✘ |
+
+`rotacion.solicitar` **no introduce un modelo nuevo de responsabilidad por activo**. Alcanza
+exactamente las credenciales que el rol ya puede gestionar hoy, de modo que los activos
+restringidos siguen siendo inexistentes para el operador (†) y el analista sigue fuera del ciclo.
+Añadir responsabilidad nominal por activo sería una funcionalidad propia, con su modelo y su
+interfaz, y está declarada fuera del alcance de esta serie.
+
+Dos reglas no se expresan con permisos, porque un permiso dice *qué rol* y aquí lo que importa es
+*qué persona*. Las aplica el servicio (`app/servicios/rotacion.py`):
+
+- **Nadie autoriza su propia solicitud.** La única salida es la vía de emergencia, acotada a una
+  ventana corta, marcada de forma imborrable y con revisión obligatoria posterior.
+- **La revisión de una emergencia la cierra otro administrador**, nunca quien la autorizó: si
+  pudiera cerrarla él, la marca no obligaría a nada.
+
 ## Restricciones a administradores (`restringido`)
 
 Además de las concesiones (que *abren* acceso al analista), el administrador puede **cerrar**
@@ -84,6 +111,19 @@ enlace al detalle de cada uno.
 | `POST /accesos/conceder` | `accesos.gestionar` (admin) | Concede o actualiza una concesión (upsert por usuario+activo). |
 | `POST /accesos/{id}/revocar` | `accesos.gestionar` (admin) | Revoca (borra) una concesión. |
 | Campo `restringido` en crear/editar activo | `inventario.restringir` (admin) | Marca/desmarca un activo como restringido a administradores. |
+| `GET /api/web/rotacion/panel` | `rotacion.ver` | Pendientes de autorizar, de aplicar, revisiones y señales de patrón. |
+| `GET /api/web/rotacion/credenciales/{id}` | `rotacion.ver` | Línea de tiempo de gobernanza de una credencial. |
+| `POST /api/web/rotacion/solicitudes` | `rotacion.solicitar` | Abre el ciclo con motivo y tipo. |
+| `POST /api/web/rotacion/solicitudes/{id}/autorizar` | `rotacion.autorizar` | Autoriza; exige reautenticación con TOTP. |
+| `POST /api/web/rotacion/solicitudes/autorizar-lote` | `rotacion.autorizar` | Igual, con una sola reautenticación para varias solicitudes. |
+| `POST /api/web/rotacion/solicitudes/{id}/rechazar` | `rotacion.autorizar` | Rechaza con motivo. |
+| `POST /api/web/rotacion/solicitudes/{id}/cancelar` | `rotacion.solicitar` | Retira la solicitud (propia; el admin, cualquiera). |
+| `POST /api/web/rotacion/solicitudes/{id}/aplicar-manual` | `rotacion.solicitar` | Registra la contraseña aplicada en el activo y cierra el ciclo. |
+| `POST /api/web/rotacion/solicitudes/{id}/revisar` | `rotacion.revisar` | Cierra la revisión de una emergencia sin segundo par. |
+
+En todos ellos, el control de acceso **por objeto** se resuelve además en la frontera: una
+solicitud sobre un activo restringido es inexistente (404) para quien no alcanza ese activo, igual
+que el activo mismo.
 
 ## Notas de despliegue
 

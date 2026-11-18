@@ -116,6 +116,14 @@ Acciones típicas a vigilar (revisión semanal recomendada, ver
 > La retención por defecto es de 365 días y **nunca baja de 90** aunque se configure menos
 > (CIS 8.10). Se purga automáticamente al arrancar la aplicación.
 
+**Cadena firmada (desde la 1.3.0).** Cada registro encadena con el anterior y se firma con
+HMAC-SHA256 usando `PASSWD_AUDIT_KEY`, que vive fuera de la base de datos. Antes el encadenamiento
+era un SHA-256 sin clave: quien pudiera escribir en la base podía recalcular la cadena entera y
+reescribir quién hizo qué. Los registros anteriores se conservan como **tramo heredado** y se
+siguen verificando con su algoritmo; `python -m app.cli verificar-auditoria` informa de los dos
+tramos y del punto de corte, y detecta tanto una fila alterada como el intento de degradar la firma
+reescribiendo registros con el algoritmo público.
+
 ---
 
 ## 4. Métricas de seguridad
@@ -129,6 +137,87 @@ resume:
 - **Cuentas sin MFA** (deberían ser cero salvo durante un re-enrolamiento).
 - **Top de accesos a credenciales** (últimos 30 días).
 - **Concesiones por caducar.**
+- **Gobernanza de rotación:** cuántas solicitudes esperan autorización, cuántas están autorizadas
+  sin aplicar y cuántas emergencias quedan por revisar, más las señales de patrón (§4 bis).
+
+---
+
+## 4 bis. Rotación de contraseñas bajo gobernanza
+
+Menú **Rotación** (requiere `rotacion.ver`: admin, operador y auditor).
+
+Desde la 1.3.0, la contraseña de una credencial del inventario **no se cambia editando la ficha**.
+Es un expediente con cinco pasos y dos personas:
+
+```
+SOLICITADA ──► AUTORIZADA ──► CERRADA
+     │              │
+     └─ rechazada ──┴─ cancelada
+```
+
+### Por qué no basta con «cambiar la contraseña»
+
+Un cambio de contraseña sin más deja tres preguntas sin responder: quién decidió cambiarla, por qué
+en ese momento, y cuánto duró realmente la anterior. Son justo las tres que hacen falta cuando hay
+que explicar una rotación a los dos días de la anterior. El ciclo las responde y lo deja escrito
+para siempre.
+
+### Los pasos
+
+| Paso | Quién | Qué exige |
+|---|---|---|
+| **Solicitar** | admin u operador que ya puede gestionar esa credencial | **Motivo obligatorio** (mínimo 10 caracteres; 30 si la rotación es temprana o de emergencia) y tipo: programada, manual, emergencia o masiva |
+| **Autorizar** | **otro administrador**, nunca el solicitante | **Reautenticación**: su contraseña y un código de su **aplicación autenticadora**. El código por correo no sirve |
+| **Registrar** | quien pueda solicitar | Cambia la contraseña en el servidor y la registra en la aplicación. La anterior pasa al historial cifrado |
+
+Una credencial solo puede tener **una solicitud abierta** a la vez.
+
+### Rotación temprana
+
+Si la contraseña lleva menos del 25 % de su vigencia (22 días con los 90 por defecto), la rotación
+se marca **temprana** y el motivo debe ser más explícito. No se prohíbe —a veces hay que rotar al
+día siguiente— pero queda señalada, y varias seguidas disparan una regla de patrón.
+
+### Vía de emergencia (break-glass)
+
+Ante un incidente puede no haber un segundo administrador disponible. En ese caso, una solicitud de
+tipo **emergencia** la puede autorizar **su propio solicitante**, dentro de una ventana corta (60
+minutos por defecto) y con su reautenticación completa. Esa rotación:
+
+- queda marcada con `emergencia_sin_segundo_par` de forma **imborrable**;
+- alerta por correo a **todos** los administradores;
+- queda **pendiente de revisión**, y la revisión la cierra **otro** administrador;
+- cuenta para la regla de patrón de abuso de emergencia.
+
+Fuera de la ventana vuelve a exigirse la regla de dos personas.
+
+> **Mínimo operativo: dos administradores.** Con uno solo, todas las rotaciones caen por la vía de
+> emergencia marcada: visible y revisable, pero sin el control que dan dos personas. La aplicación
+> lo advierte en el arranque.
+
+### El libro mayor
+
+Cada rotación deja un asiento permanente que **nunca se purga** y que entra entero en el respaldo
+cifrado. Registra la antigüedad de la contraseña al solicitar, al autorizar y al rotar, y la
+**desviación** respecto a la fecha que marcaba la política (negativa si se adelantó). Si la
+credencial se elimina, el asiento sigue siendo legible: conserva el nombre del activo y el usuario
+de acceso.
+
+El asiento también registra el **alcance de la verificación**. En esta versión siempre es «sin
+comprobación automática»: el cambio lo hace una persona y nadie comprueba por ella que la credencial
+siga sirviendo. Los agentes (1.4.0) comprobarán localmente, y la comprobación contra el servicio
+declarado llega en la 2.2.0.
+
+### Señales de patrón
+
+En **Rotación** y en **Métricas** aparecen reglas simples sobre los últimos 30 días: rotaciones
+tempranas repetidas, fuera de horario, ráfagas del mismo solicitante o sobre la misma credencial, y
+abuso de la vía de emergencia.
+
+Vienen en **modo observación**: se evalúan y se ven, pero no envían avisos. Déjelas así hasta
+calibrar los umbrales con los datos reales de su instalación; una regla que avisa de más acaba
+filtrada, y entonces se pierde la señal justo cuando hace falta. El interruptor está en
+**Configuración → Gobernanza de rotación**.
 
 ---
 
@@ -230,11 +319,16 @@ python -m app.cli restaurar --entrada copia.passwd --sobrescribir
   auditor para revisión, analista con concesiones puntuales).
 - **Retire `PASSWD_ADMIN_PASSWORD`** del `.env` tras el primer arranque (solo se usa si la BD está
   vacía).
-- **Custodie las claves** `PASSWD_SECRET_KEY` y `PASSWD_ENCRYPTION_KEY` y la frase de respaldo fuera
-  del servidor. Perder la clave de cifrado = perder todas las contraseñas guardadas (salvo el
+- **Custodie las claves** `PASSWD_SECRET_KEY`, `PASSWD_ENCRYPTION_KEY` y `PASSWD_AUDIT_KEY`, y la
+  frase de respaldo, fuera del servidor. Perder `PASSWD_AUDIT_KEY` no pierde datos, pero deja de
+  poder verificarse la cadena de auditoría firmada con ella. Perder la clave de cifrado = perder todas las contraseñas guardadas (salvo el
   respaldo cifrado).
 - **Prueba de restauración trimestral** en una máquina aparte.
 - **Revise la bitácora** con la cadencia de [`guia-implementacion.md`](guia-implementacion.md) §5.1.
+- **Mantenga dos administradores activos**: sin el segundo, la regla de dos personas de la rotación
+  no se puede aplicar y todo pasa por la vía de emergencia (§4 bis).
+- **Atienda las emergencias pendientes de revisión** en el panel de Rotación; son el precio de
+  tener una salida instrumentada en vez de rotaciones fuera del sistema.
 
 ---
 
@@ -245,4 +339,6 @@ python -m app.cli restaurar --entrada copia.passwd --sobrescribir
 - [`referencia-cli.md`](referencia-cli.md) — comandos de línea de comandos.
 - [`referencia-api-rest.md`](referencia-api-rest.md) — API REST de solo lectura.
 - [`guia-implementacion.md`](guia-implementacion.md) — instalación, producción y operación.
+- [`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) — por qué el ciclo es como es, y qué llega
+  en las versiones siguientes (agentes, telemetría, conectores).
 </content>
