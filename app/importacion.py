@@ -15,14 +15,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Credencial,
     DispositivoRed,
     Hipervisor,
     MaquinaVirtual,
     ServidorFisico,
     normalizar_etiquetas,
 )
-from app.security.crypto import cifrar
+from app.servicios import rotacion as rotacion_svc
 
 ORDEN = {"servidor": 0, "hipervisor": 1, "dispositivo": 2, "vm": 3, "credencial": 4}
 
@@ -169,15 +168,23 @@ def procesar_fila(db: Session, fila: dict, puede_restringir: bool = False) -> st
             raise ValueError(f"activo «{padre_nombre}» ({activo_tipo}) no encontrado")
         puerto_txt = (fila.get("puerto") or "").strip()
         puerto = int(puerto_txt) if puerto_txt.isdigit() and 1 <= int(puerto_txt) <= 65535 else None
-        db.add(Credencial(
-            usuario_acceso=usuario_acceso, password_cifrada=cifrar(password),
-            servicio=(fila.get("servicio") or "SSH").strip() or "SSH", puerto=puerto,
+        # El alta pasa por el servicio de rotación, que es el único punto del
+        # sistema que escribe la contraseña cifrada. La importación da de ALTA
+        # credenciales (migración); no sobrescribe ninguna existente, de modo que
+        # no genera asiento en el libro mayor: un alta no es una rotación.
+        rotacion_svc.nueva_credencial(
+            db,
+            password=password,
+            usuario_acceso=usuario_acceso,
+            servicio=(fila.get("servicio") or "SSH").strip() or "SSH",
+            puerto=puerto,
             descripcion=(fila.get("descripcion") or "").strip(),
+            usada_por=(fila.get("usada_por") or "").strip(),
             servidor_fisico_id=activo.id if activo_tipo == "servidor" else None,
             hipervisor_id=activo.id if activo_tipo == "hipervisor" else None,
             maquina_virtual_id=activo.id if activo_tipo == "vm" else None,
             dispositivo_red_id=activo.id if activo_tipo == "dispositivo" else None,
-        ))
+        )
         return "credencial"
 
     raise ValueError(f"tipo desconocido: {tipo}")

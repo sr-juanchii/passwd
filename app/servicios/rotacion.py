@@ -505,6 +505,26 @@ def registrar_rotacion_manual(
     return rotacion
 
 
+MENSAJE_SIN_AUTORIZACION = (
+    "Cambiar la contraseña de una credencial exige una rotación autorizada. "
+    "Solicite la rotación indicando el motivo, espere a que otro administrador la "
+    "autorice y registre entonces la contraseña que quedó aplicada en el activo."
+)
+
+
+def exigir_autorizacion(db: Session, credencial: Credencial) -> RotacionCredencial:
+    """Devuelve la autorización vigente de la credencial o explica que falta.
+
+    Es el punto por el que los formularios de credencial —el de la interfaz
+    clásica y el de la API JSON— entran al ciclo. Se comprueba **antes** de tocar
+    ningún campo, para que un intento sin autorización no deje cambios a medias.
+    """
+    rotacion = autorizacion_vigente(db, credencial.id)
+    if rotacion is None:
+        raise ErrorRotacion(MENSAJE_SIN_AUTORIZACION, codigo=409)
+    return rotacion
+
+
 def marcar_revisada(
     db: Session,
     *,

@@ -13,7 +13,6 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import access, audit, avisos
@@ -33,28 +32,17 @@ from app.models import (
     MaquinaVirtual,
     ServidorFisico,
     Usuario,
-    ahora_utc,
 )
 from app.notifications import enviar_alerta
 from app.security import ratelimit
-from app.security.crypto import cifrar, descifrar
+from app.security.crypto import descifrar
+from app.servicios import rotacion as rotacion_svc
 
 router = APIRouter()
 
 GESTIONAR = Depends(requiere_permiso("credenciales.gestionar"))
 REVELAR = Depends(requiere_permiso("credenciales.revelar"))
 
-
-def _podar_historial(db: Session, credencial_id: int) -> None:
-    """Conserva solo las últimas N entradas del historial de una credencial."""
-    maximo = get_settings().password_history_max
-    entradas = db.scalars(
-        select(HistorialCredencial)
-        .where(HistorialCredencial.credencial_id == credencial_id)
-        .order_by(HistorialCredencial.rotada_en.desc(), HistorialCredencial.id.desc())
-    ).all()
-    for sobrante in entradas[maximo:]:
-        db.delete(sobrante)
 
 _MODELOS_ACTIVO = {
     ACTIVO_FISICO: (ServidorFisico, "servidor físico", "/servidores/{id}"),
@@ -124,6 +112,7 @@ def credencial_crear(
     servicio: Annotated[str, Form()] = "SSH",
     puerto: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    usada_por: Annotated[str, Form()] = "",
 ):
     instancia, etiqueta, url_volver = _resolver_activo(db, activo, activo_id)
     _exigir_ver(db, usuario, activo, activo_id)
@@ -143,19 +132,21 @@ def credencial_crear(
                       {**_ctx_form(usuario, None, activo, instancia, url_volver), "error": error},
                       status_code=400)
 
-    credencial = Credencial(
+    # El alta pasa por el servicio: ningún controlador escribe password_cifrada.
+    credencial = rotacion_svc.nueva_credencial(
+        db,
+        password=password,
         usuario_acceso=usuario_acceso.strip(),
-        password_cifrada=cifrar(password),
         servicio=servicio.strip() or "SSH",
         puerto=puerto_num,
         descripcion=descripcion.strip(),
+        usada_por=usada_por.strip(),
         creado_por_id=usuario.id,
         servidor_fisico_id=activo_id if activo == ACTIVO_FISICO else None,
         hipervisor_id=activo_id if activo == ACTIVO_HIPERVISOR else None,
         maquina_virtual_id=activo_id if activo == ACTIVO_VM else None,
         dispositivo_red_id=activo_id if activo == ACTIVO_DISPOSITIVO else None,
     )
-    db.add(credencial)
     db.flush()
     audit.registrar(db, audit.CREDENCIAL_CREADA, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,
@@ -194,6 +185,7 @@ def credencial_editar(
     servicio: Annotated[str, Form()] = "SSH",
     puerto: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
+    usada_por: Annotated[str, Form()] = "",
 ):
     credencial = db.get(Credencial, credencial_id)
     if credencial is None:
@@ -218,21 +210,36 @@ def credencial_editar(
                       {**_ctx_form(usuario, credencial, tipo, instancia, url_volver), "error": error},
                       status_code=400)
 
+    # La contraseña solo cambia bajo una rotación autorizada, y se comprueba
+    # ANTES de tocar ningún campo: un intento sin autorización no debe dejar la
+    # credencial medio editada. Es la misma regla, el mismo servicio y el mismo
+    # libro mayor que usa la API JSON: la puerta está en los dos caminos.
+    rotada = bool(password)  # contraseña en blanco = conservar la actual
+    autorizacion = None
+    if rotada:
+        try:
+            autorizacion = rotacion_svc.exigir_autorizacion(db, credencial)
+        except rotacion_svc.ErrorRotacion as exc:
+            audit.registrar(db, audit.ROTACION_ESCRITURA_DENEGADA, request=request, usuario=usuario,
+                            objeto_tipo="credencial", objeto_id=credencial.id,
+                            detalle="Intento de cambiar la contraseña sin rotación autorizada",
+                            exito=False)
+            db.commit()
+            return render(request, "credencial_form.html",
+                          {**_ctx_form(usuario, credencial, tipo, instancia, url_volver),
+                           "error": exc.mensaje},
+                          status_code=exc.codigo)
+
     credencial.usuario_acceso = usuario_acceso.strip()
     credencial.servicio = servicio.strip() or "SSH"
     credencial.puerto = puerto_num
     credencial.descripcion = descripcion.strip()
-    rotada = bool(password)
-    if rotada:  # contraseña en blanco = conservar la actual
-        # Se archiva la contraseña anterior (cifrada) antes de sustituirla,
-        # conservando solo las últimas N (historial de rotaciones).
-        db.add(HistorialCredencial(
-            credencial_id=credencial.id, password_cifrada=credencial.password_cifrada,
-            rotada_por_id=usuario.id,
-        ))
-        credencial.password_cifrada = cifrar(password)
-        credencial.password_rotada_en = ahora_utc()
-        _podar_historial(db, credencial.id)
+    credencial.usada_por = usada_por.strip()
+    if autorizacion is not None:
+        rotacion_svc.registrar_rotacion_manual(
+            db, rotacion=autorizacion, password=password, usuario=usuario, request=request,
+        )
+        avisos.aviso_rotacion_aplicada(db, autorizacion)
     audit.registrar(db, audit.CREDENCIAL_ACTUALIZADA, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,
                     detalle=f"{credencial.usuario_acceso}@{instancia.nombre}"

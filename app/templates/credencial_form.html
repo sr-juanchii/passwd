@@ -28,7 +28,11 @@
              autocomplete="new-password" {{ '' if credencial else 'required' }}>
       <button type="button" class="boton" data-generar="password" title="Generar contraseña aleatoria robusta">🎲 Generar</button>
     </div>
-    {% if credencial %}<p class="texto-suave">Déjela en blanco para conservar la contraseña actual.</p>{% endif %}
+    {% if credencial %}
+    <p class="texto-suave">Déjela en blanco para conservar la contraseña actual. Cambiarla exige una
+       <strong>rotación ya autorizada</strong>: solicítela indicando el motivo y espere a que otro
+       administrador la autorice.</p>
+    {% endif %}
 
     <label for="servicio">Servicio / protocolo</label>
     <input id="servicio" name="servicio" type="text" maxlength="60" list="servicios"
@@ -44,6 +48,13 @@
     <label for="descripcion">Descripción (a qué sistema o panel da acceso)</label>
     <textarea id="descripcion" name="descripcion" rows="3" maxlength="2000"
       placeholder="Ej.: Acceso SSH de administración del sistema de nómina">{{ credencial.descripcion if credencial else '' }}</textarea>
+
+    <label for="usada_por">Usada por (servicios y automatismos)</label>
+    <input id="usada_por" name="usada_por" type="text" maxlength="500"
+           value="{{ credencial.usada_por if credencial else '' }}"
+           placeholder="Ej.: cron de respaldos, Ansible, Zabbix">
+    <p class="texto-suave">Qué depende de esta cuenta. Se muestra al solicitar y al autorizar una
+       rotación: es el fallo operativo más probable al cambiar una contraseña.</p>
 
     <button type="submit" class="boton boton-primario">{{ 'Guardar cambios' if credencial else 'Registrar credencial' }}</button>
   </form>

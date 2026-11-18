@@ -37,6 +37,7 @@ from tests.conftest import (
     csrf_de,
     extraer_csrf,
     login_password,
+    rotar_credencial,
     sesion_bd,
 )
 from tests.test_credenciales import CLAVE_SECRETA, _crear_credencial
@@ -471,13 +472,9 @@ def test_aviso_a_los_demas_usuarios_con_acceso_al_cambiar_una_credencial(
 
     correos.clear()
 
-    # El admin rota la contraseña de la credencial compartida.
-    csrf = csrf_de(client, f"/credenciales/{credencial_id}/editar")
-    respuesta = client.post(f"/credenciales/{credencial_id}/editar", data={
-        "usuario_acceso": "root", "password": "Nueva-Clave-Rotada-2026!",
-        "servicio": "SSH", "puerto": "22", "descripcion": "", "csrf_token": csrf,
-    })
-    assert respuesta.status_code == 303
+    # El admin rota la contraseña de la credencial compartida, por el ciclo de
+    # gobernanza (solicitar → autorizar con otro admin → registrar).
+    rotar_credencial(client, credencial_id, "Nueva-Clave-Rotada-2026!")
 
     avisados = _destinatarios(correos, "Contraseña actualizada")
     assert "conacceso@ejemplo.local" in avisados, "El usuario con acceso debe ser avisado"
@@ -511,11 +508,7 @@ def test_el_aviso_de_credencial_nunca_incluye_la_contrasena(client, crear_client
     correos.clear()
 
     NUEVA = "Ultra-Secreta-Rotada-2026!"
-    csrf = csrf_de(client, f"/credenciales/{credencial_id}/editar")
-    client.post(f"/credenciales/{credencial_id}/editar", data={
-        "usuario_acceso": "root", "password": NUEVA,
-        "servicio": "SSH", "puerto": "22", "descripcion": "", "csrf_token": csrf,
-    })
+    rotar_credencial(client, credencial_id, NUEVA)
 
     mensajes = _para(correos, "Contraseña actualizada")
     assert mensajes, "Debe haberse enviado el aviso"

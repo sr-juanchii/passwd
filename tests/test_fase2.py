@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
-from tests.conftest import autenticar_admin, csrf_de, sesion_bd
+from tests.conftest import autenticar_admin, csrf_de, rotar_credencial, sesion_bd
 
 
 def _crear_servidor_completo(client, nombre, **extra):
@@ -130,13 +130,9 @@ def test_historial_de_contrasenas(client):
         db.close()
 
     # Rotar dos veces → dos entradas de historial (la inicial y la 2ª).
+    # Cada rotación pasa por el ciclo de gobernanza (solicitar → autorizar → registrar).
     for nueva in ("PrimeraRotacion#1", "SegundaRotacion#2"):
-        csrf = csrf_de(client, f"/credenciales/{cred_id}/editar")
-        r = client.post(f"/credenciales/{cred_id}/editar", data={
-            "usuario_acceso": "root", "password": nueva, "servicio": "SSH",
-            "puerto": "22", "descripcion": "", "csrf_token": csrf,
-        })
-        assert r.status_code == 303
+        rotar_credencial(client, cred_id, nueva)
 
     db = sesion_bd()
     try:
@@ -192,11 +188,7 @@ def test_historial_respeta_tope_configurable(client):
     settings.password_history_max = 2
     try:
         for i in range(4):
-            csrf = csrf_de(client, f"/credenciales/{cred_id}/editar")
-            client.post(f"/credenciales/{cred_id}/editar", data={
-                "usuario_acceso": "root", "password": f"Rotacion-{i}-xyz", "servicio": "SSH",
-                "puerto": "22", "descripcion": "", "csrf_token": csrf,
-            })
+            rotar_credencial(client, cred_id, f"Rotacion-{i}-xyz")
         db = sesion_bd()
         try:
             from app.models import HistorialCredencial

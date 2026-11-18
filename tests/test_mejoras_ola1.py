@@ -23,6 +23,7 @@ from tests.conftest import (
     autenticar_admin,
     csrf_de,
     login_password,
+    rotar_credencial,
     sesion_bd,
 )
 from tests.test_accesos import _conceder, _preparar_analista
@@ -88,13 +89,8 @@ def test_revelado_de_historial_usa_el_backend_compartido_en_bd(client, monkeypat
     finally:
         db.close()
 
-    # Una rotación deja una entrada de historial.
-    csrf = csrf_de(client, f"/credenciales/{cred_id}/editar")
-    r = client.post(f"/credenciales/{cred_id}/editar", data={
-        "usuario_acceso": "root", "password": "RotacionDePrueba#1", "servicio": "SSH",
-        "puerto": "22", "descripcion": "", "csrf_token": csrf,
-    })
-    assert r.status_code == 303
+    # Una rotación deja una entrada de historial (bajo el ciclo de gobernanza).
+    rotar_credencial(client, cred_id, "RotacionDePrueba#1")
 
     db = sesion_bd()
     try:

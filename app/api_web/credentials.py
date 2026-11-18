@@ -13,7 +13,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import access, audit, avisos
@@ -33,11 +32,12 @@ from app.models import (
     MaquinaVirtual,
     ServidorFisico,
     Usuario,
-    ahora_utc,
 )
 from app.notifications import enviar_alerta
 from app.security import ratelimit
-from app.security.crypto import cifrar, descifrar
+from app.security.crypto import descifrar
+from app.servicios import rotacion as rotacion_svc
+from app.servicios.rotacion import ErrorRotacion
 
 router = APIRouter()
 
@@ -61,25 +61,18 @@ class CredencialCrear(BaseModel):
     servicio: str = "SSH"
     puerto: int | None = None
     descripcion: str = ""
+    usada_por: str = ""
 
 
 class CredencialEditar(BaseModel):
     usuario_acceso: str = ""
-    password: str = ""  # "" = conservar la actual
+    # "" = conservar la actual. Cambiarla exige una rotación ya autorizada:
+    # ver app/servicios/rotacion.py.
+    password: str = ""
     servicio: str = "SSH"
     puerto: int | None = None
     descripcion: str = ""
-
-
-def _podar_historial(db: Session, credencial_id: int) -> None:
-    maximo = get_settings().password_history_max
-    entradas = db.scalars(
-        select(HistorialCredencial)
-        .where(HistorialCredencial.credencial_id == credencial_id)
-        .order_by(HistorialCredencial.rotada_en.desc(), HistorialCredencial.id.desc())
-    ).all()
-    for sobrante in entradas[maximo:]:
-        db.delete(sobrante)
+    usada_por: str = ""
 
 
 def _resolver_activo(db: Session, tipo: str, activo_id: int):
@@ -125,19 +118,21 @@ def credencial_crear(
         raise HTTPException(status_code=400, detail="La contraseña es obligatoria.")
     _validar_puerto(cuerpo.puerto)
 
-    credencial = Credencial(
+    # El alta pasa por el servicio: ningún controlador escribe password_cifrada.
+    credencial = rotacion_svc.nueva_credencial(
+        db,
+        password=cuerpo.password,
         usuario_acceso=cuerpo.usuario_acceso.strip(),
-        password_cifrada=cifrar(cuerpo.password),
         servicio=cuerpo.servicio.strip() or "SSH",
         puerto=cuerpo.puerto,
         descripcion=cuerpo.descripcion.strip(),
+        usada_por=cuerpo.usada_por.strip(),
         creado_por_id=usuario.id,
         servidor_fisico_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_FISICO else None,
         hipervisor_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_HIPERVISOR else None,
         maquina_virtual_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_VM else None,
         dispositivo_red_id=cuerpo.activo_id if cuerpo.activo == ACTIVO_DISPOSITIVO else None,
     )
-    db.add(credencial)
     db.flush()
     audit.registrar(db, audit.CREDENCIAL_CREADA, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,
@@ -198,19 +193,36 @@ def credencial_editar(
         raise HTTPException(status_code=400, detail="El usuario de acceso es obligatorio.")
     _validar_puerto(cuerpo.puerto)
 
+    # La contraseña solo cambia bajo una rotación autorizada, y se comprueba
+    # ANTES de tocar ningún campo: un intento sin autorización no debe dejar la
+    # credencial medio editada.
+    rotada = bool(cuerpo.password)  # contraseña en blanco = conservar la actual
+    autorizacion = None
+    if rotada:
+        try:
+            autorizacion = rotacion_svc.exigir_autorizacion(db, credencial)
+        except ErrorRotacion as exc:
+            audit.registrar(db, audit.ROTACION_ESCRITURA_DENEGADA, request=request, usuario=usuario,
+                            objeto_tipo="credencial", objeto_id=credencial.id,
+                            detalle="Intento de cambiar la contraseña sin rotación autorizada",
+                            exito=False)
+            db.commit()
+            raise HTTPException(status_code=exc.codigo, detail=exc.mensaje) from exc
+
     credencial.usuario_acceso = cuerpo.usuario_acceso.strip()
     credencial.servicio = cuerpo.servicio.strip() or "SSH"
     credencial.puerto = cuerpo.puerto
     credencial.descripcion = cuerpo.descripcion.strip()
-    rotada = bool(cuerpo.password)
-    if rotada:  # contraseña en blanco = conservar la actual
-        db.add(HistorialCredencial(
-            credencial_id=credencial.id, password_cifrada=credencial.password_cifrada,
-            rotada_por_id=usuario.id,
-        ))
-        credencial.password_cifrada = cifrar(cuerpo.password)
-        credencial.password_rotada_en = ahora_utc()
-        _podar_historial(db, credencial.id)
+    credencial.usada_por = cuerpo.usada_por.strip()
+    if autorizacion is not None:
+        try:
+            rotacion_svc.registrar_rotacion_manual(
+                db, rotacion=autorizacion, password=cuerpo.password,
+                usuario=usuario, request=request,
+            )
+        except ErrorRotacion as exc:
+            raise HTTPException(status_code=exc.codigo, detail=exc.mensaje) from exc
+        avisos.aviso_rotacion_aplicada(db, autorizacion)
     audit.registrar(db, audit.CREDENCIAL_ACTUALIZADA, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,
                     detalle=f"{credencial.usuario_acceso}@{instancia.nombre}"

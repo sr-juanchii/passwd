@@ -162,3 +162,86 @@ def sesion_bd():
     from app.database import get_db
 
     return next(get_db())
+
+
+# ---------------------------------------------------------------------------
+# Gobernanza de rotación (v1.3.0)
+# ---------------------------------------------------------------------------
+#
+# Desde la 1.3.0 la contraseña de una credencial no se cambia editando el
+# formulario: hace falta una rotación solicitada con motivo y autorizada por
+# OTRO administrador. Estos ayudantes montan ese circuito para las pruebas que
+# solo necesitan «que la contraseña cambie», sin repetir el flujo en cada una.
+
+MOTIVO_PRUEBA = "Rotación programada de la prueba automatizada del sistema"
+
+
+def cabecera_csrf(client: TestClient) -> dict[str, str]:
+    """Cabecera anti-CSRF para la API JSON, tomada del token de la sesión."""
+    return {"X-CSRF-Token": csrf_de(client, "/")}
+
+
+def segundo_administrador(admin_client: TestClient, username: str = "admin-par"):
+    """Crea y autentica un segundo administrador, y lo memoriza en la aplicación.
+
+    La regla de dos pares exige que autorice alguien distinto del solicitante,
+    así que casi toda prueba de rotación necesita esta segunda cuenta. Se guarda
+    en el estado de la aplicación para no intentar crearla dos veces dentro del
+    mismo test.
+    """
+    estado = admin_client.app.state
+    guardado = getattr(estado, "autorizador_pruebas", None)
+    if guardado is not None:
+        return guardado
+
+    temporal = crear_usuario(admin_client, username, "admin")
+    otro = TestClient(admin_client.app, follow_redirects=False)
+    r = login_password(otro, username, temporal)
+    assert r.status_code == 303 and r.headers["location"] == "/password/cambiar"
+    r = cambiar_password(otro, temporal, PASS_USUARIO)
+    assert r.status_code == 303 and r.headers["location"] == "/mfa/configurar"
+    _secreto, codigos = enrolar_mfa_con_codigos(otro)
+    # Se reautentica con códigos de recuperación y no con TOTP: el TOTP solo
+    # admite el paso actual y los adyacentes, de modo que una prueba con varias
+    # autorizaciones seguidas se quedaría sin códigos válidos. Los de
+    # recuperación son de un solo uso y el servicio los acepta igual (no así el
+    # código por correo, que la autorización rechaza a propósito).
+    estado.autorizador_pruebas = (otro, list(codigos))
+    return estado.autorizador_pruebas
+
+
+def solicitar_rotacion(client: TestClient, credencial_id: int, *,
+                       motivo: str = MOTIVO_PRUEBA, tipo: str = "manual"):
+    return client.post("/api/web/rotacion/solicitudes",
+                       json={"credencial_id": credencial_id, "motivo": motivo, "tipo": tipo},
+                       headers=cabecera_csrf(client))
+
+
+def autorizar_rotacion(admin_client: TestClient, rotacion_id: int):
+    """Autoriza con el segundo administrador y su reautenticación."""
+    autorizador, codigos = segundo_administrador(admin_client)
+    return autorizador.post(
+        f"/api/web/rotacion/solicitudes/{rotacion_id}/autorizar",
+        json={"password": PASS_USUARIO, "codigo": codigos.pop()},
+        headers=cabecera_csrf(autorizador),
+    )
+
+
+def rotar_credencial(admin_client: TestClient, credencial_id: int, password_nueva: str,
+                     *, motivo: str = MOTIVO_PRUEBA) -> dict:
+    """Ciclo completo: solicitar → autorizar (otro admin) → registrar la nueva.
+
+    Devuelve el asiento del libro mayor ya cerrado.
+    """
+    r = solicitar_rotacion(admin_client, credencial_id, motivo=motivo)
+    assert r.status_code == 200, f"Solicitud rechazada: {r.status_code} {r.text}"
+    rotacion_id = r.json()["id"]
+
+    r = autorizar_rotacion(admin_client, rotacion_id)
+    assert r.status_code == 200, f"Autorización rechazada: {r.status_code} {r.text}"
+
+    r = admin_client.post(f"/api/web/rotacion/solicitudes/{rotacion_id}/aplicar-manual",
+                          json={"password": password_nueva},
+                          headers=cabecera_csrf(admin_client))
+    assert r.status_code == 200, f"Registro rechazado: {r.status_code} {r.text}"
+    return r.json()
