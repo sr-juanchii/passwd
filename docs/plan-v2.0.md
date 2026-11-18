@@ -48,9 +48,20 @@ novena rotura durante el desarrollo, se decide expresamente si entra o se pospon
 | Versión | Contenido | Propósito |
 |---|---|---|
 | **1.2.x** | Solo correcciones de la 1.2.0. | Estabilizar lo publicado. |
-| **1.3.0** | Avisos de retirada (R1, R4, R7), capa de servicios para autenticación y credenciales **sin retirar nada**, pruebas de navegador, matriz de permisos. | Que la 2.0 sea «quitar lo ya avisado», no una reescritura. |
+| **1.3.0** | Avisos de retirada (R1, R4, R7), capa de servicios para autenticación y credenciales **sin retirar nada**, pruebas de navegador, matriz de permisos, **gobernanza de rotación y HMAC de la cadena de auditoría** (R6 adelantado). | Que la 2.0 sea «quitar lo ya avisado», no una reescritura. |
+| **1.4.0** | **Agente Linux y protocolo `/api/agent`** ([`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §8.2). Aditiva, sin roturas. | Rotación real sobre gobernanza probada, sin condicionar R1–R8. |
 | **2.0.0** | Las roturas R1–R8 y los bloques A–C. | La versión mayor. |
-| **2.1.0** | Lo del bloque D que no haya entrado. | Funciones nuevas sin presión de fecha. |
+| **2.1.0 en adelante** | Lo del bloque D que no haya entrado y la continuación de la serie de agentes (Windows y programación, telemetría y cobertura, conectores y endurecimiento del canal). | Funciones nuevas sin presión de fecha. |
+
+A partir de la 2.1.0 ambos planes comparten numeración: cada versión declara en su PR qué contenido
+lleva de este plan y qué contenido de [`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §8. El
+bloque D no es bloqueante, de modo que puede repartirse entre esas versiones sin alterar el orden
+de la serie de agentes.
+
+La 1.3.0 crece respecto a lo previsto porque la gobernanza de rotación necesita exactamente lo mismo
+que esta versión ya iba a construir —`app/servicios/` y la reautenticación de alto impacto— y porque
+el libro mayor de rotaciones solo vale como prueba si la cadena de auditoría está firmada (R6). La
+1.4.0 se intercala sin roturas y no retrasa ninguna de las ocho.
 
 La prueba `tests/test_version.py` exige `X.Y.Z` estricto, así que las versiones candidatas se
 publican como etiquetas `v2.0.0-rc.N` **sin** cambiar `__version__` hasta la definitiva, o se

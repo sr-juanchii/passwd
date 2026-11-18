@@ -191,13 +191,19 @@ divergencia de seguridad (la exportación de la Fase 8). Plan:
 3. 🔜 Matriz de pruebas **restricciones × endpoints JSON** para que ninguna ruta nueva quede
    sin cubrir.
 
+> La capa `app/servicios/` es además prerrequisito de la gobernanza de rotación: ver
+> [`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §3.4 y §8.1.
+
 ## Fase 10 — Endurecimiento 🔜
 
 - 🔜 **Reautenticación (contraseña + código) para exportar** y otras acciones de alto impacto,
-  con el mecanismo ya usado en «Mi seguridad».
+  con el mecanismo ya usado en «Mi seguridad». La autorización de rotaciones la exige con TOTP y
+  sin OTP por correo ([`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §3.5).
 - 🔜 **Cifrar las notas del vault personal** (hoy en claro en `EntradaVault.notas`).
 - 🔜 **Cadena de auditoría con clave (HMAC)** y escritura serializada, para que quien escriba
-  en la base de datos no pueda recalcularla ni bifurcarla.
+  en la base de datos no pueda recalcularla ni bifurcarla. **Se adelanta a la 1.3.0**: el libro
+  mayor de rotaciones solo prueba quién aprobó qué si la cadena no se puede recalcular
+  ([`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §3.6).
 - 🔜 **CSP con nonce en el frontend** (retirar `'unsafe-inline'` de `script-src`).
 - 🔜 **Valores seguros por defecto**: `RATE_LIMIT_BACKEND=bd` y `REQUIRE_ENV_KEYS=true`.
 - 🔜 **Contenedores**: `read_only`, `cap_drop: ALL`, `no-new-privileges`.

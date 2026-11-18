@@ -1046,6 +1046,11 @@ activa por ajuste y se recomienda en producción.
   comparten `app/servicios/` y la reautenticación, que es justo lo que la Fase 10 pide generalizar.
 - La **v1.4.0 es una versión intercalada**: aditiva, sin roturas, y no condiciona ninguna de las
   ocho roturas de la 2.0.
+- **De la 2.1.0 en adelante ambos planes comparten numeración.** El bloque D de `plan-v2.0.md`
+  (funciones nuevas: sesiones activas, contraseñas filtradas, papelera del vault, generador
+  configurable, enlaces de un solo uso, cola de correo, WebAuthn) no es bloqueante y se reparte
+  entre esas versiones. Cada PR declara qué lleva de cada plan, de modo que el orden de la serie de
+  agentes —Windows, telemetría, conectores— no se altera.
 - Mientras conviva la interfaz clásica (v1.3.0 y v1.4.0), la puerta de gobernanza está
   **duplicada a propósito** (§2.4). La 2.0.0 la deja única; ese es uno de sus beneficios concretos
   para esta serie y conviene anotarlo en sus notas de versión.
