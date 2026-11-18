@@ -159,6 +159,8 @@ def credencial_editar_datos(
         "servicio": credencial.servicio,
         "puerto": credencial.puerto,
         "descripcion": credencial.descripcion,
+        "usada_por": credencial.usada_por,
+        "via_rotacion": credencial.via_rotacion,
         "tipo_activo": tipo,
         "activo_id": activo_id,
         "activo_nombre": credencial.nombre_activo,

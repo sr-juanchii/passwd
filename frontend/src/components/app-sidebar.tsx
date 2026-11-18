@@ -10,6 +10,7 @@ import {
   Network,
   ScrollText,
   Search,
+  RotateCw,
   ServerCog,
   ShieldCheck,
   SlidersHorizontal,
@@ -46,6 +47,7 @@ const PRINCIPAL: Item[] = [
   { titulo: "Inventario", url: "/", icono: ServerCog, permiso: "inventario.ver" },
   { titulo: "Dispositivos de red", url: "/dispositivos", icono: Network, permiso: "inventario.ver" },
   { titulo: "Mi vault", url: "/vault", icono: Wallet, permiso: "vault.usar" },
+  { titulo: "Rotación", url: "/rotacion", icono: RotateCw, permiso: "rotacion.ver" },
   { titulo: "Buscar", url: "/buscar", icono: Search, permiso: "inventario.ver" },
   { titulo: "Importar", url: "/importar", icono: Upload, permiso: "inventario.gestionar" },
 ];

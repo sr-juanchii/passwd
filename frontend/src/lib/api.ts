@@ -16,6 +16,10 @@ import type {
   HipervisorInput,
   Metricas,
   MetodosAccesoMfa,
+  PanelRotacion,
+  ResultadoLote,
+  RotacionAsiento,
+  RotacionDeCredencial,
   MetodosAltaMfa,
   NivelAcceso,
   ResultadoBusqueda,
@@ -297,6 +301,48 @@ export const api = {
   revelarHistorial: (id: number, hid: number) =>
     request<{ password: string }>(`/credenciales/${id}/historial/${hid}/revelar`, {
       method: "POST",
+      csrf: true,
+    }),
+
+  // --- Gobernanza de rotación ---
+  // Cambiar la contraseña de una credencial no es editar un campo: se solicita
+  // con un motivo, la autoriza OTRA persona (con su contraseña y su código) y
+  // solo entonces se registra la que quedó aplicada en el activo.
+  rotacionPanel: () => request<PanelRotacion>("/rotacion/panel"),
+  rotacionDeCredencial: (id: number) =>
+    request<RotacionDeCredencial>(`/rotacion/credenciales/${id}`),
+  rotacionSolicitar: (b: { credencial_id: number; motivo: string; tipo: string }) =>
+    request<RotacionAsiento>("/rotacion/solicitudes", { method: "POST", body: b, csrf: true }),
+  rotacionAutorizar: (id: number, b: { password: string; codigo: string }) =>
+    request<RotacionAsiento>(`/rotacion/solicitudes/${id}/autorizar`, {
+      method: "POST",
+      body: b,
+      csrf: true,
+    }),
+  rotacionAutorizarLote: (b: { ids: number[]; password: string; codigo: string }) =>
+    request<ResultadoLote>("/rotacion/solicitudes/autorizar-lote", {
+      method: "POST",
+      body: b,
+      csrf: true,
+    }),
+  rotacionRechazar: (id: number, motivo: string) =>
+    request<RotacionAsiento>(`/rotacion/solicitudes/${id}/rechazar`, {
+      method: "POST",
+      body: { motivo },
+      csrf: true,
+    }),
+  rotacionCancelar: (id: number) =>
+    request<RotacionAsiento>(`/rotacion/solicitudes/${id}/cancelar`, { method: "POST", csrf: true }),
+  rotacionAplicarManual: (id: number, password: string) =>
+    request<RotacionAsiento>(`/rotacion/solicitudes/${id}/aplicar-manual`, {
+      method: "POST",
+      body: { password },
+      csrf: true,
+    }),
+  rotacionRevisar: (id: number, nota: string) =>
+    request<RotacionAsiento>(`/rotacion/solicitudes/${id}/revisar`, {
+      method: "POST",
+      body: { nota },
       csrf: true,
     }),
 

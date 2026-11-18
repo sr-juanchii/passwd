@@ -24,6 +24,10 @@ export type Permiso =
   | "usuarios.gestionar"
   | "auditoria.ver"
   | "metricas.ver"
+  | "rotacion.ver"
+  | "rotacion.solicitar"
+  | "rotacion.autorizar"
+  | "rotacion.revisar"
   | "accesos.gestionar"
   | "tokens.gestionar"
   | "configuracion.gestionar";
@@ -273,10 +277,12 @@ export interface DispositivoDetalle extends DispositivoInput {
 
 export interface CredencialInput {
   usuario_acceso: string;
+  /** Vacío al editar = conservar la actual. Cambiarla exige rotación autorizada. */
   password: string;
   servicio: string;
   puerto: number | null;
   descripcion: string;
+  usada_por: string;
 }
 
 export interface HistorialEntrada {
@@ -291,9 +297,13 @@ export interface CredencialDetalle {
   servicio: string;
   puerto: number | null;
   descripcion: string;
+  /** Servicios y automatismos que consumen esta cuenta. */
+  usada_por: string;
+  via_rotacion: ViaRotacion;
   tipo_activo: TipoActivo;
   activo_id: number;
   activo_nombre: string;
+  dias_sin_rotar?: number;
   historial: HistorialEntrada[];
 }
 
@@ -357,6 +367,114 @@ export interface Metricas {
   sin_mfa: { username: string; rol: string }[];
   top_accesos: { username: string; accesos: number }[];
   concesiones_por_caducar: Concesion[];
+  gobernanza_rotacion?: {
+    pendientes_de_autorizar: number;
+    pendientes_de_ejecutar: number;
+    revisiones_pendientes: number;
+  };
+  patrones_rotacion?: ResumenPatrones;
+}
+
+// --- Gobernanza de rotación (v1.3.0) -------------------------------------
+//
+// Una rotación no es un cambio de contraseña: es un expediente. Se solicita con
+// un motivo, la autoriza OTRA persona y solo entonces se puede registrar la
+// contraseña que quedó aplicada en el activo.
+
+export type EstadoRotacion =
+  | "solicitada"
+  | "autorizada"
+  | "despachada"
+  | "cerrada"
+  | "rechazada"
+  | "cancelada"
+  | "expirada";
+
+export type TipoRotacion = "programada" | "manual" | "emergencia" | "masiva";
+export type ViaRotacion = "manual" | "agente" | "conector";
+export type VerificacionRotacion = "ninguna" | "local" | "remota";
+
+export interface RotacionAsiento {
+  id: number;
+  credencial_id: number | null;
+  activo_nombre: string;
+  usuario_acceso: string;
+  servicio: string;
+  estado: EstadoRotacion;
+  tipo: TipoRotacion;
+  motivo: string;
+  solicitado_por: string;
+  solicitado_en: string;
+  dias_al_solicitar: number | null;
+  dias_al_autorizar: number | null;
+  /** Muy por debajo de la vigencia: exige motivo reforzado. */
+  temprana: boolean;
+  autorizado_por: string;
+  autorizado_en: string | null;
+  reautenticado: boolean;
+  /** Autorizada por su propio solicitante en la vía de emergencia. */
+  emergencia_sin_segundo_par: boolean;
+  revision_pendiente: boolean;
+  revisada_en: string | null;
+  nota_revision: string;
+  motivo_rechazo: string;
+  fecha_programada: string | null;
+  confirmado_en: string | null;
+  dias_al_rotar: number | null;
+  /** Días de adelanto (negativo) o retraso respecto a la política. */
+  desvio_dias: number | null;
+  resultado: string;
+  via: ViaRotacion;
+  verificacion: VerificacionRotacion;
+  detalle_error: string;
+}
+
+export interface SenalPatron {
+  regla: string;
+  etiqueta: string;
+  descripcion: string;
+  casos: number;
+  severidad: "informativo" | "aviso" | "grave";
+}
+
+export interface ResumenPatrones {
+  /** Las reglas se evalúan y se ven, pero todavía no notifican. */
+  modo_observacion: boolean;
+  ventana_dias: number;
+  senales: SenalPatron[];
+}
+
+export interface PoliticaRotacion {
+  intervalo_dias: number;
+  umbral_temprana_dias: number;
+  motivo_min: number;
+  motivo_reforzado_min: number;
+}
+
+export interface PanelRotacion {
+  pendientes_de_autorizar: RotacionAsiento[];
+  pendientes_de_ejecutar: RotacionAsiento[];
+  revisiones_pendientes: RotacionAsiento[];
+  politica: PoliticaRotacion;
+  patrones: ResumenPatrones;
+}
+
+export interface RotacionDeCredencial {
+  credencial_id: number;
+  activo_nombre: string;
+  usuario_acceso: string;
+  via_rotacion: ViaRotacion;
+  usada_por: string;
+  dias_sin_rotar: number;
+  fecha_programada: string;
+  temprana_si_se_rota_ahora: boolean;
+  solicitud_abierta: RotacionAsiento | null;
+  historial: RotacionAsiento[];
+}
+
+export interface ResultadoLote {
+  autorizadas: RotacionAsiento[];
+  rechazadas: { id: number; motivo: string }[];
 }
 
 export interface ResultadoImportacion {

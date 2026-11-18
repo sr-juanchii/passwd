@@ -8,6 +8,7 @@ import type { CredencialDetalle, HistorialEntrada } from "@/lib/types";
 import { rutaActivo } from "@/lib/constants";
 import { PageHeader } from "@/components/page-header";
 import { CredencialForm } from "@/components/forms/credencial-form";
+import { PanelRotacionCredencial } from "@/components/rotacion/panel-credencial";
 import { ErrorRecurso } from "@/components/error-recurso";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -96,6 +97,8 @@ export default function EditarCredencialPage() {
         destinoOk={destino}
         onGuardar={(v) => api.editarCredencial(cid, v)}
       />
+
+      <PanelRotacionCredencial credencialId={cid} />
 
       {data.historial.length > 0 && (
         <Card className="mt-6">

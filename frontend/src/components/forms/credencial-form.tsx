@@ -37,6 +37,7 @@ export function CredencialForm({
     servicio: inicial?.servicio ?? "SSH",
     puerto: inicial?.puerto ?? null,
     descripcion: inicial?.descripcion ?? "",
+    usada_por: inicial?.usada_por ?? "",
   });
   const [errores, setErrores] = useState<{ usuario?: string; password?: string }>({});
   const [enviando, setEnviando] = useState(false);
@@ -102,20 +103,35 @@ export function CredencialForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2 sm:col-span-2">
-          <CampoPassword
-            id="password"
-            value={v.password}
-            edicion={edicion}
-            onChange={(x) => {
-              set("password", x);
-              if (errores.password) setErrores((p) => ({ ...p, password: undefined }));
-            }}
-          />
-          {errores.password && (
-            <p className="text-xs text-destructive">{errores.password}</p>
-          )}
-        </div>
+        {edicion ? (
+          // Desde la 1.3.0 la contraseña no se cambia editando la credencial:
+          // se rota bajo gobernanza (solicitud con motivo + autorización de
+          // otro administrador). El panel de rotación vive debajo de este
+          // formulario, así que aquí solo se explica por qué no hay campo.
+          <div className="space-y-1 rounded-lg border border-dashed p-3 sm:col-span-2">
+            <p className="text-sm font-medium">La contraseña se cambia por rotación</p>
+            <p className="text-xs text-muted-foreground">
+              Solicite la rotación indicando el motivo, espere a que otro administrador la
+              autorice y registre entonces la contraseña que quedó aplicada en el activo. Lo
+              encontrará en el panel de rotación, bajo este formulario.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2 sm:col-span-2">
+            <CampoPassword
+              id="password"
+              value={v.password}
+              edicion={edicion}
+              onChange={(x) => {
+                set("password", x);
+                if (errores.password) setErrores((p) => ({ ...p, password: undefined }));
+              }}
+            />
+            {errores.password && (
+              <p className="text-xs text-destructive">{errores.password}</p>
+            )}
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="puerto">Puerto</Label>
           <Input
@@ -131,6 +147,20 @@ export function CredencialForm({
         <div className="space-y-2 sm:col-span-2">
           <Label htmlFor="desc">Descripción (a qué sistema da acceso)</Label>
           <Textarea id="desc" rows={3} value={v.descripcion} onChange={(e) => set("descripcion", e.target.value)} />
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="usada-por">Usada por (servicios y automatismos)</Label>
+          <Input
+            id="usada-por"
+            maxLength={500}
+            placeholder="Ej.: cron de respaldos, Ansible, Zabbix"
+            value={v.usada_por}
+            onChange={(e) => set("usada_por", e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Qué depende de esta cuenta. Se muestra al solicitar y al autorizar una rotación: es
+            el fallo operativo más probable al cambiar una contraseña.
+          </p>
         </div>
       </FormPanel>
       <FormAcciones enviando={enviando} onCancelar={() => router.back()} />
