@@ -12,9 +12,62 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
+> Camino hacia la **1.3.0**. La gobernanza de rotación ya está entregada; la versión no se publica
+> hasta completar el resto de su alcance (avisos de retirada R1/R4/R7, migración del resto de casos
+> de uso a `app/servicios/`, pruebas de navegador y matriz de permisos), según
+> [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md) §8.1 y
+> [`docs/plan-v2.0.md`](docs/plan-v2.0.md) §3.
+
 ### Añadido
 
+- **Gobernanza de rotación de credenciales.** Cambiar la contraseña de una credencial del
+  inventario deja de ser una edición y pasa a ser un ciclo con dos personas:
+  `SOLICITADA → AUTORIZADA → CERRADA`, con **motivo obligatorio**, **regla de dos pares** (nadie
+  autoriza lo que pidió) y **reautenticación con aplicación autenticadora** del autorizador. Cada
+  rotación deja un asiento permanente en el libro mayor `rotaciones_credencial` con la antigüedad
+  de la contraseña al solicitar, al autorizar y al rotar, y la desviación respecto a la fecha que
+  marcaba la política.
+- **Vía de emergencia acotada**: con un solo administrador disponible, una solicitud de emergencia
+  la puede autorizar su propio solicitante dentro de una ventana corta. Queda marcada de forma
+  imborrable, alerta a todos los administradores y exige revisión posterior de otro administrador.
+- **Panel de rotación** (`/rotacion`) con pendientes de autorizar, autorización en lote,
+  pendientes de aplicar y emergencias por revisar; y **línea de tiempo de gobernanza** en la ficha
+  de cada credencial.
+- **Reglas de patrón** sobre el libro mayor (tempranas repetidas, fuera de horario, concentración,
+  abuso de la vía de emergencia), en **modo observación** por defecto.
+- Campo **«usada por»** en la credencial: servicios y automatismos que consumen la cuenta, visible
+  al solicitar y al autorizar una rotación.
+- Capa **`app/servicios/`** con los casos de uso de rotación, reautenticación y patrones.
+- Permisos `rotacion.ver`, `rotacion.solicitar`, `rotacion.autorizar` y `rotacion.revisar`.
+- Ajustes nuevos: `PASSWD_ROTACION_TEMPRANA_PCT`, `PASSWD_ROTACION_EMERGENCIA_VENTANA_MIN`,
+  `PASSWD_ROTACION_EMERGENCIA_MAX_POR_MES` y `PASSWD_ROTACION_PATRONES_MODO_OBSERVACION`.
+- [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md): plan maestro de rotación
+  asistida por agentes y monitoreo (propuesta revisada contra el código).
 - [`docs/plan-v2.0.md`](docs/plan-v2.0.md): plan de la versión 2.0 (propuesta para aprobación).
+
+### Seguridad
+
+- **Bitácora de auditoría firmada con HMAC-SHA256** y clave `PASSWD_AUDIT_KEY` fuera de la base de
+  datos. El encadenamiento anterior era un SHA-256 sin clave: quien pudiera escribir en la base
+  podía recalcular la cadena entera y reescribir quién hizo qué. El material previo se conserva
+  como **tramo heredado**, `verificar-auditoria` valida ambos tramos e informa del punto de corte,
+  y un registro sin firmar después del corte se trata como cadena rota, de modo que la firma no se
+  puede degradar reescribiendo filas con el algoritmo público.
+- **Punto único de escritura de contraseñas del inventario.** Hasta ahora había tres caminos que
+  escribían `Credencial.password_cifrada` con lógica duplicada (formulario clásico, API JSON e
+  importación CSV); un circuito de autorización en uno solo no habría sido un control. Todos
+  delegan ahora en `app/servicios/rotacion.py`, y una prueba de arquitectura falla si alguno
+  vuelve a hacerlo por su cuenta. Un intento de cambiar la contraseña sin autorización vigente se
+  rechaza con 409 y queda auditado.
+- La reautenticación para autorizar una rotación **rechaza el código por correo**: un buzón puede
+  estar compartido o abierto en la misma sesión, de modo que no acredita a una segunda persona.
+
+### Cambiado
+
+- El formulario de edición de una credencial **ya no permite cambiar la contraseña**: se rota por
+  el ciclo de gobernanza. El resto de campos se siguen editando igual.
+- El respaldo cifrado (formato `3`) incluye el libro mayor de rotaciones y las columnas nuevas de
+  la credencial. Los respaldos de formato `1` y `2` se siguen restaurando.
 
 ## [1.2.0] - 2026-11-14
 

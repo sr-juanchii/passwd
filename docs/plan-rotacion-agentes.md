@@ -1133,13 +1133,21 @@ traza de cómo se construyó y con qué se verificó.
 
 | Fecha | Versión | Capa | Commit | Verificación ejecutada | Notas |
 |---|---|---|---|---|---|
-| — | v1.3.0 | Modelos + migración | — | — | pendiente |
-| — | v1.3.0 | Servicios + HMAC | — | — | pendiente |
-| — | v1.3.0 | API web + delegación de las rutas de escritura | — | — | pendiente |
-| — | v1.3.0 | Frontend | — | — | pendiente |
-| — | v1.3.0 | Pruebas de aceptación | — | — | pendiente |
-| — | v1.3.0 | Documentación | — | — | pendiente |
-| — | v1.3.0 | CHANGELOG + versión | — | — | pendiente |
+| 2026-11-18 | v1.3.0 | Modelos + migración aditiva `0010` | `3e6a000` | `pytest tests/test_schema.py tests/test_migraciones_alembic.py`, `ruff` | Libro mayor, `via_rotacion`, `usada_por`, `hash_algoritmo` |
+| 2026-11-18 | v1.3.0 | Servicios + HMAC de auditoría | `9acb7b3` | `pytest` (289), `ruff`, `bandit` | `app/servicios/{rotacion,autenticacion,patrones}.py`; cadena firmada con tramo heredado |
+| 2026-11-18 | v1.3.0 | API web + delegación de las rutas de escritura | `639b13b` | `pytest` (289), `ruff`, `bandit` | `/api/web/rotacion/*`; seis pruebas existentes adaptadas al ciclo |
+| 2026-11-18 | v1.3.0 | Frontend | `d63414d` | `tsc`, `eslint`, `vitest` (21), `next build` | Página `/rotacion` y panel en la ficha de la credencial |
+| 2026-11-18 | v1.3.0 | Pruebas de aceptación | `165b751` | `pytest --cov` (314, 83,66 %) | 25 pruebas, incluida la de arquitectura del punto único de escritura |
+| 2026-11-18 | v1.3.0 | Documentación | `f914f45` | Enlaces de `docs/` resueltos, `pytest` | Manuales, control de acceso, configuración, CLI, arquitectura y matrices |
+| 2026-11-18 | v1.3.0 | CHANGELOG | (este) | `pytest tests/test_version.py` | Entradas bajo `[Sin publicar]`; **la versión no se publica todavía** |
+
+**Estado de la v1.3.0.** La **gobernanza de rotación está entregada y verificada**. La versión
+**no se publica** hasta completar el resto de su alcance, que este plan comparte con
+[`plan-v2.0.md`](plan-v2.0.md) §3: avisos de retirada R1/R4/R7, migración del **resto** de casos de
+uso a `app/servicios/` (hoy solo viven ahí rotación, reautenticación y patrones), pruebas de
+navegador y matriz de permisos. Por eso `app/__init__.py` sigue en `1.2.0` y las entradas están
+bajo `[Sin publicar]`: declarar publicada una versión a medias sería exactamente el tipo de
+afirmación que este plan existe para evitar.
 
 Al arrancar cada versión se añaden sus filas según el desglose de §8. Una versión cerrada no deja
 filas pendientes.
