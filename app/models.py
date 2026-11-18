@@ -372,6 +372,13 @@ ACTIVO_VM = "vm"
 ACTIVO_DISPOSITIVO = "dispositivo"
 
 
+# Vía por la que se rota la contraseña de una credencial.
+VIA_ROTACION_MANUAL = "manual"        # la cambia una persona en el activo
+VIA_ROTACION_AGENTE = "agente"        # la aplica un agente instalado (v1.4.0+)
+VIA_ROTACION_CONECTOR = "conector"    # la aplica el backend por SSH/SNMP (v2.3.0)
+VIAS_ROTACION = (VIA_ROTACION_MANUAL, VIA_ROTACION_AGENTE, VIA_ROTACION_CONECTOR)
+
+
 class Credencial(Base):
     """Credencial de acceso a un activo del inventario.
 
@@ -415,6 +422,20 @@ class Credencial(Base):
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
     # Fecha de la última rotación de la contraseña (alertas de antigüedad)
     password_rotada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    # Vía por la que se rota esta credencial. Hasta que existan agentes y
+    # conectores, todas son "manual". Sin CHECK a propósito: añadir una
+    # restricción a una tabla existente no es un cambio aditivo y el
+    # reconciliador de esquema no lo haría; la validación vive en el servicio.
+    via_rotacion: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=VIA_ROTACION_MANUAL, server_default=VIA_ROTACION_MANUAL
+    )
+    # Servicios y automatismos que consumen esta cuenta (cron, tareas
+    # programadas, respaldos, Ansible, monitorización). Se muestra al solicitar
+    # y al autorizar una rotación: es el fallo operativo más probable.
+    # String y no Text a propósito: MySQL no admite DEFAULT en columnas TEXT, y
+    # esta columna se añade por ALTER TABLE a bases existentes, donde el
+    # server_default es lo que permite crearla NOT NULL sobre filas que ya hay.
+    usada_por: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
 
     servidor_fisico: Mapped[ServidorFisico | None] = relationship(back_populates="credenciales")
     hipervisor: Mapped[Hipervisor | None] = relationship(back_populates="credenciales")
@@ -873,3 +894,184 @@ class RegistroAuditoria(Base):
     # compatibilidad con filas anteriores a la Fase 7; las nuevas siempre lo fijan.
     hash_anterior: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
     hash_registro: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="", index=True)
+    # Algoritmo del encadenamiento. Vacío = tramo HEREDADO (SHA-256 sin clave,
+    # anterior a la 1.3.0, recalculable por quien escriba en la base de datos);
+    # "hmac-sha256" = tramo firmado con la clave de bitácora. ``verificar-auditoria``
+    # valida ambos tramos y señala el punto de corte.
+    hash_algoritmo: Mapped[str] = mapped_column(String(16), nullable=False, default="", server_default="")
+
+
+# ---------------------------------------------------------------------------
+# Gobernanza de rotación de credenciales (v1.3.0)
+# ---------------------------------------------------------------------------
+
+# Estados del ciclo de gobernanza. El camino normal es
+# SOLICITADA → AUTORIZADA → DESPACHADA → CERRADA; las salidas laterales son
+# RECHAZADA, CANCELADA y EXPIRADA.
+ROT_SOLICITADA = "solicitada"
+ROT_AUTORIZADA = "autorizada"
+ROT_DESPACHADA = "despachada"
+ROT_CERRADA = "cerrada"
+ROT_RECHAZADA = "rechazada"
+ROT_CANCELADA = "cancelada"
+ROT_EXPIRADA = "expirada"
+ESTADOS_ROTACION = (
+    ROT_SOLICITADA, ROT_AUTORIZADA, ROT_DESPACHADA,
+    ROT_CERRADA, ROT_RECHAZADA, ROT_CANCELADA, ROT_EXPIRADA,
+)
+# Estados en los que la solicitud sigue viva (ocupa el turno de la credencial).
+ESTADOS_ROTACION_ABIERTOS = (ROT_SOLICITADA, ROT_AUTORIZADA, ROT_DESPACHADA)
+
+# Tipo de rotación: explica POR QUÉ se pidió y rige qué exige el ciclo.
+ROT_TIPO_PROGRAMADA = "programada"   # la creó el planificador al vencer la política
+ROT_TIPO_MANUAL = "manual"           # la pidió una persona
+ROT_TIPO_EMERGENCIA = "emergencia"   # incidente: prioridad, con su propia vía (§2.3.1)
+ROT_TIPO_MASIVA = "masiva"           # parte de una solicitud por lote
+TIPOS_ROTACION = (ROT_TIPO_PROGRAMADA, ROT_TIPO_MANUAL, ROT_TIPO_EMERGENCIA, ROT_TIPO_MASIVA)
+
+# Resultado final de una rotación cerrada.
+ROT_RES_APLICADA = "aplicada"
+ROT_RES_REVERTIDA = "revertida"
+ROT_RES_FALLADA = "fallada"
+ROT_RES_MANUAL = "manual"            # la aplicó una persona en el activo
+ROT_RES_CANCELADA = "cancelada"
+RESULTADOS_ROTACION = (
+    ROT_RES_APLICADA, ROT_RES_REVERTIDA, ROT_RES_FALLADA,
+    ROT_RES_MANUAL, ROT_RES_CANCELADA,
+)
+
+# Alcance de la comprobación posterior a la rotación. Un agente verifica
+# LOCALMENTE (PAM / LogonUser): eso demuestra que la contraseña autentica la
+# cuenta en el sistema operativo, no que la credencial siga sirviendo para el
+# `servicio` y el `puerto` declarados. La verificación REMOTA llega en la 2.2.0.
+ROT_VERIF_NINGUNA = "ninguna"
+ROT_VERIF_LOCAL = "local"
+ROT_VERIF_REMOTA = "remota"
+VERIFICACIONES_ROTACION = (ROT_VERIF_NINGUNA, ROT_VERIF_LOCAL, ROT_VERIF_REMOTA)
+
+
+class RotacionCredencial(Base):
+    """Libro mayor **permanente** de rotaciones de credenciales.
+
+    Registra el ciclo completo de gobernanza de cada rotación: quién la pidió y
+    por qué, quién la autorizó y con qué reautenticación, cuándo se ejecutó y
+    con cuánta desviación respecto a la fecha de política. Es la evidencia que
+    responde «a los dos días o a los noventa exactos» y la base de la detección
+    de patrones.
+
+    **Nunca se purga.** La purga de trabajos y la retención de la bitácora no lo
+    tocan, y el respaldo cifrado lo incluye entero. Por eso los datos del activo
+    se desnormalizan (``activo_nombre``, ``usuario_acceso``): si la credencial se
+    elimina, el asiento debe seguir siendo legible.
+    """
+
+    __tablename__ = "rotaciones_credencial"
+    __table_args__ = (
+        CheckConstraint(
+            "estado IN ('solicitada', 'autorizada', 'despachada', 'cerrada',"
+            " 'rechazada', 'cancelada', 'expirada')",
+            name="ck_rotaciones_estado",
+        ),
+        CheckConstraint(
+            "tipo IN ('programada', 'manual', 'emergencia', 'masiva')",
+            name="ck_rotaciones_tipo",
+        ),
+        CheckConstraint(
+            "verificacion IN ('ninguna', 'local', 'remota')",
+            name="ck_rotaciones_verificacion",
+        ),
+        # Línea de tiempo por credencial y panel de pendientes.
+        Index("ix_rotaciones_credencial_fecha", "credencial_id", "solicitado_en"),
+        Index("ix_rotaciones_estado_fecha", "estado", "solicitado_en"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # La credencial puede desaparecer; el asiento no. De ahí SET NULL y la copia
+    # desnormalizada de lo que identifica a la credencial.
+    credencial_id: Mapped[int | None] = mapped_column(
+        ForeignKey("credenciales.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    activo_nombre: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    usuario_acceso: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    servicio: Mapped[str] = mapped_column(String(60), nullable=False, default="")
+
+    estado: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ROT_SOLICITADA, server_default=ROT_SOLICITADA, index=True
+    )
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False, default=ROT_TIPO_MANUAL)
+
+    # --- Solicitud -----------------------------------------------------------
+    solicitado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    solicitado_por_username: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    solicitado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, index=True)
+    motivo: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Antigüedad de la contraseña en el momento de pedir y de autorizar: el dato
+    # que permite ver una rotación temprana sin recalcular nada después.
+    dias_al_solicitar: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    dias_al_autorizar: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    temprana: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+
+    # --- Autorización --------------------------------------------------------
+    autorizado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    autorizado_por_username: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    autorizado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reautenticado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    # Vía de emergencia con un solo administrador (§2.3.1 del plan de rotación):
+    # marca imborrable que obliga a una revisión posterior por otro admin.
+    emergencia_sin_segundo_par: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    revisada_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    revisada_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    nota_revision: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    # --- Rechazo y cancelación ----------------------------------------------
+    rechazado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    rechazado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    motivo_rechazo: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    cancelado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    cancelado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # --- Ejecución y cierre --------------------------------------------------
+    fecha_programada: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ejecutado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    confirmado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Antigüedad real de la contraseña en el instante de rotarla, y desviación
+    # respecto a la fecha que marcaba la política (negativa = se rotó antes).
+    dias_al_rotar: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    desvio_dias: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resultado: Mapped[str] = mapped_column(String(20), nullable=False, default="", server_default="")
+    via: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=VIA_ROTACION_MANUAL, server_default=VIA_ROTACION_MANUAL
+    )
+    verificacion: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ROT_VERIF_NINGUNA, server_default=ROT_VERIF_NINGUNA
+    )
+    detalle_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    credencial: Mapped[Credencial | None] = relationship()
+    solicitado_por: Mapped[Usuario | None] = relationship(foreign_keys=[solicitado_por_id])
+    autorizado_por: Mapped[Usuario | None] = relationship(foreign_keys=[autorizado_por_id])
+    revisada_por: Mapped[Usuario | None] = relationship(foreign_keys=[revisada_por_id])
+    rechazado_por: Mapped[Usuario | None] = relationship(foreign_keys=[rechazado_por_id])
+    cancelado_por: Mapped[Usuario | None] = relationship(foreign_keys=[cancelado_por_id])
+
+    @property
+    def abierta(self) -> bool:
+        return self.estado in ESTADOS_ROTACION_ABIERTOS
+
+    @property
+    def revision_pendiente(self) -> bool:
+        """Emergencia ejecutada sin segundo par y aún sin revisar por otro admin."""
+        return self.emergencia_sin_segundo_par and self.revisada_en is None
