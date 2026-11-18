@@ -108,6 +108,22 @@ export default function RotacionPage() {
         descripcion={`Cada rotación se solicita con motivo y la autoriza otra persona. Vigencia de política: ${data.politica.intervalo_dias} días; por debajo de ${data.politica.umbral_temprana_dias} se considera temprana.`}
       />
 
+      {!data.gobernanza.dos_pares_posible && (
+        <Card className="mb-6 border-destructive/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base text-destructive">
+              <AlertTriangle className="size-4" /> Falta el segundo administrador
+            </CardTitle>
+            <CardDescription>
+              Hay {data.gobernanza.administradores_activos} administrador(es) activo(s) y la regla
+              de dos personas necesita al menos {data.gobernanza.minimo_administradores}. Mientras
+              siga así, toda rotación caerá por la vía de emergencia: quedará marcada y pendiente de
+              una revisión que tampoco podrá hacer nadie más. Cree un segundo administrador.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
       {data.revisiones_pendientes.length > 0 && (
         <Card className="mb-6 border-destructive/40">
           <CardHeader>

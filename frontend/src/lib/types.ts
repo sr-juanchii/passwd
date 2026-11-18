@@ -451,7 +451,15 @@ export interface PoliticaRotacion {
   motivo_reforzado_min: number;
 }
 
+export interface EstadoGobernanza {
+  administradores_activos: number;
+  minimo_administradores: number;
+  /** Con un solo administrador la regla de dos pares no se puede aplicar. */
+  dos_pares_posible: boolean;
+}
+
 export interface PanelRotacion {
+  gobernanza: EstadoGobernanza;
   pendientes_de_autorizar: RotacionAsiento[];
   pendientes_de_ejecutar: RotacionAsiento[];
   revisiones_pendientes: RotacionAsiento[];

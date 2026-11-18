@@ -625,3 +625,62 @@ def test_la_api_v1_del_siem_sigue_sin_saber_de_rotaciones(client):
     r = client.get("/api/v1/inventario", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert "rotaciones" not in json.dumps(r.json())
+
+
+# ---------------------------------------------------------------------------
+# 11. La regla de dos pares necesita dos administradores
+# ---------------------------------------------------------------------------
+
+
+def test_el_panel_avisa_cuando_falta_el_segundo_administrador(client):
+    """Con un solo admin la regla no es más débil: no se puede aplicar.
+
+    El manual promete que el sistema lo advierte. Aquí se comprueba que lo hace
+    donde se toman las decisiones, no solo en un registro que nadie lee.
+    """
+    autenticar_admin(client)
+
+    panel = client.get("/api/web/rotacion/panel").json()
+    assert panel["gobernanza"]["administradores_activos"] == 1
+    assert panel["gobernanza"]["dos_pares_posible"] is False
+
+    segundo_administrador(client)
+
+    panel = client.get("/api/web/rotacion/panel").json()
+    assert panel["gobernanza"]["administradores_activos"] == 2
+    assert panel["gobernanza"]["dos_pares_posible"] is True
+
+
+def test_el_arranque_avisa_si_no_hay_segundo_administrador(client):
+    """El mantenimiento (que corre al arrancar y cada pocas horas) lo registra.
+
+    Se engancha un manejador al propio logger en vez de usar ``caplog``: este
+    depende de que la propagación siga activa, y basta con que otra prueba de la
+    suite toque la configuración de logging para que capture en vacío y el
+    control pase sin verificar nada.
+    """
+    import logging
+
+    from app.main import ejecutar_mantenimiento
+
+    autenticar_admin(client)
+
+    mensajes: list[str] = []
+
+    class _Captura(logging.Handler):
+        def emit(self, registro: logging.LogRecord) -> None:
+            mensajes.append(registro.getMessage())
+
+    logger = logging.getLogger("app.main")
+    manejador = _Captura()
+    nivel = logger.level
+    logger.addHandler(manejador)
+    logger.setLevel(logging.WARNING)
+    try:
+        ejecutar_mantenimiento()
+    finally:
+        logger.removeHandler(manejador)
+        logger.setLevel(nivel)
+
+    assert any("regla de dos pares" in m for m in mensajes), mensajes
+    assert any("Solo hay 1 administrador" in m for m in mensajes)

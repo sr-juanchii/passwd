@@ -163,6 +163,13 @@ def panel(
         "revisiones_pendientes": [
             _serializar(r) for r in _filtrar_visibles(db, usuario, servicio.revisiones_pendientes(db))
         ],
+        # Un logger.warning que nadie lee no cumple lo que promete el manual: la
+        # condición se ve también aquí, donde se toman las decisiones.
+        "gobernanza": {
+            "administradores_activos": servicio.administradores_activos(db),
+            "minimo_administradores": servicio.MIN_ADMINISTRADORES,
+            "dos_pares_posible": servicio.dos_pares_posible(db),
+        },
         "politica": {
             "intervalo_dias": servicio.intervalo_dias(),
             "umbral_temprana_dias": servicio.umbral_temprana(),

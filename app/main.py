@@ -203,9 +203,31 @@ def ejecutar_mantenimiento() -> None:
         audit.purgar_antiguos(db, settings.audit_retention_days)
         purgar_sesiones_expiradas(db)
         otp_correo.purgar_expirados(db)
+        _avisar_si_falta_el_segundo_par(db)
         db.commit()
     finally:
         db.close()
+
+
+def _avisar_si_falta_el_segundo_par(db) -> None:
+    """Avisa si no hay administradores suficientes para la regla de dos pares.
+
+    La gobernanza de rotación exige que autorice alguien distinto del
+    solicitante. Con un solo administrador activo esa regla no se puede aplicar:
+    toda rotación cae por la vía de emergencia, que queda marcada y pendiente de
+    una revisión que tampoco puede hacer nadie más. Conviene saberlo antes de
+    descubrirlo durante un incidente.
+    """
+    from app.servicios.rotacion import MIN_ADMINISTRADORES, administradores_activos
+
+    activos = administradores_activos(db)
+    if activos < MIN_ADMINISTRADORES:
+        logger.warning(
+            "Solo hay %d administrador(es) activo(s): la regla de dos pares de la rotación no se "
+            "puede aplicar y toda rotación caerá por la vía de emergencia, marcada y pendiente de "
+            "revisión. Cree un segundo administrador (ver docs/manual-administrador.md §4 bis).",
+            activos,
+        )
 
 
 async def _mantenimiento_periodico() -> None:

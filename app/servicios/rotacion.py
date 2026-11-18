@@ -36,7 +36,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import audit
@@ -204,6 +204,23 @@ def autorizacion_vigente(db: Session, credencial_id: int) -> RotacionCredencial 
                RotacionCredencial.estado == ROT_AUTORIZADA)
         .order_by(RotacionCredencial.id.desc())
     )
+
+
+# La regla de dos pares necesita, como mínimo, dos administradores activos. Con
+# uno solo no es que el control sea más débil: es que no se puede aplicar, y
+# toda rotación acaba cayendo por la vía de emergencia marcada.
+MIN_ADMINISTRADORES = 2
+
+
+def administradores_activos(db: Session) -> int:
+    return db.scalar(
+        select(func.count(Usuario.id)).where(Usuario.rol == ROL_ADMIN, Usuario.activo.is_(True))
+    ) or 0
+
+
+def dos_pares_posible(db: Session) -> bool:
+    """¿Hay gente suficiente para que la regla de dos pares signifique algo?"""
+    return administradores_activos(db) >= MIN_ADMINISTRADORES
 
 
 def pendientes_de_autorizar(db: Session) -> list[RotacionCredencial]:
