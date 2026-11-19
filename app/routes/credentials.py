@@ -1,9 +1,16 @@
-"""Gestión de credenciales de acceso a los activos del inventario.
+"""Gestión de credenciales en la interfaz clásica (HTML).
 
-- La contraseña se cifra antes de tocar la base de datos y solo se descifra
-  al revelarla explícitamente; cada revelado queda auditado con usuario e IP
-  (CIS 3.11, 8.5 / ISO 27001 A.5.17, A.8.15).
-- Los listados nunca incluyen la contraseña, ni siquiera enmascarada.
+Este módulo **solo traduce HTTP ↔ servicio**: formularios, redirecciones y
+re-renderizado del formulario con el error. Las reglas —cifrado, control de
+acceso por objeto, límite anti-exfiltración, auditoría y la exigencia de una
+rotación autorizada para cambiar una contraseña— viven en
+``app/servicios/credenciales.py``, compartidas con la API JSON.
+
+Esa compartición es el punto. Hasta la 1.3.0 la entrega de una contraseña en
+claro estaba escrita dos veces, aquí y en ``app/api_web/credentials.py``, y
+mantenerlas sincronizadas a mano es lo que falló en la 1.2.0.
+
+Esta interfaz **se retira en la 2.0** (rotura R1 de ``docs/plan-v2.0.md``).
 """
 
 from __future__ import annotations
@@ -15,65 +22,39 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app import access, audit, avisos
-from app.config import get_settings
+from app import audit
 from app.database import get_db
 from app.deps import render, requiere_permiso, verificar_csrf
-from app.models import (
-    ACTIVO_DISPOSITIVO,
-    ACTIVO_FISICO,
-    ACTIVO_HIPERVISOR,
-    ACTIVO_VM,
-    ROL_ANALISTA,
-    Credencial,
-    DispositivoRed,
-    Hipervisor,
-    HistorialCredencial,
-    MaquinaVirtual,
-    ServidorFisico,
-    Usuario,
-)
-from app.notifications import enviar_alerta
-from app.security import ratelimit
-from app.security.crypto import descifrar
-from app.servicios import rotacion as rotacion_svc
+from app.models import Credencial, Usuario
+from app.servicios import credenciales as servicio
+from app.servicios.credenciales import SERVICIOS_SUGERIDOS, ErrorCredencial
 
 router = APIRouter()
 
 GESTIONAR = Depends(requiere_permiso("credenciales.gestionar"))
 REVELAR = Depends(requiere_permiso("credenciales.revelar"))
 
+SIN_CACHE = {"Cache-Control": "no-store"}
 
-_MODELOS_ACTIVO = {
-    ACTIVO_FISICO: (ServidorFisico, "servidor físico", "/servidores/{id}"),
-    ACTIVO_HIPERVISOR: (Hipervisor, "hipervisor", "/hipervisores/{id}"),
-    ACTIVO_VM: (MaquinaVirtual, "máquina virtual", "/vms/{id}"),
-    ACTIVO_DISPOSITIVO: (DispositivoRed, "dispositivo de red", "/dispositivos/{id}"),
+# URL de la ficha del activo, a la que vuelve cada formulario. Es asunto de esta
+# interfaz y no del caso de uso, de modo que no vive en el servicio.
+_URL_ACTIVO = {
+    "fisico": "/servidores/{id}",
+    "hipervisor": "/hipervisores/{id}",
+    "vm": "/vms/{id}",
+    "dispositivo": "/dispositivos/{id}",
 }
 
-SERVICIOS_SUGERIDOS = ("SSH", "RDP", "iLO/IPMI", "Panel web", "Consola hipervisor",
-                       "Base de datos", "Telnet", "SNMP", "Otro")
+
+def _error(exc: ErrorCredencial) -> HTTPException:
+    return HTTPException(status_code=exc.codigo, detail=exc.mensaje)
 
 
-def _resolver_activo(db: Session, tipo: str, activo_id: int):
-    """Devuelve (instancia, etiqueta, url_detalle) o lanza 404/400."""
-    if tipo not in _MODELOS_ACTIVO:
+def _url_volver(tipo: str, activo_id: int) -> str:
+    plantilla = _URL_ACTIVO.get(tipo)
+    if plantilla is None:
         raise HTTPException(status_code=400, detail="Tipo de activo inválido.")
-    modelo, etiqueta, plantilla_url = _MODELOS_ACTIVO[tipo]
-    activo = db.get(modelo, activo_id)
-    if activo is None:
-        raise HTTPException(status_code=404, detail=f"No existe el {etiqueta} indicado.")
-    return activo, etiqueta, plantilla_url.format(id=activo_id)
-
-
-def _exigir_ver(db: Session, usuario: Usuario, tipo: str, activo_id: int) -> None:
-    """Gestionar una credencial exige poder ver su activo (respeta la restricción).
-
-    Impide que un operador cree/edite/elimine credenciales en un activo que un
-    administrador restringió: responde 404 igual que si el activo no existiera.
-    """
-    if not access.puede_ver_activo(db, usuario, tipo, activo_id):
-        raise HTTPException(status_code=404, detail="El recurso solicitado no existe.")
+    return plantilla.format(id=activo_id)
 
 
 def _ctx_form(usuario: Usuario, credencial: Credencial | None, tipo: str, activo, url_volver: str) -> dict:
@@ -87,6 +68,21 @@ def _ctx_form(usuario: Usuario, credencial: Credencial | None, tipo: str, activo
     }
 
 
+def _puerto_de_formulario(texto: str) -> int | None:
+    """El formulario manda texto; el servicio valida el rango."""
+    limpio = texto.strip()
+    if not limpio:
+        return None
+    if not limpio.isdigit():
+        raise ErrorCredencial("El puerto debe ser un número entre 1 y 65535.")
+    return int(limpio)
+
+
+def _sesion_id(request: Request) -> int | None:
+    sesion = getattr(request.state, "sesion", None)
+    return sesion.id if sesion is not None else None
+
+
 @router.get("/credenciales/nueva")
 def credencial_nueva_form(
     request: Request,
@@ -95,9 +91,13 @@ def credencial_nueva_form(
     activo: str = "",
     activo_id: int = 0,
 ):
-    instancia, _, url_volver = _resolver_activo(db, activo, activo_id)
-    _exigir_ver(db, usuario, activo, activo_id)
-    return render(request, "credencial_form.html", _ctx_form(usuario, None, activo, instancia, url_volver))
+    try:
+        instancia, _etiqueta = servicio.resolver_activo(db, activo, activo_id)
+        servicio.exigir_ver_activo(db, usuario, activo, activo_id)
+    except ErrorCredencial as exc:
+        raise _error(exc) from exc
+    return render(request, "credencial_form.html",
+                  _ctx_form(usuario, None, activo, instancia, _url_volver(activo, activo_id)))
 
 
 @router.post("/credenciales/nueva", dependencies=[Depends(verificar_csrf)])
@@ -109,48 +109,35 @@ def credencial_crear(
     activo_id: Annotated[int, Form()] = 0,
     usuario_acceso: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
-    servicio: Annotated[str, Form()] = "SSH",
+    servicio_form: Annotated[str, Form(alias="servicio")] = "SSH",
     puerto: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
     usada_por: Annotated[str, Form()] = "",
 ):
-    instancia, etiqueta, url_volver = _resolver_activo(db, activo, activo_id)
-    _exigir_ver(db, usuario, activo, activo_id)
-    error = ""
-    if not usuario_acceso.strip():
-        error = "El usuario de acceso es obligatorio."
-    elif not password:
-        error = "La contraseña es obligatoria."
-    puerto_num: int | None = None
-    if puerto.strip():
-        if not puerto.strip().isdigit() or not (1 <= int(puerto) <= 65535):
-            error = "El puerto debe ser un número entre 1 y 65535."
-        else:
-            puerto_num = int(puerto)
-    if error:
-        return render(request, "credencial_form.html",
-                      {**_ctx_form(usuario, None, activo, instancia, url_volver), "error": error},
-                      status_code=400)
+    try:
+        instancia, _etiqueta = servicio.resolver_activo(db, activo, activo_id)
+        servicio.exigir_ver_activo(db, usuario, activo, activo_id)
+    except ErrorCredencial as exc:
+        raise _error(exc) from exc
 
-    # El alta pasa por el servicio: ningún controlador escribe password_cifrada.
-    credencial = rotacion_svc.nueva_credencial(
-        db,
-        password=password,
-        usuario_acceso=usuario_acceso.strip(),
-        servicio=servicio.strip() or "SSH",
-        puerto=puerto_num,
-        descripcion=descripcion.strip(),
-        usada_por=usada_por.strip(),
-        creado_por_id=usuario.id,
-        servidor_fisico_id=activo_id if activo == ACTIVO_FISICO else None,
-        hipervisor_id=activo_id if activo == ACTIVO_HIPERVISOR else None,
-        maquina_virtual_id=activo_id if activo == ACTIVO_VM else None,
-        dispositivo_red_id=activo_id if activo == ACTIVO_DISPOSITIVO else None,
-    )
-    db.flush()
-    audit.registrar(db, audit.CREDENCIAL_CREADA, request=request, usuario=usuario,
-                    objeto_tipo="credencial", objeto_id=credencial.id,
-                    detalle=f"{usuario_acceso.strip()}@{instancia.nombre} ({etiqueta}, {credencial.servicio})")
+    url_volver = _url_volver(activo, activo_id)
+    try:
+        servicio.crear(
+            db, usuario=usuario, tipo_activo=activo, activo_id=activo_id,
+            usuario_acceso=usuario_acceso, password=password, servicio=servicio_form,
+            puerto=_puerto_de_formulario(puerto), descripcion=descripcion,
+            usada_por=usada_por, request=request,
+        )
+    except ErrorCredencial as exc:
+        # Un dato mal puesto vuelve al formulario con su mensaje; un problema de
+        # autorización es un error HTTP y no una corrección que el usuario pueda
+        # hacer en el formulario.
+        if exc.codigo != 400:
+            raise _error(exc) from exc
+        return render(request, "credencial_form.html",
+                      {**_ctx_form(usuario, None, activo, instancia, url_volver),
+                       "error": exc.mensaje},
+                      status_code=400)
     return RedirectResponse(f"{url_volver}?msg={quote('Credencial registrada.')}", status_code=303)
 
 
@@ -161,16 +148,14 @@ def credencial_editar_form(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, GESTIONAR],
 ):
-    credencial = db.get(Credencial, credencial_id)
-    if credencial is None:
-        raise HTTPException(status_code=404, detail="La credencial no existe.")
-    tipo = credencial.tipo_activo
-    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
-                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
-    instancia, _, url_volver = _resolver_activo(db, tipo, activo_id)
-    _exigir_ver(db, usuario, tipo, activo_id)
+    try:
+        credencial = servicio.obtener_gestionable(db, usuario, credencial_id)
+        tipo, activo_id = servicio.activo_de(credencial)
+        instancia, _etiqueta = servicio.resolver_activo(db, tipo, activo_id)
+    except ErrorCredencial as exc:
+        raise _error(exc) from exc
     return render(request, "credencial_form.html",
-                  {**_ctx_form(usuario, credencial, tipo, instancia, url_volver),
+                  {**_ctx_form(usuario, credencial, tipo, instancia, _url_volver(tipo, activo_id)),
                    "historial": credencial.historial})
 
 
@@ -182,76 +167,35 @@ def credencial_editar(
     usuario: Annotated[Usuario, GESTIONAR],
     usuario_acceso: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
-    servicio: Annotated[str, Form()] = "SSH",
+    servicio_form: Annotated[str, Form(alias="servicio")] = "SSH",
     puerto: Annotated[str, Form()] = "",
     descripcion: Annotated[str, Form()] = "",
     usada_por: Annotated[str, Form()] = "",
 ):
-    credencial = db.get(Credencial, credencial_id)
-    if credencial is None:
-        raise HTTPException(status_code=404, detail="La credencial no existe.")
-    tipo = credencial.tipo_activo
-    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
-                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
-    instancia, etiqueta, url_volver = _resolver_activo(db, tipo, activo_id)
-    _exigir_ver(db, usuario, tipo, activo_id)
+    try:
+        credencial = servicio.obtener_gestionable(db, usuario, credencial_id)
+        tipo, activo_id = servicio.activo_de(credencial)
+        instancia, _etiqueta = servicio.resolver_activo(db, tipo, activo_id)
+    except ErrorCredencial as exc:
+        raise _error(exc) from exc
 
-    error = ""
-    if not usuario_acceso.strip():
-        error = "El usuario de acceso es obligatorio."
-    puerto_num: int | None = None
-    if puerto.strip():
-        if not puerto.strip().isdigit() or not (1 <= int(puerto) <= 65535):
-            error = "El puerto debe ser un número entre 1 y 65535."
-        else:
-            puerto_num = int(puerto)
-    if error:
-        return render(request, "credencial_form.html",
-                      {**_ctx_form(usuario, credencial, tipo, instancia, url_volver), "error": error},
-                      status_code=400)
-
-    # La contraseña solo cambia bajo una rotación autorizada, y se comprueba
-    # ANTES de tocar ningún campo: un intento sin autorización no debe dejar la
-    # credencial medio editada. Es la misma regla, el mismo servicio y el mismo
-    # libro mayor que usa la API JSON: la puerta está en los dos caminos.
-    rotada = bool(password)  # contraseña en blanco = conservar la actual
-    autorizacion = None
-    if rotada:
-        try:
-            autorizacion = rotacion_svc.exigir_autorizacion(db, credencial)
-        except rotacion_svc.ErrorRotacion as exc:
-            audit.registrar(db, audit.ROTACION_ESCRITURA_DENEGADA, request=request, usuario=usuario,
-                            objeto_tipo="credencial", objeto_id=credencial.id,
-                            detalle="Intento de cambiar la contraseña sin rotación autorizada",
-                            exito=False)
-            db.commit()
-            return render(request, "credencial_form.html",
-                          {**_ctx_form(usuario, credencial, tipo, instancia, url_volver),
-                           "error": exc.mensaje},
-                          status_code=exc.codigo)
-
-    credencial.usuario_acceso = usuario_acceso.strip()
-    credencial.servicio = servicio.strip() or "SSH"
-    credencial.puerto = puerto_num
-    credencial.descripcion = descripcion.strip()
-    credencial.usada_por = usada_por.strip()
-    if autorizacion is not None:
-        rotacion_svc.registrar_rotacion_manual(
-            db, rotacion=autorizacion, password=password, usuario=usuario, request=request,
+    url_volver = _url_volver(tipo, activo_id)
+    try:
+        servicio.actualizar(
+            db, usuario=usuario, credencial_id=credencial_id,
+            usuario_acceso=usuario_acceso, password=password, servicio=servicio_form,
+            puerto=_puerto_de_formulario(puerto), descripcion=descripcion,
+            usada_por=usada_por, request=request,
         )
-        avisos.aviso_rotacion_aplicada(db, autorizacion)
-    audit.registrar(db, audit.CREDENCIAL_ACTUALIZADA, request=request, usuario=usuario,
-                    objeto_tipo="credencial", objeto_id=credencial.id,
-                    detalle=f"{credencial.usuario_acceso}@{instancia.nombre}"
-                            + (" — contraseña rotada" if rotada else ""))
-    # Auditoría de credenciales compartidas: se avisa a los DEMÁS usuarios con
-    # acceso a este activo de que hubo una modificación. El correo comunica solo
-    # EL HECHO —activo, servicio, quién y cuándo—, nunca la contraseña nueva ni la
-    # anterior: quien la necesite la revela en la aplicación, donde el acceso se
-    # comprueba, se limita por tasa y queda en la bitácora.
-    avisos.aviso_credencial_compartida_actualizada(
-        db, credencial, usuario, password_cambiada=rotada
-    )
+    except ErrorCredencial as exc:
+        # Incluye el 409 de «hace falta una rotación autorizada»: se explica en
+        # el propio formulario, que es donde el operador está mirando.
+        if exc.codigo not in (400, 409):
+            raise _error(exc) from exc
+        return render(request, "credencial_form.html",
+                      {**_ctx_form(usuario, credencial, tipo, instancia, url_volver),
+                       "historial": credencial.historial, "error": exc.mensaje},
+                      status_code=exc.codigo)
     return RedirectResponse(f"{url_volver}?msg={quote('Credencial actualizada.')}", status_code=303)
 
 
@@ -262,84 +206,14 @@ def credencial_eliminar(
     db: Annotated[Session, Depends(get_db)],
     usuario: Annotated[Usuario, GESTIONAR],
 ):
-    credencial = db.get(Credencial, credencial_id)
-    if credencial is None:
-        raise HTTPException(status_code=404, detail="La credencial no existe.")
-    tipo = credencial.tipo_activo
-    activo_id = (credencial.servidor_fisico_id or credencial.hipervisor_id
-                 or credencial.maquina_virtual_id or credencial.dispositivo_red_id)
-    _, _, url_volver = _resolver_activo(db, tipo, activo_id)
-    _exigir_ver(db, usuario, tipo, activo_id)
-    detalle = f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio})"
-    db.delete(credencial)
-    audit.registrar(db, audit.CREDENCIAL_ELIMINADA, request=request, usuario=usuario,
-                    objeto_tipo="credencial", objeto_id=credencial_id, detalle=detalle)
-    return RedirectResponse(f"{url_volver}?msg={quote('Credencial eliminada.')}", status_code=303)
-
-
-def _entregar_password(
-    request: Request,
-    db: Session,
-    usuario: Usuario,
-    credencial_id: int,
-    accion: str,
-) -> JSONResponse:
-    """Entrega la contraseña en claro aplicando límite anti-exfiltración y auditoría.
-
-    El límite por usuario (revelados + copiados compartidos) frena la
-    extracción masiva del inventario aun con una sesión legítima
-    comprometida (OWASP API4/API6).
-    """
-    credencial = db.get(Credencial, credencial_id)
-    if credencial is None:
-        raise HTTPException(status_code=404, detail="La credencial no existe.")
-
-    # Control de acceso por objeto: si el usuario no puede ver el activo,
-    # respondemos 404 (sin filtrar su existencia); si puede verlo pero no tiene
-    # nivel para usar credenciales, 403. Ambos rechazos quedan auditados.
-    if not access.puede_ver_credencial(db, usuario, credencial):
-        audit.registrar(db, audit.ACCESO_DENEGADO, request=request, usuario=usuario,
-                        objeto_tipo="credencial", objeto_id=credencial_id,
-                        detalle="Acceso a credencial sin concesión vigente.", exito=False)
-        db.commit()
-        raise HTTPException(status_code=404, detail="La credencial no existe.")
-    if not access.puede_revelar_credencial(db, usuario, credencial):
-        audit.registrar(db, audit.ACCESO_DENEGADO, request=request, usuario=usuario,
-                        objeto_tipo="credencial", objeto_id=credencial_id,
-                        detalle="Concesión sin nivel para revelar/copiar credenciales.", exito=False)
-        db.commit()
-        raise HTTPException(status_code=403, detail="No tiene permiso para usar esta credencial.")
-
-    settings = get_settings()
-    if not ratelimit.permitir_intento(
-        f"revelar:{usuario.id}",
-        limite=settings.reveal_rate_limit,
-        ventana_minutos=settings.reveal_rate_window_minutes,
-        db=db,
-    ):
-        audit.registrar(db, audit.REVELADO_TASA_EXCEDIDA, request=request, usuario=usuario,
-                        objeto_tipo="credencial", objeto_id=credencial_id,
-                        detalle=f"Límite de {settings.reveal_rate_limit} accesos "
-                                f"en {settings.reveal_rate_window_minutes} min superado.",
-                        exito=False)
-        db.commit()  # conservar la evidencia pese al error que sigue
-        enviar_alerta(
-            "Posible exfiltración de credenciales",
-            f"El usuario «{usuario.username}» superó el límite de accesos a contraseñas "
-            f"({settings.reveal_rate_limit} en {settings.reveal_rate_window_minutes} min).",
-        )
-        raise HTTPException(status_code=429,
-                            detail="Límite de accesos a contraseñas alcanzado; espere unos minutos.")
-
-    via = " (vía concesión)" if usuario.rol == ROL_ANALISTA else ""
-    audit.registrar(db, accion, request=request, usuario=usuario,
-                    objeto_tipo="credencial", objeto_id=credencial.id,
-                    detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo} ({credencial.servicio}){via}")
-    _avisar_revelado(request, db, usuario, credencial)
-    return JSONResponse(
-        {"usuario": credencial.usuario_acceso, "password": descifrar(credencial.password_cifrada)},
-        headers={"Cache-Control": "no-store"},
-    )
+    try:
+        credencial = servicio.obtener_gestionable(db, usuario, credencial_id)
+        tipo, activo_id = servicio.activo_de(credencial)
+        servicio.eliminar(db, usuario=usuario, credencial_id=credencial_id, request=request)
+    except ErrorCredencial as exc:
+        raise _error(exc) from exc
+    return RedirectResponse(f"{_url_volver(tipo, activo_id)}?msg={quote('Credencial eliminada.')}",
+                            status_code=303)
 
 
 @router.post("/credenciales/{credencial_id}/revelar", dependencies=[Depends(verificar_csrf)])
@@ -350,7 +224,35 @@ def credencial_revelar(
     usuario: Annotated[Usuario, REVELAR],
 ):
     """Muestra la contraseña en pantalla; queda registrado en auditoría."""
-    return _entregar_password(request, db, usuario, credencial_id, audit.CREDENCIAL_REVELADA)
+    return _entregar(request, db, usuario, credencial_id, audit.CREDENCIAL_REVELADA)
+
+
+@router.post("/credenciales/{credencial_id}/copiar", dependencies=[Depends(verificar_csrf)])
+def credencial_copiar(
+    request: Request,
+    credencial_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, REVELAR],
+):
+    """Entrega la contraseña para copiarla al portapapeles sin mostrarla.
+
+    Reduce la exposición visual (*shoulder surfing*); se audita con una acción
+    propia para distinguirla del revelado en pantalla.
+    """
+    return _entregar(request, db, usuario, credencial_id, audit.CREDENCIAL_COPIADA)
+
+
+def _entregar(
+    request: Request, db: Session, usuario: Usuario, credencial_id: int, accion: str
+) -> JSONResponse:
+    try:
+        datos = servicio.entregar_password(
+            db, usuario=usuario, credencial_id=credencial_id, accion=accion,
+            request=request, sesion_id=_sesion_id(request),
+        )
+    except ErrorCredencial as exc:
+        raise _error(exc) from exc
+    return JSONResponse(datos, headers=SIN_CACHE)
 
 
 @router.post("/credenciales/{credencial_id}/historial/{historial_id}/revelar",
@@ -363,58 +265,11 @@ def historial_revelar(
     usuario: Annotated[Usuario, GESTIONAR],
 ):
     """Revela una contraseña anterior (solo gestores; auditado y limitado)."""
-    entrada = db.get(HistorialCredencial, historial_id)
-    if entrada is None or entrada.credencial_id != credencial_id:
-        raise HTTPException(status_code=404, detail="La entrada de historial no existe.")
-    credencial = db.get(Credencial, credencial_id)
-    if credencial is None or not access.puede_revelar_credencial(db, usuario, credencial):
-        # El operador no revela historial de activos restringidos.
-        raise HTTPException(status_code=404, detail="La entrada de historial no existe.")
-
-    settings = get_settings()
-    if not ratelimit.permitir_intento(
-        f"revelar:{usuario.id}", limite=settings.reveal_rate_limit,
-        ventana_minutos=settings.reveal_rate_window_minutes, db=db,
-    ):
-        audit.registrar(db, audit.REVELADO_TASA_EXCEDIDA, request=request, usuario=usuario,
-                        objeto_tipo="historial_credencial", objeto_id=historial_id, exito=False)
-        db.commit()
-        raise HTTPException(status_code=429, detail="Límite de accesos alcanzado; espere unos minutos.")
-
-    audit.registrar(db, audit.HISTORIAL_REVELADO, request=request, usuario=usuario,
-                    objeto_tipo="credencial", objeto_id=credencial_id,
-                    detalle=f"Contraseña anterior del {entrada.rotada_en:%d/%m/%Y %H:%M}")
-    return JSONResponse({"password": descifrar(entrada.password_cifrada)},
-                        headers={"Cache-Control": "no-store"})
-
-
-@router.post("/credenciales/{credencial_id}/copiar", dependencies=[Depends(verificar_csrf)])
-def credencial_copiar(
-    request: Request,
-    credencial_id: int,
-    db: Annotated[Session, Depends(get_db)],
-    usuario: Annotated[Usuario, REVELAR],
-):
-    """Entrega la contraseña para copiarla al portapapeles sin mostrarla.
-
-    Reduce la exposición visual (shoulder surfing); se audita con una acción
-    propia para distinguirla del revelado en pantalla.
-    """
-    return _entregar_password(request, db, usuario, credencial_id, audit.CREDENCIAL_COPIADA)
-
-
-def _avisar_revelado(request, db, usuario, credencial) -> None:
-    """Aviso al titular de que reveló una credencial en su sesión (mejor esfuerzo).
-
-    Deduplicado por sesión y categoría en ``avisos``: el primer revelado de la
-    sesión genera un correo, los siguientes no. Así el aviso conserva su valor de
-    detección sin convertir el trabajo normal en decenas de mensajes.
-    """
-    sesion = getattr(request.state, "sesion", None)
-    if sesion is None:
-        return
-    avisos.aviso_actividad_sensible(
-        db, usuario, sesion.id, "revelado",
-        f"reveló o copió una contraseña del inventario "
-        f"({credencial.usuario_acceso}@{credencial.nombre_activo})",
-    )
+    try:
+        datos = servicio.revelar_historial(
+            db, usuario=usuario, credencial_id=credencial_id,
+            historial_id=historial_id, request=request,
+        )
+    except ErrorCredencial as exc:
+        raise _error(exc) from exc
+    return JSONResponse(datos, headers=SIN_CACHE)

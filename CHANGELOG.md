@@ -37,7 +37,9 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   abuso de la vía de emergencia), en **modo observación** por defecto.
 - Campo **«usada por»** en la credencial: servicios y automatismos que consumen la cuenta, visible
   al solicitar y al autorizar una rotación.
-- Capa **`app/servicios/`** con los casos de uso de rotación, reautenticación y patrones.
+- Capa **`app/servicios/`** con los casos de uso de rotación, reautenticación, patrones y
+  **credenciales**. Los controladores de credenciales —el clásico y el JSON— pasan a traducir
+  HTTP ↔ servicio y no contienen ya consultas ni decisiones de acceso.
 - Permisos `rotacion.ver`, `rotacion.solicitar`, `rotacion.autorizar` y `rotacion.revisar`.
 - Ajustes nuevos: `PASSWD_ROTACION_TEMPRANA_PCT`, `PASSWD_ROTACION_EMERGENCIA_VENTANA_MIN`,
   `PASSWD_ROTACION_EMERGENCIA_MAX_POR_MES` y `PASSWD_ROTACION_PATRONES_MODO_OBSERVACION`.
@@ -61,6 +63,11 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   rechaza con 409 y queda auditado.
 - La reautenticación para autorizar una rotación **rechaza el código por correo**: un buzón puede
   estar compartido o abierto en la misma sesión, de modo que no acredita a una segunda persona.
+- **La entrega de una contraseña en claro deja de estar escrita dos veces.** El control de acceso
+  por objeto, el límite anti-exfiltración y la auditoría vivían duplicados, línea por línea, en los
+  dos controladores de credenciales, y mantenerlos sincronizados a mano es lo que falló en la
+  1.2.0. Ahora hay una sola implementación en `app/servicios/credenciales.py`, con pruebas propias
+  que no pasan por HTTP.
 
 ### Obsoleto
 
