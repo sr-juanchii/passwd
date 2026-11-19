@@ -1140,6 +1140,15 @@ traza de cómo se construyó y con qué se verificó.
 | 2026-11-18 | v1.3.0 | Pruebas de aceptación | `165b751` | `pytest --cov` (314, 83,66 %) | 25 pruebas, incluida la de arquitectura del punto único de escritura |
 | 2026-11-18 | v1.3.0 | Documentación | `f914f45` | Enlaces de `docs/` resueltos, `pytest` | Manuales, control de acceso, configuración, CLI, arquitectura y matrices |
 | 2026-11-18 | v1.3.0 | CHANGELOG | (este) | `pytest tests/test_version.py` | Entradas bajo `[Sin publicar]`; **la versión no se publica todavía** |
+| 2026-11-18 | v1.3.0 | Aviso de dos administradores (defecto propio) | `3dc9e44` | `pytest`, `ruff` | Los manuales afirmaban un aviso que no existía. De paso, `migrations/env.py` silenciaba los loggers de `app.*` |
+| 2026-11-18 | v1.3.0 | Avisos de retirada R1, R4, R7 | `eac000c` | `pytest tests/test_avisos_retirada.py`, suite, `ruff` | Cabecera `Deprecation` en la superficie Jinja, aviso de configuración obsoleta y registro del cambio de `/api/v1/inventario` |
+| 2026-11-18 | v1.3.0 | Servicio de credenciales (A1) | `2145361` | pruebas del servicio sin HTTP + suite | La entrega de una contraseña en claro dejó de estar escrita dos veces |
+| 2026-11-19 | v1.3.0 | Autenticación: login, contraseña, cierre (A1) | `0815a61` | ídem + barrido de `test_bypass_mfa.py` | Una sola implementación del login; el hash ficticio deja de calcularse dos veces por proceso |
+| 2026-11-19 | v1.3.0 | Autenticación: segundo factor y recuperación (A1) | `e0e8bab` | ídem | **Tres divergencias de seguridad** halladas al unificar, las tres con la interfaz clásica en el lado débil |
+| 2026-11-19 | v1.3.0 | Matriz de permisos del registro de rutas (A4) | `9914120` | `pytest tests/test_matriz_permisos.py`, suite, prueba de que la prueba falla sin política | `_dep.permiso_requerido` hace autodescriptivo el registro de rutas |
+| 2026-11-19 | v1.3.0 | Pruebas de navegador en CI (C1) | `944b628` | 22 de 22 desde cero (4,4 min), `eslint`, `tsc` | Backend + frontend `standalone` + receptor SMTP local; job `navegador` nuevo |
+| 2026-11-19 | v1.3.0 | Corrección del aviso R4 (defecto propio) | `db668bf` | `pytest`, `ruff` | El aviso pedía sustituir `PASSWD_NOTIFY_ENABLED`, que sigue gobernando las alertas: habría dejado sin ellas a quien lo siguiera |
+| 2026-11-19 | v1.3.0 | Pre-release `v1.3.0-rc.1` | `047d6e2` | suite (393), `ruff`, `GET /healthz` | La política admite pre-releases; `prelanzamiento.yml` publica al empujar la etiqueta |
 
 **Estado de la v1.3.0.** La **gobernanza de rotación está entregada y verificada**. La versión
 **no se publica** hasta completar el resto de su alcance, que este plan comparte con
