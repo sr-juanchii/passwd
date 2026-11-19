@@ -46,6 +46,12 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   el permiso que exige, de modo que el registro es autodescriptivo y la matriz se genera leyéndolo
   en vez de mantener una lista a mano. Añadir un endpoint sin declarar su política —un permiso
   RBAC, o una exención con su motivo escrito— hace fallar la suite.
+- **Pruebas de navegador en CI** (Playwright) contra el sistema entero: backend, frontend
+  compilado para producción y un receptor SMTP local. Cubren el acceso completo, la expiración de
+  sesión, el alta y la verificación del segundo factor por **los dos métodos** (aplicación
+  autenticadora y correo), la configuración y la exportación del inventario en claro. No hay
+  endpoints de prueba en la aplicación: el correo se lee del buzón simulado, como lo leería una
+  persona.
 - Ajustes nuevos: `PASSWD_ROTACION_TEMPRANA_PCT`, `PASSWD_ROTACION_EMERGENCIA_VENTANA_MIN`,
   `PASSWD_ROTACION_EMERGENCIA_MAX_POR_MES` y `PASSWD_ROTACION_PATRONES_MODO_OBSERVACION`.
 - [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md): plan maestro de rotación
