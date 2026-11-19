@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hmac
 import secrets
-from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -46,26 +45,24 @@ from app.notifications import enviar_a_direccion, enviar_alerta
 from app.rbac import PERMISOS, tiene_permiso
 from app.security import mfa, otp_correo, ratelimit, recovery, recuperacion, segundo_factor
 from app.security.crypto import cifrar, descifrar
-from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
+from app.security.passwords import hashear_password, validar_politica, verificar_password
 from app.security.sessions import (
     COOKIE_SESION,
     borrar_cookie,
     configurar_cookie,
-    crear_sesion,
     extender,
     plazos,
     revocar_sesion,
     revocar_sesiones_de_usuario,
     rotar_token,
 )
+from app.servicios import autenticacion
+from app.servicios.autenticacion import ErrorAutenticacion
 
 router = APIRouter()
 
 COOKIE_CSRF_LOGIN = "passwd_csrf_login"
 COOKIE_RECUPERACION = "passwd_recuperacion"  # noqa: S105 — nombre de cookie, no es un secreto
-
-# Hash ficticio para igualar tiempos cuando el usuario no existe.
-_HASH_FICTICIO = hashear_password(secrets.token_urlsafe(24))
 
 # Mapa de etapa → ruta siguiente, idéntico al flujo de la web Jinja.
 _SIGUIENTE = {
@@ -107,48 +104,24 @@ class RecuperarCambiar(BaseModel):
     password_confirmacion: str = ""
 
 
-def _etapa_inicial(usuario: Usuario) -> str:
-    """Determina la etapa de la sesión tras validar la contraseña."""
-    if usuario.debe_cambiar_password:
-        return ETAPA_CAMBIO_PASSWORD
-    if not usuario.mfa_habilitado:
-        return ETAPA_MFA_ENROLAMIENTO
-    return ETAPA_MFA_PENDIENTE
-
-
-def _registrar_fallo(db: Session, request: Request, usuario: Usuario) -> None:
-    """Suma un intento fallido y bloquea la cuenta al llegar al límite."""
-    settings = get_settings()
-    usuario.intentos_fallidos += 1
-    if usuario.intentos_fallidos >= settings.max_failed_attempts:
-        usuario.bloqueado_hasta = ahora_utc() + timedelta(minutes=settings.lockout_minutes)
-        usuario.intentos_fallidos = 0
-        revocar_sesiones_de_usuario(db, usuario.id)
-        audit.registrar(
-            db, audit.CUENTA_BLOQUEADA, request=request, usuario=usuario,
-            detalle=f"Bloqueo automático por {settings.lockout_minutes} minutos.", exito=False,
-        )
-        ip = request.client.host if request.client else "desconocida"
-        enviar_alerta(
-            "Cuenta bloqueada",
-            f"La cuenta «{usuario.username}» se bloqueó automáticamente por intentos "
-            f"de acceso fallidos (IP de origen: {ip}).",
-        )
-
-
 def _error(detalle: str, status_code: int) -> HTTPException:
     return HTTPException(status_code=status_code, detail=detalle)
 
 
-def _ip_de(request: Request) -> str:
-    return request.client.host if request.client else "desconocida"
+# Los ayudantes de etapa, bloqueo, IP y aviso de inicio de sesión viven ahora en
+# app/servicios/autenticacion.py, compartidos con la interfaz clásica. Se
+# mantienen estos alias porque el segundo factor y la recuperación todavía los
+# usan desde este módulo; desaparecen cuando esos flujos pasen al servicio.
+_etapa_inicial = autenticacion.etapa_inicial
+_ip_de = autenticacion.ip_de
+
+
+def _registrar_fallo(db: Session, request: Request, usuario: Usuario) -> None:
+    autenticacion.registrar_fallo(db, usuario, request)
 
 
 def _avisar_inicio_sesion(db: Session, request: Request, usuario: Usuario) -> None:
-    """Aviso al titular de que se abrió una sesión con su cuenta (mejor esfuerzo)."""
-    avisos.aviso_inicio_sesion(
-        db, usuario, _ip_de(request), request.headers.get("user-agent", "")
-    )
+    autenticacion.avisar_inicio_sesion(db, usuario, request)
 
 
 # ---------------------------------------------------------------------------
@@ -237,65 +210,18 @@ def login(
     db: Annotated[Session, Depends(get_db)],
     cuerpo: CredencialesLogin,
 ):
-    username = cuerpo.username.strip().lower()
-    ip = request.client.host if request.client else "desconocida"
+    try:
+        iniciada = autenticacion.iniciar_sesion(
+            db, username=cuerpo.username, password=cuerpo.password,
+            csrf_login=cuerpo.csrf_login,
+            cookie_csrf=request.cookies.get(COOKIE_CSRF_LOGIN, ""),
+            request=request,
+        )
+    except ErrorAutenticacion as exc:
+        raise _error(exc.mensaje, exc.codigo) from exc
 
-    cookie_csrf = request.cookies.get(COOKIE_CSRF_LOGIN, "")
-    if not cookie_csrf or not hmac.compare_digest(cuerpo.csrf_login, cookie_csrf):
-        raise _error("Sesión de formulario inválida; intente de nuevo.", 403)
-
-    if not ratelimit.permitir_intento(f"login:{ip}", db=db):
-        audit.registrar(db, audit.LOGIN_TASA_EXCEDIDA, request=request, username=username, exito=False)
-        db.commit()
-        raise _error("Demasiados intentos; espere unos minutos.", 429)
-
-    usuario = db.scalar(select(Usuario).where(func.lower(Usuario.username) == username))
-
-    if usuario is None:
-        verificar_password(_HASH_FICTICIO, cuerpo.password)  # tiempo constante
-        audit.registrar(db, audit.LOGIN_FALLIDO, request=request, username=username,
-                        detalle="Usuario inexistente.", exito=False)
-        db.commit()
-        raise _error("Credenciales inválidas.", 401)
-
-    if usuario.esta_bloqueado():
-        audit.registrar(db, audit.LOGIN_BLOQUEADO, request=request, usuario=usuario, exito=False)
-        db.commit()
-        raise _error("Cuenta bloqueada temporalmente por intentos fallidos.", 423)
-
-    if not usuario.activo:
-        audit.registrar(db, audit.LOGIN_FALLIDO, request=request, usuario=usuario,
-                        detalle="Cuenta desactivada.", exito=False)
-        db.commit()
-        raise _error("Credenciales inválidas.", 401)
-
-    if not verificar_password(usuario.password_hash, cuerpo.password):
-        _registrar_fallo(db, request, usuario)
-        audit.registrar(db, audit.LOGIN_FALLIDO, request=request, usuario=usuario, exito=False)
-        db.commit()
-        raise _error("Credenciales inválidas.", 401)
-
-    # Contraseña correcta
-    usuario.intentos_fallidos = 0
-    usuario.bloqueado_hasta = None
-    if necesita_rehash(usuario.password_hash):
-        usuario.password_hash = hashear_password(cuerpo.password)
-
-    etapa = _etapa_inicial(usuario)
-    _sesion, token = crear_sesion(
-        db, usuario, etapa,
-        direccion_ip=ip, agente_usuario=request.headers.get("user-agent", ""),
-    )
-    audit.registrar(db, audit.LOGIN_OK, request=request, usuario=usuario,
-                    detalle=f"Primer factor correcto; etapa: {etapa}.")
-
-    # Confirmar ANTES de responder: el frontend consulta /session de inmediato y
-    # debe ver la sesión recién creada. El cleanup diferido de get_db (que corre
-    # tras enviar la respuesta) provocaría una lectura-tras-escritura obsoleta en
-    # MySQL (REPEATABLE READ); este commit explícito lo evita.
-    db.commit()
-    respuesta = JSONResponse({"stage": etapa, "next": _SIGUIENTE[etapa]})
-    configurar_cookie(respuesta, token)
+    respuesta = JSONResponse({"stage": iniciada.etapa, "next": _SIGUIENTE[iniciada.etapa]})
+    configurar_cookie(respuesta, iniciada.token)
     respuesta.delete_cookie(COOKIE_CSRF_LOGIN, path="/")
     return respuesta
 
@@ -329,54 +255,26 @@ def cambiar_password(
     if not enviado or not hmac.compare_digest(enviado, sesion.csrf_token):
         raise _error("Token CSRF inválido o ausente.", 403)
 
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-    forzado = sesion.etapa == ETAPA_CAMBIO_PASSWORD
-
-    if not verificar_password(usuario.password_hash, cuerpo.password_actual):
-        _registrar_fallo(db, request, usuario)
-        if usuario.esta_bloqueado():
-            revocar_sesion(sesion)
-            db.commit()
+    try:
+        cambiada = autenticacion.cambiar_password(
+            db, sesion=sesion, actual=cuerpo.password_actual, nueva=cuerpo.password_nueva,
+            confirmacion=cuerpo.password_confirmacion, request=request,
+        )
+    except ErrorAutenticacion as exc:
+        if exc.revocar_sesion:
             respuesta = JSONResponse(
-                {"detail": "Cuenta bloqueada; vuelva a iniciar sesión.", "next": "/login"},
-                status_code=423,
+                {"detail": exc.mensaje, "next": exc.destino or "/login"}, status_code=exc.codigo,
             )
             borrar_cookie(respuesta)
             return respuesta
-        raise _error("La contraseña actual no es correcta.", 400)
+        raise _error(exc.mensaje, exc.codigo) from exc
 
-    if cuerpo.password_nueva != cuerpo.password_confirmacion:
-        raise _error("La confirmación no coincide.", 400)
-    if cuerpo.password_nueva == cuerpo.password_actual:
-        raise _error("La nueva contraseña debe ser distinta de la actual.", 400)
-    errores = validar_politica(cuerpo.password_nueva, usuario.username)
-    if errores:
-        raise _error(" ".join(errores), 400)
-
-    usuario.password_hash = hashear_password(cuerpo.password_nueva)
-    usuario.debe_cambiar_password = False
-    usuario.password_cambiada_en = ahora_utc()
-    usuario.intentos_fallidos = 0
-
-    # Se revocan las demás sesiones del usuario; la actual rota su token.
-    otras = [s for s in db.scalars(select(SesionWeb).where(
-        SesionWeb.usuario_id == usuario.id, SesionWeb.revocada_en.is_(None))).all() if s.id != sesion.id]
-    for s in otras:
-        revocar_sesion(s)
-    token = rotar_token(db, sesion)
-    audit.registrar(db, audit.PASSWORD_CAMBIADA, request=request, usuario=usuario)
-
-    if forzado:
-        sesion.etapa = ETAPA_MFA_PENDIENTE if usuario.mfa_habilitado else ETAPA_MFA_ENROLAMIENTO
-        cuerpo_resp = {"stage": sesion.etapa, "next": _SIGUIENTE[sesion.etapa]}
+    if cambiada.forzado:
+        cuerpo_resp: dict = {"stage": cambiada.etapa, "next": _SIGUIENTE[cambiada.etapa]}
     else:
         cuerpo_resp = {"ok": True, "next": "/"}
-    # Confirmar antes de responder (ver nota en login): el siguiente paso del
-    # flujo lee la etapa/el token recién rotados de inmediato.
-    db.commit()
     respuesta = JSONResponse(cuerpo_resp)
-    configurar_cookie(respuesta, token)
+    configurar_cookie(respuesta, cambiada.token)
     return respuesta
 
 
@@ -913,11 +811,9 @@ def logout(
     sesion: Annotated[SesionWeb, Depends(sesion_activa_json)],
     usuario: Annotated[Usuario, Depends(usuario_actual_json)],
 ):
-    revocar_sesion(sesion)
-    audit.registrar(db, audit.LOGOUT, request=request, usuario=usuario)
-    # Confirmar antes de responder: el frontend consulta /session tras el logout
-    # y debe ver la sesión ya revocada.
-    db.commit()
+    # El servicio confirma antes de devolver: el frontend consulta /session tras
+    # el logout y debe ver la sesión ya revocada.
+    autenticacion.cerrar_sesion(db, sesion=sesion, usuario=usuario, request=request)
     respuesta = JSONResponse({"ok": True})
     borrar_cookie(respuesta)
     return respuesta
