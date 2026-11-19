@@ -62,6 +62,22 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 - La reautenticación para autorizar una rotación **rechaza el código por correo**: un buzón puede
   estar compartido o abierto en la misma sesión, de modo que no acredita a una segunda persona.
 
+### Obsoleto
+
+Avisos previos de las roturas de la 2.0, para que ninguna llegue por sorpresa
+([`docs/plan-v2.0.md`](docs/plan-v2.0.md) §4):
+
+- **La interfaz clásica (HTML) se retira en la 2.0** (R1). Sus respuestas llevan ya
+  `Deprecation: true` y un `Link` a la documentación, y sus páginas muestran un aviso. `/api/web`,
+  `/api/v1` y los estáticos no se marcan: siguen vivos.
+- **`PASSWD_SMTP_TLS` y el uso de `PASSWD_NOTIFY_ENABLED` como interruptor del servicio de correo**
+  dejarán de aceptarse en la 2.0 (R4). Si están definidas, el arranque lo avisa nombrando la
+  sustituta. Una instalación que no las use no ve nada.
+- **`/api/v1/inventario` paginará siempre y excluirá por defecto los activos restringidos** en la
+  2.0 (R7). La aplicación lo registra la primera vez que recibe una llamada sin `limit`. El
+  contrato de `/api/v1` **no cambia en esta versión**: el aviso va por registro y documentación, no
+  por el cuerpo de la respuesta, para no romper a un cliente con validación estricta de esquema.
+
 ### Cambiado
 
 - El formulario de edición de una credencial **ya no permite cambiar la contraseña**: se rota por

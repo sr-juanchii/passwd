@@ -37,6 +37,12 @@
   {% endif %}
 </header>
 <main class="contenido">
+  {# Aviso de retirada (R1). Sin condicionar a usuario_actual: quien entre por
+     el acceso clásico también debe verlo antes de actualizar a la 2.0. #}
+  <div class="aviso aviso-info" role="status">
+    Esta interfaz clásica <strong>se retira en la versión 2.0</strong>. La misma funcionalidad
+    está disponible en la interfaz nueva; pida a su administrador la dirección si aún no la usa.
+  </div>
   {% if msg %}<div class="aviso aviso-exito">{{ msg }}</div>{% endif %}
   {% if error %}<div class="aviso aviso-error">{{ error }}</div>{% endif %}
   {% block contenido %}{% endblock %}

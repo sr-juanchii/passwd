@@ -142,6 +142,23 @@ significado, a propósito: dos verdades sobre lo mismo acaban divergiendo.
 
 ---
 
+## 7 bis. Configuración obsoleta (se retira en la 2.0)
+
+Estas variables se siguen aceptando en la serie 1.x, pero **la 2.0 dejará de leerlas** (rotura R4 de
+[`plan-v2.0.md`](plan-v2.0.md)). Si alguna está definida en su `.env`, la aplicación lo **avisa en
+el arranque** nombrándola y señalando su sustituta; una instalación que no las use no verá nada.
+
+| Variable obsoleta | Sustituta | Qué hacer |
+|---|---|---|
+| `PASSWD_SMTP_TLS` | `PASSWD_SMTP_SECURITY` | `true` → `starttls`, `false` → `ninguna` |
+| `PASSWD_NOTIFY_ENABLED` como interruptor del servicio de correo | `PASSWD_SMTP_ENABLED` | Defina `SMTP_ENABLED` explícitamente; `NOTIFY_ENABLED` queda solo para las alertas a administradores |
+
+Lo mismo ocurre con la **interfaz clásica** (rotura R1): sus respuestas llevan ya la cabecera
+`Deprecation: true` y sus páginas muestran un aviso. La funcionalidad equivalente está en la
+interfaz nueva; la 2.0 retira las rutas HTML del backend.
+
+---
+
 ## 8. MFA
 
 | Variable | Por defecto | Descripción |

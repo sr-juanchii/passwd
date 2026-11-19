@@ -352,15 +352,41 @@ def base_overridables() -> dict[str, object]:
     return {clave: base_overridable(clave) for clave in OVERRIDABLES}
 
 
+# Variables antiguas que todavía fijan el valor base de una clave editable, y
+# que la 2.0 elimina (rotura R4 de docs/plan-v2.0.md). Una sola fuente de
+# verdad: la usan `env_definida()` para resolver el origen de un ajuste y
+# `obsoletas_en_uso()` para avisar en el arranque.
+SUFIJOS_OBSOLETOS: dict[str, list[tuple[str, str]]] = {
+    # clave editable → [(variable antigua, variable que la sustituye)]
+    "smtp_enabled": [("NOTIFY_ENABLED", "SMTP_ENABLED")],
+    "smtp_security": [("SMTP_TLS", "SMTP_SECURITY")],
+}
+
+
+def _env_presente(sufijo: str) -> bool:
+    return bool(os.environ.get(f"{_PREFIX}{sufijo}") or os.environ.get(f"{_PREFIX}{sufijo}_FILE"))
+
+
 def env_definida(clave: str) -> bool:
     """¿La clave editable está fijada por variable de entorno (o su *_FILE)?"""
     sufijos = [OVERRIDABLES[clave][0]]
-    # Variables antiguas que también fijan el valor base de estas claves.
-    sufijos += {"smtp_enabled": ["NOTIFY_ENABLED"], "smtp_security": ["SMTP_TLS"]}.get(clave, [])
-    return any(
-        os.environ.get(f"{_PREFIX}{sufijo}") or os.environ.get(f"{_PREFIX}{sufijo}_FILE")
-        for sufijo in sufijos
-    )
+    sufijos += [antigua for antigua, _nueva in SUFIJOS_OBSOLETOS.get(clave, [])]
+    return any(_env_presente(sufijo) for sufijo in sufijos)
+
+
+def obsoletas_en_uso() -> list[tuple[str, str]]:
+    """Variables obsoletas realmente presentes en el entorno, con su sustituta.
+
+    Se mira el entorno y no el valor efectivo: una instalación que nunca las
+    definió no debe ver ningún aviso, y una que sí lo hizo debe enterarse ahora
+    y no al actualizar a la 2.0, cuando dejen de aceptarse.
+    """
+    return [
+        (antigua, nueva)
+        for pares in SUFIJOS_OBSOLETOS.values()
+        for antigua, nueva in pares
+        if _env_presente(antigua)
+    ]
 
 
 _settings: Settings | None = None
