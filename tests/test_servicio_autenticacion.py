@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
-from tests.conftest import sesion_bd
+from tests.conftest import codigo_totp, sesion_bd
 
 PASSWORD = "Clave-Del-Servicio-2026!"
 CSRF = "token-csrf-de-login"
@@ -330,3 +330,232 @@ def test_cerrar_sesion_la_revoca_y_lo_audita(db):
     assert sesion.revocada_en is not None
     assert db.scalar(select(func.count(RegistroAuditoria.id)).where(
         RegistroAuditoria.accion == audit.LOGOUT)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Segundo factor
+# ---------------------------------------------------------------------------
+#
+# Las tres pruebas siguientes cubren divergencias REALES que había entre las dos
+# interfaces antes de unificarlas: la clásica se quedaba corta en cada una.
+
+
+def _con_totp(db, username="contotp", **kwargs):
+    from app.security import mfa
+    from app.security.crypto import cifrar
+
+    usuario = _usuario(db, username, **kwargs)
+    secreto = mfa.generar_secreto()
+    usuario.totp_secret_cifrado = cifrar(secreto)
+    db.flush()
+    return usuario, secreto
+
+
+def test_la_verificacion_tiene_su_propio_limite_de_tasa(db, monkeypatch):
+    """Antes existía SOLO en la API JSON: la interfaz clásica se quedaba con el
+    bloqueo de cuenta como única defensa del segundo factor."""
+    from app.servicios import autenticacion
+    from app.servicios.autenticacion import ErrorAutenticacion, verificar_segundo_factor
+
+    usuario, _secreto = _con_totp(db)
+    sesion = _sesion_de(db, usuario, etapa="mfa_pendiente")
+    monkeypatch.setattr(autenticacion.ratelimit, "permitir_intento", lambda *a, **k: False)
+
+    with pytest.raises(ErrorAutenticacion) as exc:
+        verificar_segundo_factor(db, sesion=sesion, usuario=usuario, codigo="000000")
+    assert exc.value.codigo == 429
+
+
+def test_un_codigo_de_enrolamiento_malo_cuenta_para_el_bloqueo(db):
+    """Antes la interfaz clásica solo lo auditaba, sin sumar al bloqueo."""
+    from app.servicios.autenticacion import ErrorAutenticacion, confirmar_enrolamiento_totp
+
+    usuario, _secreto = _con_totp(db, mfa=False)
+    sesion = _sesion_de(db, usuario, etapa="mfa_enrolamiento")
+
+    with pytest.raises(ErrorAutenticacion):
+        confirmar_enrolamiento_totp(db, sesion=sesion, usuario=usuario, codigo="000000")
+
+    db.refresh(usuario)
+    assert usuario.intentos_fallidos == 1
+
+
+def test_el_enrolamiento_correcto_abre_la_sesion_y_entrega_los_codigos(db):
+    from app.servicios.autenticacion import confirmar_enrolamiento_totp
+
+    usuario, secreto = _con_totp(db, mfa=False)
+    sesion = _sesion_de(db, usuario, etapa="mfa_enrolamiento")
+
+    enrolado = confirmar_enrolamiento_totp(
+        db, sesion=sesion, usuario=usuario, codigo=codigo_totp(secreto),
+    )
+    assert enrolado.metodo == "totp"
+    assert len(enrolado.codigos_recuperacion) == 8
+    db.refresh(usuario)
+    db.refresh(sesion)
+    assert usuario.mfa_habilitado is True
+    assert usuario.intentos_fallidos == 0
+    assert sesion.etapa == "activa"
+
+
+def test_el_segundo_factor_correcto_activa_la_sesion(db):
+    from app.servicios.autenticacion import verificar_segundo_factor
+
+    usuario, secreto = _con_totp(db)
+    sesion = _sesion_de(db, usuario, etapa="mfa_pendiente")
+
+    verificado = verificar_segundo_factor(
+        db, sesion=sesion, usuario=usuario, codigo=codigo_totp(secreto),
+    )
+    assert verificado.etapa == "activa"
+    assert verificado.aviso is None
+    db.refresh(usuario)
+    assert usuario.ultimo_acceso is not None
+
+
+def test_un_codigo_malo_repetido_bloquea_y_revoca_la_sesion(db):
+    from app.config import get_settings
+    from app.servicios.autenticacion import ErrorAutenticacion, verificar_segundo_factor
+
+    usuario, _secreto = _con_totp(db)
+    sesion = _sesion_de(db, usuario, etapa="mfa_pendiente")
+    usuario.intentos_fallidos = get_settings().max_failed_attempts - 1
+    db.flush()
+
+    with pytest.raises(ErrorAutenticacion) as exc:
+        verificar_segundo_factor(db, sesion=sesion, usuario=usuario, codigo="000000")
+
+    assert exc.value.codigo == 423
+    assert exc.value.revocar_sesion is True
+    db.refresh(sesion)
+    assert sesion.revocada_en is not None
+
+
+def test_un_codigo_de_recuperacion_avisa_de_cuantos_quedan(db):
+    from app.security import recovery
+    from app.servicios.autenticacion import confirmar_enrolamiento_totp, verificar_segundo_factor
+
+    usuario, secreto = _con_totp(db, mfa=False)
+    enrolado = confirmar_enrolamiento_totp(
+        db, sesion=_sesion_de(db, usuario, etapa="mfa_enrolamiento"),
+        usuario=usuario, codigo=codigo_totp(secreto),
+    )
+    codigo = enrolado.codigos_recuperacion[0]
+
+    sesion = _sesion_de(db, usuario, etapa="mfa_pendiente")
+    verificado = verificar_segundo_factor(db, sesion=sesion, usuario=usuario, codigo=codigo)
+
+    assert verificado.etapa == "activa"
+    assert "le quedan 7" in verificado.aviso
+    assert recovery.codigos_restantes(db, usuario) == 7
+
+
+# ---------------------------------------------------------------------------
+# Auto-recuperación
+# ---------------------------------------------------------------------------
+
+
+def test_la_recuperacion_emite_desafio_exista_o_no_la_cuenta(db):
+    """Anti-enumeración: mismo trabajo y misma respuesta en ambos casos."""
+    from app.servicios.autenticacion import recuperacion_iniciar
+
+    _con_totp(db, "real", mfa=True)
+
+    real = recuperacion_iniciar(db, username="real", email="real@ejemplo.local",
+                                csrf_login=CSRF, cookie_csrf=CSRF)
+    senuelo = recuperacion_iniciar(db, username="no-existe", email="x@ejemplo.local",
+                                   csrf_login=CSRF, cookie_csrf=CSRF)
+
+    assert real.token and real.csrf
+    assert senuelo.token and senuelo.csrf
+    assert real.token != senuelo.token
+
+
+def test_el_mfa_por_correo_tambien_puede_recuperar(db):
+    """Antes la interfaz clásica lo impedía exigiendo secreto TOTP, aunque esa
+    cuenta tiene códigos de recuperación con los que superar el paso 2."""
+    from app.models import MFA_CORREO, RecuperacionPassword
+    from app.servicios.autenticacion import recuperacion_iniciar
+
+    usuario = _usuario(db, "porcorreo", mfa=True)
+    usuario.mfa_metodo = MFA_CORREO
+    usuario.totp_secret_cifrado = None
+    db.flush()
+
+    desafio = recuperacion_iniciar(db, username="porcorreo", email="porcorreo@ejemplo.local",
+                                   csrf_login=CSRF, cookie_csrf=CSRF)
+
+    fila = db.scalar(select(RecuperacionPassword).order_by(RecuperacionPassword.id.desc()))
+    assert fila.usuario_id == usuario.id, "debería ser un desafío REAL, no un señuelo"
+    assert desafio.csrf
+
+
+def test_el_codigo_por_correo_no_sirve_para_recuperar(db):
+    """La identidad ya se acreditó con el correo en el paso 1: aceptarlo aquí
+    dejaría toda la recuperación apoyada en un único factor."""
+    from app.security import otp_correo
+    from app.servicios.autenticacion import (
+        ErrorAutenticacion,
+        recuperacion_iniciar,
+        recuperacion_verificar,
+    )
+
+    usuario, _secreto = _con_totp(db, "conotp", mfa=True)
+    desafio = recuperacion_iniciar(db, username="conotp", email="conotp@ejemplo.local",
+                                   csrf_login=CSRF, cookie_csrf=CSRF)
+    codigo_correo = otp_correo.emitir(db, usuario, "10.0.0.1")
+    db.flush()
+
+    with pytest.raises(ErrorAutenticacion) as exc:
+        recuperacion_verificar(db, token_desafio=desafio.token, csrf_enviado=desafio.csrf,
+                               codigo=codigo_correo)
+    assert exc.value.codigo == 401
+
+
+def test_la_recuperacion_completa_revoca_todas_las_sesiones(db):
+    from app.models import SesionWeb
+    from app.servicios.autenticacion import (
+        recuperacion_cambiar,
+        recuperacion_iniciar,
+        recuperacion_verificar,
+    )
+
+    usuario, secreto = _con_totp(db, "recuperable", mfa=True)
+    _sesion_de(db, usuario)
+    _sesion_de(db, usuario)
+
+    desafio = recuperacion_iniciar(db, username="recuperable",
+                                   email="recuperable@ejemplo.local",
+                                   csrf_login=CSRF, cookie_csrf=CSRF)
+    recuperacion_verificar(db, token_desafio=desafio.token, csrf_enviado=desafio.csrf,
+                           codigo=codigo_totp(secreto))
+    recuperacion_cambiar(db, token_desafio=desafio.token, csrf_enviado=desafio.csrf,
+                         nueva="Clave-Recuperada-2026!", confirmacion="Clave-Recuperada-2026!")
+
+    assert db.scalar(select(func.count(SesionWeb.id)).where(
+        SesionWeb.usuario_id == usuario.id, SesionWeb.revocada_en.is_(None))) == 0
+    db.refresh(usuario)
+    assert usuario.bloqueado_hasta is None
+
+
+def test_el_desafio_se_agota_tras_varios_codigos_malos(db):
+    from app.servicios.autenticacion import (
+        ErrorAutenticacion,
+        recuperacion_iniciar,
+        recuperacion_verificar,
+    )
+
+    _con_totp(db, "agotable", mfa=True)
+    desafio = recuperacion_iniciar(db, username="agotable", email="agotable@ejemplo.local",
+                                   csrf_login=CSRF, cookie_csrf=CSRF)
+
+    ultimo = None
+    for _ in range(10):
+        try:
+            recuperacion_verificar(db, token_desafio=desafio.token,
+                                   csrf_enviado=desafio.csrf, codigo="000000")
+        except ErrorAutenticacion as exc:
+            ultimo = exc
+            if exc.destino == "/recuperar":
+                break
+    assert ultimo is not None and ultimo.destino == "/recuperar", "el desafío debe agotarse"

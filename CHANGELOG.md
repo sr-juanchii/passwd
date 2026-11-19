@@ -38,9 +38,9 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 - Campo **«usada por»** en la credencial: servicios y automatismos que consumen la cuenta, visible
   al solicitar y al autorizar una rotación.
 - Capa **`app/servicios/`** con los casos de uso de rotación, reautenticación, patrones,
-  **credenciales** y **autenticación** (login por etapas, cambio de contraseña y cierre de sesión).
-  Los controladores pasan a traducir HTTP ↔ servicio y no contienen ya consultas ni decisiones de
-  acceso en esos caminos.
+  **credenciales** y **autenticación completa** (login por etapas, cambio de contraseña, segundo
+  factor por ambos métodos, auto-recuperación y cierre de sesión). Los controladores pasan a
+  traducir HTTP ↔ servicio y no contienen ya consultas ni decisiones de acceso.
 - Permisos `rotacion.ver`, `rotacion.solicitar`, `rotacion.autorizar` y `rotacion.revisar`.
 - Ajustes nuevos: `PASSWD_ROTACION_TEMPRANA_PCT`, `PASSWD_ROTACION_EMERGENCIA_VENTANA_MIN`,
   `PASSWD_ROTACION_EMERGENCIA_MAX_POR_MES` y `PASSWD_ROTACION_PATRONES_MODO_OBSERVACION`.
@@ -64,6 +64,17 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   rechaza con 409 y queda auditado.
 - La reautenticación para autorizar una rotación **rechaza el código por correo**: un buzón puede
   estar compartido o abierto en la misma sesión, de modo que no acredita a una segunda persona.
+- **Tres divergencias entre la interfaz clásica y la API JSON**, encontradas al unificar la
+  autenticación. En las tres la interfaz clásica era la débil:
+  - La **verificación del segundo factor no tenía límite de tasa por usuario**: solo la API JSON lo
+    aplicaba. El bloqueo de cuenta seguía frenando la prueba sistemática, de modo que no era una
+    puerta abierta, pero sí una defensa menos. Ahora la tienen las dos.
+  - Un **código de enrolamiento incorrecto no contaba para el bloqueo** de la cuenta; solo se
+    auditaba. Ahora cuenta, como ya hacía la API JSON.
+  - Una cuenta con **segundo factor por correo no podía iniciar la auto-recuperación**, porque se
+    exigía un secreto TOTP que esas cuentas no tienen. Quedaba atrapada en un desafío señuelo
+    imposible de superar, aun teniendo códigos de recuperación válidos con los que completar el
+    paso 2. Ahora puede.
 - **El login deja de estar escrito dos veces.** El CSRF de doble cookie, el límite por IP, la
   comparación en tiempo constante contra un hash ficticio, el bloqueo de cuenta y el *rehash*
   oportunista vivían duplicados en los dos controladores de autenticación. Ahora hay una sola

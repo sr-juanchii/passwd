@@ -17,10 +17,8 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit
 from app.config import get_settings
 from app.database import get_db
 from app.deps import (
@@ -37,22 +35,14 @@ from app.models import (
     ETAPA_CAMBIO_PASSWORD,
     ETAPA_MFA_ENROLAMIENTO,
     ETAPA_MFA_PENDIENTE,
-    MFA_CORREO,
-    MFA_TOTP,
     SesionWeb,
     Usuario,
-    ahora_utc,
 )
-from app.notifications import enviar_a_direccion, enviar_alerta
-from app.security import mfa, otp_correo, ratelimit, recovery, recuperacion, segundo_factor
-from app.security.crypto import cifrar, descifrar
-from app.security.passwords import hashear_password, validar_politica, verificar_password
+from app.security import mfa, recuperacion, segundo_factor
+from app.security.crypto import descifrar
 from app.security.sessions import (
     borrar_cookie,
     configurar_cookie,
-    revocar_sesion,
-    revocar_sesiones_de_usuario,
-    rotar_token,
 )
 from app.servicios import autenticacion
 from app.servicios.autenticacion import ErrorAutenticacion
@@ -78,19 +68,12 @@ _DESTINO_ETAPA = {
     ETAPA_MFA_PENDIENTE: "/mfa/verificar",
 }
 
-# Los ayudantes de etapa, bloqueo, IP y aviso de inicio de sesión viven ahora en
-# app/servicios/autenticacion.py, compartidos con la API JSON. Se mantienen
-# estos alias porque el segundo factor y la recuperación todavía los usan desde
-# este módulo; desaparecen cuando esos flujos pasen al servicio.
-_ip_de = autenticacion.ip_de
 
-
-def _avisar_inicio_sesion(db: Session, request: Request, usuario: Usuario) -> None:
-    autenticacion.avisar_inicio_sesion(db, usuario, request)
-
-
-def _registrar_fallo(db: Session, request: Request, usuario: Usuario) -> None:
-    autenticacion.registrar_fallo(db, usuario, request)
+def _usuario_de(db: Session, sesion: SesionWeb) -> Usuario:
+    """El titular de la sesión. La dependencia de etapa ya garantizó que existe."""
+    usuario = db.get(Usuario, sesion.usuario_id)
+    assert usuario is not None
+    return usuario
 
 
 # ---------------------------------------------------------------------------
@@ -219,14 +202,8 @@ def mfa_configurar_form(
     db: Annotated[Session, Depends(get_db)],
     sesion: Annotated[SesionWeb, Depends(en_etapa(ETAPA_MFA_ENROLAMIENTO))],
 ):
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-    reenrolando = usuario.mfa_habilitado and usuario.mfa_metodo == MFA_CORREO
-    if usuario.totp_secret_cifrado is None or (usuario.mfa_habilitado and not reenrolando):
-        usuario.totp_secret_cifrado = cifrar(mfa.generar_secreto())
-        if not reenrolando:
-            usuario.mfa_habilitado = False
-    secreto = descifrar(usuario.totp_secret_cifrado)
+    usuario = _usuario_de(db, sesion)
+    secreto = autenticacion.secreto_totp_para_enrolar(db, usuario)
     return render(request, "mfa_configurar.html", {
         "qr_data_uri": mfa.qr_svg_data_uri(secreto, usuario.username),
         "secreto": secreto,
@@ -242,8 +219,8 @@ def mfa_configurar(
     codigo: Annotated[str, Form()] = "",
     csrf_token: Annotated[str, Form()] = "",
 ):
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None and usuario.totp_secret_cifrado is not None
+    usuario = _usuario_de(db, sesion)
+    assert usuario.totp_secret_cifrado is not None
     secreto = descifrar(usuario.totp_secret_cifrado)
     ctx = {"qr_data_uri": mfa.qr_svg_data_uri(secreto, usuario.username),
            "secreto": secreto, "csrf_token": sesion.csrf_token}
@@ -251,32 +228,26 @@ def mfa_configurar(
     if not hmac.compare_digest(csrf_token, sesion.csrf_token):
         return render(request, "mfa_configurar.html", {**ctx, "error": "Token CSRF inválido."}, status_code=403)
 
-    valido, _reutilizado = segundo_factor.aceptar_totp(usuario, codigo)
-    if not valido:
-        audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
-                        detalle="Código de enrolamiento incorrecto.", exito=False)
+    # Esta interfaz solo enrola TOTP; el método por correo se elige en la nueva.
+    try:
+        enrolado = autenticacion.confirmar_enrolamiento_totp(
+            db, sesion=sesion, usuario=usuario, codigo=codigo, request=request,
+        )
+    except ErrorAutenticacion as exc:
+        if exc.revocar_sesion:
+            respuesta = RedirectResponse(exc.destino or "/login", status_code=303)
+            borrar_cookie(respuesta)
+            return respuesta
         return render(request, "mfa_configurar.html",
-                      {**ctx, "error": "Código incorrecto. Verifique su aplicación autenticadora."},
-                      status_code=400)
-
-    usuario.mfa_habilitado = True
-    usuario.mfa_metodo = MFA_TOTP  # la interfaz clásica solo enrola TOTP
-    usuario.ultimo_acceso = ahora_utc()
-    sesion.etapa = ETAPA_ACTIVA
-    token = rotar_token(db, sesion)
-    codigos_recuperacion = recovery.emitir_codigos(db, usuario)
-    audit.registrar(db, audit.MFA_ENROLADO, request=request, usuario=usuario,
-                    detalle=f"{len(codigos_recuperacion)} códigos de recuperación emitidos.")
-    audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
-    _avisar_inicio_sesion(db, request, usuario)
+                      {**ctx, "error": exc.mensaje}, status_code=exc.codigo)
 
     # Los códigos de recuperación se muestran una única vez
     respuesta = render(request, "mfa_codigos.html", {
-        "usuario_actual": usuario,
-        "codigos": codigos_recuperacion,
+        "usuario_actual": enrolado.usuario,
+        "codigos": enrolado.codigos_recuperacion,
         "csrf_token": sesion.csrf_token,
     })
-    configurar_cookie(respuesta, token)
+    configurar_cookie(respuesta, enrolado.token)
     return respuesta
 
 
@@ -308,8 +279,7 @@ def mfa_solicitar_otp_correo(
     que no es un punto de entrada por sí solo. El código se verifica luego en
     ``POST /mfa/verificar``, igual que un TOTP.
     """
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
+    usuario = _usuario_de(db, sesion)
     contexto = {"csrf_token": sesion.csrf_token,
                 "otp_correo_disponible": segundo_factor.correo_en_login(usuario)}
     if not hmac.compare_digest(csrf_token, sesion.csrf_token):
@@ -322,34 +292,14 @@ def mfa_solicitar_otp_correo(
                      "autenticadora o un código de recuperación.",
         }, status_code=409)
 
-    ip = _ip_de(request)
+    try:
+        autenticacion.enviar_codigo_correo(
+            db, usuario=usuario, proposito="respaldo", request=request,
+        )
+    except ErrorAutenticacion as exc:
+        return render(request, "mfa_verificar.html",
+                      {**contexto, "error": exc.mensaje}, status_code=exc.codigo)
 
-    # Doble límite: por cuenta (no inundar el buzón de un usuario) y por IP (no
-    # convertir el sistema en un amplificador de correo).
-    for clave in (f"otp-correo-user:{usuario.id}", f"otp-correo-ip:{ip}"):
-        if not ratelimit.permitir_intento(clave, limite=3, ventana_minutos=15, db=db):
-            audit.registrar(db, audit.MFA_OTP_CORREO_SOLICITADO, request=request, usuario=usuario,
-                            detalle="Tasa excedida al pedir OTP por correo.", exito=False)
-            db.commit()
-            return render(request, "mfa_verificar.html", {
-                **contexto, "error": "Demasiadas solicitudes; espere unos minutos.",
-            }, status_code=429)
-
-    codigo = otp_correo.emitir(db, usuario, ip)
-    asunto, cuerpo_correo = otp_correo.texto_correo(usuario, codigo, ip)
-    entregado = enviar_a_direccion(usuario.email, asunto, cuerpo_correo)
-    audit.registrar(
-        db, audit.MFA_OTP_CORREO_SOLICITADO, request=request, usuario=usuario,
-        detalle=("Código de respaldo enviado al correo registrado." if entregado
-                 else "No se pudo entregar el código de respaldo (fallo SMTP)."),
-        exito=entregado,
-    )
-    db.commit()
-    if not entregado:
-        return render(request, "mfa_verificar.html", {
-            **contexto,
-            "error": "No se pudo enviar el código a su correo. Avise al administrador.",
-        }, status_code=502)
     minutos = get_settings().email_otp_ttl_minutes
     return render(request, "mfa_verificar.html", {
         **contexto,
@@ -365,81 +315,34 @@ def mfa_verificar(
     codigo: Annotated[str, Form()] = "",
     csrf_token: Annotated[str, Form()] = "",
 ):
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
+    usuario = _usuario_de(db, sesion)
 
     if not hmac.compare_digest(csrf_token, sesion.csrf_token):
         return render(request, "mfa_verificar.html",
                       {"csrf_token": sesion.csrf_token, "error": "Token CSRF inválido."}, status_code=403)
 
-    # Comprobación ÚNICA del segundo factor, común con la API JSON: TOTP (si es
-    # el método del usuario) → código de recuperación → código por correo.
-    resultado = segundo_factor.comprobar(db, usuario, codigo)
-    reutilizado = resultado.reutilizado
-    totp_valido = resultado.via == segundo_factor.VIA_TOTP
-    recuperacion_usada = resultado.via == segundo_factor.VIA_RECUPERACION
-    otp_correo_usado = resultado.via == segundo_factor.VIA_CORREO
-
-    if not totp_valido and not recuperacion_usada and not otp_correo_usado:
-        _registrar_fallo(db, request, usuario)
-        audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
-                        detalle="Código reutilizado." if reutilizado else "Código incorrecto.", exito=False)
-        if usuario.esta_bloqueado():
-            revocar_sesion(sesion)
+    try:
+        verificado = autenticacion.verificar_segundo_factor(
+            db, sesion=sesion, usuario=usuario, codigo=codigo, request=request,
+        )
+    except ErrorAutenticacion as exc:
+        if exc.revocar_sesion:
+            # La cuenta se bloqueó con este intento: fuera y a empezar.
             respuesta = RedirectResponse("/login", status_code=303)
             borrar_cookie(respuesta)
             return respuesta
         return render(request, "mfa_verificar.html",
-                      {"csrf_token": sesion.csrf_token, "error": "Código incorrecto."}, status_code=401)
+                      {"csrf_token": sesion.csrf_token, "error": exc.mensaje},
+                      status_code=exc.codigo)
 
-    usuario.intentos_fallidos = 0
-    token = rotar_token(db, sesion)
-    if segundo_factor.debe_reenrolar_con_totp(usuario):
-        # Factores verificados, pero la política ya no admite el correo como
-        # método principal para esta cuenta: debe configurar TOTP antes de entrar.
-        sesion.etapa = ETAPA_MFA_ENROLAMIENTO
-        audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
-                        detalle="Código por correo aceptado; se exige configurar TOTP.")
-        respuesta = RedirectResponse("/mfa/configurar", status_code=303)
-        configurar_cookie(respuesta, token)
-        return respuesta
-    usuario.ultimo_acceso = ahora_utc()
-    sesion.etapa = ETAPA_ACTIVA
-
-    if recuperacion_usada:
-        restantes = recovery.codigos_restantes(db, usuario)
-        audit.registrar(db, audit.MFA_RECUPERACION, request=request, usuario=usuario,
-                        detalle=f"Quedan {restantes} código(s) de recuperación sin usar.")
-        aviso = (f"Código de recuperación aceptado; le quedan {restantes}. "
-                 "Si perdió su dispositivo, pida al administrador reiniciar su MFA.")
-        destino = f"/?msg={quote(aviso)}"
-    elif otp_correo_usado and usuario.mfa_metodo == MFA_CORREO:
-        audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
-                        detalle="Acceso completado con código por correo (método principal).")
-        destino = "/"
-    elif otp_correo_usado:
-        # Un acceso por el factor de respaldo merece revisión: se audita y se
-        # alerta al equipo de seguridad, no solo al titular.
-        audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
-                        detalle="Acceso completado con OTP de respaldo enviado al correo.")
-        enviar_alerta(
-            "Acceso con MFA de respaldo (OTP por correo)",
-            f"La cuenta «{usuario.username}» completó el segundo factor con un código "
-            f"enviado por correo, no con su aplicación autenticadora "
-            f"(IP de origen: {_ip_de(request)}). Si no corresponde a una pérdida de "
-            f"dispositivo conocida, revíselo.",
-        )
-        aviso = ("Acceso verificado con el código enviado a su correo. Vuelva a "
-                 "configurar su aplicación autenticadora en cuanto pueda.")
-        destino = f"/?msg={quote(aviso)}"
+    if verificado.etapa == ETAPA_MFA_ENROLAMIENTO:
+        destino = "/mfa/configurar"
+    elif verificado.aviso:
+        destino = f"/?msg={quote(verificado.aviso)}"
     else:
-        audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
         destino = "/"
-
-    _avisar_inicio_sesion(db, request, usuario)
-
     respuesta = RedirectResponse(destino, status_code=303)
-    configurar_cookie(respuesta, token)
+    configurar_cookie(respuesta, verificado.token)
     return respuesta
 
 
@@ -467,42 +370,21 @@ def recuperar_iniciar(
     email: Annotated[str, Form()] = "",
     csrf_token: Annotated[str, Form()] = "",
 ):
-    ip = request.client.host if request.client else "desconocida"
     cookie_csrf = request.cookies.get(COOKIE_CSRF_LOGIN, "")
-    if not cookie_csrf or not hmac.compare_digest(csrf_token, cookie_csrf):
+    try:
+        desafio = autenticacion.recuperacion_iniciar(
+            db, username=username, email=email, csrf_login=csrf_token,
+            cookie_csrf=cookie_csrf, request=request,
+        )
+    except ErrorAutenticacion as exc:
         return render(request, "recuperar_identidad.html",
-                      {"error": "Sesión de formulario inválida; intente de nuevo.",
-                       "csrf_login": cookie_csrf}, status_code=403)
-    if not ratelimit.permitir_intento(f"recuperar:{ip}", db=db):
-        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
-                        username=username.strip().lower(), detalle="Tasa excedida.", exito=False)
-        db.commit()
-        return render(request, "recuperar_identidad.html",
-                      {"error": "Demasiados intentos; espere unos minutos.", "csrf_login": cookie_csrf},
-                      status_code=429)
+                      {"error": exc.mensaje, "csrf_login": cookie_csrf},
+                      status_code=exc.codigo)
 
-    usuario = db.scalar(select(Usuario).where(func.lower(Usuario.username) == username.strip().lower()))
-    coincide = (
-        usuario is not None and usuario.activo and usuario.mfa_habilitado
-        and usuario.totp_secret_cifrado is not None
-        and hmac.compare_digest(usuario.email.strip().lower(), email.strip().lower())
-    )
-    # Se crea SIEMPRE un desafío (real o señuelo sin usuario) para que el paso 2
-    # responda igual y con la misma latencia exista o no la cuenta.
-    if coincide and ratelimit.permitir_intento(f"recuperar-user:{usuario.id}", db=db):
-        token, _csrf = recuperacion.crear_desafio(db, usuario.id)
-        audit.registrar(db, audit.RECUPERACION_INICIADA, request=request, usuario=usuario,
-                        detalle="Identidad verificada; desafío de recuperación emitido.")
-    else:
-        token, _csrf = recuperacion.crear_desafio(db, None)
-        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
-                        usuario=usuario if coincide else None, username=username.strip().lower(),
-                        detalle="Tasa por usuario excedida." if coincide else "Identidad no coincide.",
-                        exito=False)
-    db.commit()
-    # PRG + anti-enumeración: SIEMPRE se redirige al paso 2 con cookie de desafío.
+    # PRG + anti-enumeración: SIEMPRE se redirige al paso 2 con cookie de
+    # desafío, exista o no la cuenta.
     respuesta = RedirectResponse("/recuperar/verificar", status_code=303)
-    _cookie_recuperacion(respuesta, token)
+    _cookie_recuperacion(respuesta, desafio.token)
     return respuesta
 
 
@@ -521,52 +403,27 @@ def recuperar_verificar(
     codigo: Annotated[str, Form()] = "",
     csrf_token: Annotated[str, Form()] = "",
 ):
+    # El CSRF de este paso viaja en el formulario y se compara contra el del
+    # desafío, no contra una sesión: aquí todavía no hay sesión.
     desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
     if desafio is None:
         return RedirectResponse("/recuperar", status_code=303)
-    if not hmac.compare_digest(csrf_token, desafio.csrf_token):
-        return render(request, "recuperar_verificar.html",
-                      {"csrf_token": desafio.csrf_token, "error": "Token CSRF inválido."}, status_code=403)
     if desafio.verificado:
         return RedirectResponse("/recuperar/cambiar", status_code=303)
-    if not ratelimit.permitir_intento(f"recuperar-verif:{desafio.usuario_id}", db=db):
-        db.commit()
-        return render(request, "recuperar_verificar.html",
-                      {"csrf_token": desafio.csrf_token, "error": "Demasiados intentos; espere unos minutos."},
-                      status_code=429)
 
-    # Señuelo (usuario_id nulo) o cuenta inválida → mismo camino y respuesta que
-    # un código incorrecto sobre una cuenta real (anti-enumeración en el paso 2).
-    usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
-    recuperable = usuario is not None and usuario.activo and usuario.mfa_habilitado
-    if recuperable:
-        # TOTP en vivo o código de recuperación; el código por correo no vale
-        # aquí (la identidad ya se acreditó con el correo: sería un único factor).
-        resultado = segundo_factor.comprobar(db, usuario, codigo, permitir_correo=False)
-        totp_valido = resultado.via == segundo_factor.VIA_TOTP
-        codigo_recuperacion = resultado.via == segundo_factor.VIA_RECUPERACION
-    else:
-        mfa.verificar_codigo(mfa.generar_secreto(), codigo)  # equipara el tiempo, nunca válido
-        totp_valido = False
-        codigo_recuperacion = False
-
-    if not totp_valido and not codigo_recuperacion:
-        agotado = recuperacion.registrar_fallo(db, desafio)
-        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request, usuario=usuario,
-                        detalle="Segundo factor incorrecto." + (" Desafío agotado." if agotado else ""),
-                        exito=False)
-        db.commit()
-        if agotado:
+    try:
+        autenticacion.recuperacion_verificar(
+            db, token_desafio=request.cookies.get(COOKIE_RECUPERACION),
+            csrf_enviado=csrf_token, codigo=codigo, request=request,
+        )
+    except ErrorAutenticacion as exc:
+        if exc.revocar_sesion:  # desafío agotado
             respuesta = RedirectResponse("/recuperar", status_code=303)
             respuesta.delete_cookie(COOKIE_RECUPERACION, path="/")
             return respuesta
         return render(request, "recuperar_verificar.html",
-                      {"csrf_token": desafio.csrf_token, "error": "Código incorrecto."}, status_code=401)
-
-    recuperacion.marcar_verificado(db, desafio)
-    audit.registrar(db, audit.RECUPERACION_VERIFICADA, request=request, usuario=usuario,
-                    detalle="Código de recuperación usado." if codigo_recuperacion else "TOTP verificado.")
-    db.commit()
+                      {"csrf_token": desafio.csrf_token, "error": exc.mensaje},
+                      status_code=exc.codigo)
     return RedirectResponse("/recuperar/cambiar", status_code=303)
 
 
@@ -590,42 +447,20 @@ def recuperar_cambiar(
     if desafio is None or not desafio.verificado:
         return RedirectResponse("/recuperar", status_code=303)
     ctx = {"csrf_token": desafio.csrf_token}
-    if not hmac.compare_digest(csrf_token, desafio.csrf_token):
-        return render(request, "recuperar_cambiar.html", {**ctx, "error": "Token CSRF inválido."}, status_code=403)
 
-    usuario = db.get(Usuario, desafio.usuario_id)
-    if usuario is None or not usuario.activo:
-        recuperacion.consumir(db, desafio)
-        db.commit()
-        return RedirectResponse("/recuperar", status_code=303)
-
-    if password_nueva != password_confirmacion:
-        return render(request, "recuperar_cambiar.html", {**ctx, "error": "La confirmación no coincide."},
-                      status_code=400)
-    errores = validar_politica(password_nueva, usuario.username)
-    if errores:
-        return render(request, "recuperar_cambiar.html", {**ctx, "error": " ".join(errores)}, status_code=400)
-    if verificar_password(usuario.password_hash, password_nueva):
+    try:
+        autenticacion.recuperacion_cambiar(
+            db, token_desafio=request.cookies.get(COOKIE_RECUPERACION),
+            csrf_enviado=csrf_token, nueva=password_nueva,
+            confirmacion=password_confirmacion, request=request,
+        )
+    except ErrorAutenticacion as exc:
+        if exc.codigo == 400 and "Reiníciela" in exc.mensaje:
+            # El desafío dejó de ser utilizable: vuelta al principio.
+            return RedirectResponse("/recuperar", status_code=303)
         return render(request, "recuperar_cambiar.html",
-                      {**ctx, "error": "La nueva contraseña debe ser distinta de la anterior."}, status_code=400)
+                      {**ctx, "error": exc.mensaje}, status_code=exc.codigo)
 
-    usuario.password_hash = hashear_password(password_nueva)
-    usuario.debe_cambiar_password = False
-    usuario.password_cambiada_en = ahora_utc()
-    usuario.intentos_fallidos = 0
-    usuario.bloqueado_hasta = None
-    revocar_sesiones_de_usuario(db, usuario.id)
-    recuperacion.consumir(db, desafio)
-    audit.registrar(db, audit.RECUPERACION_COMPLETADA, request=request, usuario=usuario,
-                    detalle="Contraseña restablecida por auto-recuperación.")
-    ip = request.client.host if request.client else "desconocida"
-    enviar_alerta(
-        "Contraseña restablecida por auto-recuperación",
-        f"La contraseña de «{usuario.username}» se restableció mediante el flujo de "
-        f"auto-recuperación (IP de origen: {ip}). Si no fue usted, contacte al "
-        f"administrador de inmediato.",
-    )
-    db.commit()
     aviso = "Contraseña restablecida. Inicie sesión con su nueva contraseña."
     respuesta = RedirectResponse(f"/login?msg={quote(aviso)}", status_code=303)
     respuesta.delete_cookie(COOKIE_RECUPERACION, path="/")
