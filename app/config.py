@@ -375,17 +375,24 @@ def env_definida(clave: str) -> bool:
 
 
 def obsoletas_en_uso() -> list[tuple[str, str]]:
-    """Variables obsoletas realmente presentes en el entorno, con su sustituta.
+    """Herencias obsoletas que hoy están EN EFECTO, con la variable sustituta.
 
-    Se mira el entorno y no el valor efectivo: una instalación que nunca las
-    definió no debe ver ningún aviso, y una que sí lo hizo debe enterarse ahora
-    y no al actualizar a la 2.0, cuando dejen de aceptarse.
+    Lo que la 2.0 retira no son las variables en sí, sino que una fije el valor
+    de otra. Por eso solo se avisa cuando la sustituta no está definida, que es
+    cuando la herencia decide de verdad: con las dos puestas manda la nueva y no
+    hay nada que corregir.
+
+    La distinción no es cosmética. `PASSWD_NOTIFY_ENABLED` sigue teniendo
+    significado propio —gobierna las alertas de seguridad a los
+    administradores— y solo es obsoleta como origen de `PASSWD_SMTP_ENABLED`.
+    Avisar de ella sin más llevaría a quien la use a borrarla y quedarse sin
+    alertas, que es peor que no avisar.
     """
     return [
         (antigua, nueva)
         for pares in SUFIJOS_OBSOLETOS.values()
         for antigua, nueva in pares
-        if _env_presente(antigua)
+        if _env_presente(antigua) and not _env_presente(nueva)
     ]
 
 

@@ -84,13 +84,40 @@ def test_no_se_avisa_de_configuracion_obsoleta_si_no_se_usa(monkeypatch):
     assert obsoletas_en_uso() == []
 
 
-def test_se_detecta_cada_variable_obsoleta_con_su_sustituta(monkeypatch):
+def test_se_detecta_cada_herencia_obsoleta_con_su_sustituta(monkeypatch):
     from app.config import obsoletas_en_uso
 
     monkeypatch.setenv("PASSWD_SMTP_TLS", "true")
     monkeypatch.setenv("PASSWD_NOTIFY_ENABLED", "true")
+    monkeypatch.delenv("PASSWD_SMTP_SECURITY", raising=False)
+    monkeypatch.delenv("PASSWD_SMTP_ENABLED", raising=False)
     detectadas = dict(obsoletas_en_uso())
     assert detectadas == {"SMTP_TLS": "SMTP_SECURITY", "NOTIFY_ENABLED": "SMTP_ENABLED"}
+
+
+def test_no_se_avisa_cuando_la_variable_nueva_ya_esta_definida(monkeypatch):
+    """Con las dos puestas manda la nueva: la herencia no decide nada.
+
+    Importa porque `PASSWD_NOTIFY_ENABLED` NO es una variable muerta: gobierna
+    las alertas de seguridad a los administradores. Avisar de ella a quien ya
+    define `PASSWD_SMTP_ENABLED` le invitaría a borrarla y quedarse sin alertas.
+    """
+    from app.config import obsoletas_en_uso
+
+    monkeypatch.setenv("PASSWD_NOTIFY_ENABLED", "true")
+    monkeypatch.setenv("PASSWD_SMTP_ENABLED", "true")
+    monkeypatch.setenv("PASSWD_SMTP_TLS", "true")
+    monkeypatch.setenv("PASSWD_SMTP_SECURITY", "starttls")
+    assert obsoletas_en_uso() == []
+
+
+def test_notify_enabled_sigue_gobernando_las_alertas(monkeypatch):
+    """La variable conserva su significado propio aunque la herencia se retire."""
+    from app.config import Settings
+
+    monkeypatch.setenv("PASSWD_NOTIFY_ENABLED", "true")
+    monkeypatch.setenv("PASSWD_SMTP_ENABLED", "false")
+    assert Settings().notify_enabled is True
 
 
 def test_el_arranque_avisa_de_la_configuracion_obsoleta(tmp_path, monkeypatch):
@@ -98,6 +125,7 @@ def test_el_arranque_avisa_de_la_configuracion_obsoleta(tmp_path, monkeypatch):
     monkeypatch.setenv("PASSWD_DATA_DIR", str(tmp_path / "datos"))
     monkeypatch.setenv("PASSWD_COOKIE_SECURE", "false")
     monkeypatch.setenv("PASSWD_SMTP_TLS", "false")
+    monkeypatch.delenv("PASSWD_SMTP_SECURITY", raising=False)
     monkeypatch.delenv("PASSWD_DATABASE_URL", raising=False)
 
     from app.config import reset_settings
@@ -119,10 +147,12 @@ def test_el_arranque_avisa_de_la_configuracion_obsoleta(tmp_path, monkeypatch):
         reset_engine()
         reset_settings()
 
-    avisos = [m for m in mensajes if "OBSOLETA" in m]
+    avisos = [m for m in mensajes if "PASSWD_SMTP_TLS" in m]
     assert avisos, mensajes
-    assert "PASSWD_SMTP_TLS" in avisos[0]
+    # El aviso nombra la herencia y la variable que hay que definir, no pide
+    # sustituir la antigua a ciegas.
     assert "PASSWD_SMTP_SECURITY" in avisos[0]
+    assert "2.0" in avisos[0]
 
 
 # ---------------------------------------------------------------------------

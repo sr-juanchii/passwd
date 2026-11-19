@@ -298,13 +298,19 @@ def create_app() -> FastAPI:
             settings.rate_limit_backend,
         )
 
-    # Aviso de retirada de configuración obsoleta (R4). Solo si se usa de
-    # verdad: una instalación limpia no debe ver nada. Quien la use se entera
-    # ahora y no al actualizar a la 2.0, cuando deje de aceptarse.
+    # Aviso de retirada de configuración obsoleta (R4). Solo si la herencia está
+    # en efecto: una instalación limpia —o una que ya define la variable nueva—
+    # no debe ver nada. Quien dependa de ella se entera ahora y no al actualizar
+    # a la 2.0, cuando deje de aplicarse.
+    #
+    # El aviso habla de la HERENCIA, no de la variable: `PASSWD_NOTIFY_ENABLED`
+    # conserva su significado propio (las alertas a los administradores) y
+    # pedir que se sustituya dejaría a quien lo hiciera sin ellas.
     for antigua, nueva in obsoletas_en_uso():
         logger.warning(
-            "PASSWD_%s está OBSOLETA y la versión 2.0 dejará de aceptarla: use PASSWD_%s en su "
-            "lugar (ver docs/referencia-configuracion.md).", antigua, nueva,
+            "PASSWD_%s está fijando PASSWD_%s; la versión 2.0 dejará de heredarla. Defina "
+            "PASSWD_%s explícitamente (ver docs/referencia-configuracion.md).",
+            antigua, nueva, nueva,
         )
 
     # El orden importa: el último en añadirse queda como capa MÁS EXTERNA. Se

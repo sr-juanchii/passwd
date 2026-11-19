@@ -145,8 +145,14 @@ significado, a propósito: dos verdades sobre lo mismo acaban divergiendo.
 ## 7 bis. Configuración obsoleta (se retira en la 2.0)
 
 Estas variables se siguen aceptando en la serie 1.x, pero **la 2.0 dejará de leerlas** (rotura R4 de
-[`plan-v2.0.md`](plan-v2.0.md)). Si alguna está definida en su `.env`, la aplicación lo **avisa en
-el arranque** nombrándola y señalando su sustituta; una instalación que no las use no verá nada.
+[`plan-v2.0.md`](plan-v2.0.md)). Si alguna está fijando el valor de su sustituta —es decir, si la sustituta **no** está definida—,
+la aplicación lo **avisa en el arranque** y pide definir la sustituta. Con las dos puestas manda la
+nueva, no hay herencia que corregir y no se avisa nada; una instalación que no las use tampoco verá
+nada.
+
+El aviso habla de la **herencia**, no de la variable: `PASSWD_NOTIFY_ENABLED` conserva su
+significado propio (las alertas de seguridad a administradores) y borrarla dejaría la instalación
+sin ellas.
 
 | Variable obsoleta | Sustituta | Qué hacer |
 |---|---|---|

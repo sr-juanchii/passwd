@@ -100,8 +100,11 @@ Avisos previos de las roturas de la 2.0, para que ninguna llegue por sorpresa
   `Deprecation: true` y un `Link` a la documentación, y sus páginas muestran un aviso. `/api/web`,
   `/api/v1` y los estáticos no se marcan: siguen vivos.
 - **`PASSWD_SMTP_TLS` y el uso de `PASSWD_NOTIFY_ENABLED` como interruptor del servicio de correo**
-  dejarán de aceptarse en la 2.0 (R4). Si están definidas, el arranque lo avisa nombrando la
-  sustituta. Una instalación que no las use no ve nada.
+  dejarán de aceptarse en la 2.0 (R4). El arranque avisa **solo cuando esa herencia decide de
+  verdad**, es decir cuando la variable nueva no está definida, y el aviso pide definirla, no
+  sustituir la antigua: `PASSWD_NOTIFY_ENABLED` conserva su significado propio —las alertas de
+  seguridad a los administradores— y pedir que se borre dejaría a quien lo hiciera sin ellas. Una
+  instalación que no dependa de la herencia no ve nada.
 - **`/api/v1/inventario` paginará siempre y excluirá por defecto los activos restringidos** en la
   2.0 (R7). La aplicación lo registra la primera vez que recibe una llamada sin `limit`. El
   contrato de `/api/v1` **no cambia en esta versión**: el aviso va por registro y documentación, no
