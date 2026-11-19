@@ -13,7 +13,9 @@ raíz del repo con las dependencias instaladas:
 
 Sale con código 0 si todo pasa; 1 si alguna comprobación falla.
 """
-import os, tempfile, sys
+import os
+import sys
+import tempfile
 from pathlib import Path
 
 # Permite ejecutarlo como `python scripts/verificar_api_web.py` desde la raíz.
@@ -29,12 +31,14 @@ os.environ["PASSWD_ADMIN_PASSWORD"] = "ClaveInicialRobusta!9"
 os.environ["PASSWD_COOKIE_SECURE"] = "false"
 
 import pyotp
+from sqlalchemy import select
 from starlette.testclient import TestClient
+
 from app.main import create_app
 from app.database import get_db
-from app.security.crypto import descifrar
 from app.models import Usuario
-from sqlalchemy import select
+from app.rbac import PERMISOS
+from app.security.crypto import descifrar
 
 fallos = []
 def check(nombre, cond, extra=""):
@@ -85,7 +89,10 @@ admin = TestClient(app)
 tok, recovery_admin = login_completo(admin, "admin", "ClaveInicialRobusta!9", nueva="Cl4veMaestra!Segura26")
 s = admin.get("/api/web/session").json()
 check("auth admin -> sesión activa", s["stage"] == "activa" and s["authenticated"])
-check("admin tiene 14 permisos", sum(1 for v in s["permisos"].values() if v) == 14)
+check(
+    f"admin tiene todos los permisos ({len(PERMISOS)})",
+    set(s["permisos"]) == set(PERMISOS) and all(s["permisos"].values()),
+)
 H = {"X-CSRF-Token": tok}
 
 # === 2. Inventario: servidor dedicado + hipervisor de nivel superior -> vm + credenciales ===

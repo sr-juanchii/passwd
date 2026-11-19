@@ -210,6 +210,7 @@ def credencial_editar(
         ))
         credencial.password_cifrada = cifrar(cuerpo.password)
         credencial.password_rotada_en = ahora_utc()
+        db.flush()
         _podar_historial(db, credencial.id)
     audit.registrar(db, audit.CREDENCIAL_ACTUALIZADA, request=request, usuario=usuario,
                     objeto_tipo="credencial", objeto_id=credencial.id,

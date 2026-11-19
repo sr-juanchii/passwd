@@ -14,6 +14,13 @@ from tests.test_credenciales import _crear_credencial
 from tests.test_inventario import _crear_servidor
 
 
+def test_admin_api_session_exposes_complete_permission_matrix():
+    from app.models import ROL_ADMIN
+    from app.rbac import PERMISOS, tiene_permiso
+
+    assert all(tiene_permiso(ROL_ADMIN, permiso) for permiso in PERMISOS)
+
+
 def _crear_token(admin_client, nombre="siem") -> str:
     csrf = csrf_de(admin_client, "/tokens")
     r = admin_client.post("/tokens", data={"nombre": nombre, "csrf_token": csrf})
