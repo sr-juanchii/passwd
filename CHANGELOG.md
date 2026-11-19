@@ -12,11 +12,11 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
-> Camino hacia la **1.3.0**. La gobernanza de rotación ya está entregada; la versión no se publica
-> hasta completar el resto de su alcance (avisos de retirada R1/R4/R7, migración del resto de casos
-> de uso a `app/servicios/`, pruebas de navegador y matriz de permisos), según
-> [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md) §8.1 y
-> [`docs/plan-v2.0.md`](docs/plan-v2.0.md) §3.
+> Camino hacia la **1.3.0**. El alcance funcional está completo y verificado (gobernanza de
+> rotación, avisos de retirada R1/R4/R7, capa de servicios, matriz de permisos y pruebas de
+> navegador), según [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md) §8.1 y
+> [`docs/plan-v2.0.md`](docs/plan-v2.0.md) §3. Queda la documentación y las notas de versión, así
+> que la versión viva es el pre-release **1.3.0-rc.1**, publicado para pruebas funcionales.
 
 ### Añadido
 
