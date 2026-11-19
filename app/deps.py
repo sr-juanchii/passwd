@@ -95,6 +95,11 @@ def requiere_permiso(permiso: str):
             raise HTTPException(status_code=403, detail="No tiene permisos para esta operación.")
         return usuario
 
+    # El permiso queda declarado en la propia dependencia: así el registro de
+    # rutas es autodescriptivo y la matriz de permisos (tests/rutas.py) puede
+    # generarse leyéndolo, en vez de hurgar en el closure o mantener una lista
+    # a mano que envejece.
+    _dep.permiso_requerido = permiso
     return _dep
 
 

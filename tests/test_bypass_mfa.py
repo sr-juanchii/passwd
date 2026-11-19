@@ -33,6 +33,10 @@ from tests.conftest import (
     extraer_csrf,
     login_password,
 )
+from tests.rutas import (
+    caminos_del_esquema,
+    concretar,
+)
 
 # ── Endpoints legítimamente alcanzables sin haber completado el MFA ───────────
 # Cada uno es parte del propio flujo de autenticación o es público por diseño.
@@ -75,10 +79,6 @@ RUTAS_PRE_MFA_LEGITIMAS = {
     "/api/web/password/recuperar/cambiar",
 }
 
-# Prefijos con su propio esquema de autenticación (token Bearer, no cookie de
-# sesión), verificados aparte en ``test_api.py`` y más abajo en este módulo.
-PREFIJOS_EXCLUIDOS = ("/api/v1", "/static", "/docs", "/redoc", "/openapi.json")
-
 # Respuestas que constituyen un rechazo correcto de una sesión pre-MFA.
 #   303 → la web Jinja redirige a /login
 #   401 → la API JSON: no autenticado
@@ -94,35 +94,11 @@ PREFIJOS_EXCLUIDOS = ("/api/v1", "/static", "/docs", "/redoc", "/openapi.json")
 # endpoint que sí se ejecutaría si el atacante enviara un cuerpo bien formado.
 CODIGOS_DE_RECHAZO = {303, 401, 403, 404, 405, 423, 429}
 
-METODOS = ("GET", "POST", "PUT", "PATCH", "DELETE")
-
-
-def _rutas_de(aplicacion):
-    """Enumera (ruta, métodos) de la aplicación real, sin listas a mano.
-
-    Se usa el esquema OpenAPI en lugar de recorrer ``aplicacion.routes``: desde
-    FastAPI 0.141 los routers incluidos quedan envueltos en ``_IncludedRouter``
-    y ``aplicacion.routes`` NO los aplana, por lo que un recorrido plano solo
-    encontraría los endpoints declarados directamente en la aplicación (uno) y
-    el barrido pasaría en vacío.
-    """
-    esquema = aplicacion.openapi()
-    rutas = []
-    for camino, operaciones in esquema.get("paths", {}).items():
-        if camino.startswith(PREFIJOS_EXCLUIDOS):
-            continue
-        metodos = {m.upper() for m in operaciones if m.upper() in METODOS}
-        if metodos:
-            rutas.append((camino, metodos))
-    return sorted(rutas)
-
-
-def _concretar(camino: str) -> str:
-    """Sustituye los parámetros de ruta por un identificador plausible."""
-    partes = []
-    for parte in camino.split("/"):
-        partes.append("1" if parte.startswith("{") and parte.endswith("}") else parte)
-    return "/".join(partes)
+# La enumeración vive en ``tests/rutas.py``, compartida con la matriz de
+# permisos: las dos pruebas necesitan recorrer toda la superficie y tener dos
+# copias del recorrido es pedir que una se quede atrás.
+_rutas_de = caminos_del_esquema
+_concretar = concretar
 
 
 def _sesion_en_etapa_cambio_password(client: TestClient) -> None:

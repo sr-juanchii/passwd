@@ -42,6 +42,10 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
   factor por ambos métodos, auto-recuperación y cierre de sesión). Los controladores pasan a
   traducir HTTP ↔ servicio y no contienen ya consultas ni decisiones de acceso.
 - Permisos `rotacion.ver`, `rotacion.solicitar`, `rotacion.autorizar` y `rotacion.revisar`.
+- **Matriz de permisos generada del registro de rutas.** Cada dependencia de autorización declara
+  el permiso que exige, de modo que el registro es autodescriptivo y la matriz se genera leyéndolo
+  en vez de mantener una lista a mano. Añadir un endpoint sin declarar su política —un permiso
+  RBAC, o una exención con su motivo escrito— hace fallar la suite.
 - Ajustes nuevos: `PASSWD_ROTACION_TEMPRANA_PCT`, `PASSWD_ROTACION_EMERGENCIA_VENTANA_MIN`,
   `PASSWD_ROTACION_EMERGENCIA_MAX_POR_MES` y `PASSWD_ROTACION_PATRONES_MODO_OBSERVACION`.
 - [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md): plan maestro de rotación
