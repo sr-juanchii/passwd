@@ -175,6 +175,21 @@ Mapa detallado del backend en [`arquitectura.md`](arquitectura.md) §3; del fron
     registra la reparación manual necesaria sin abortar el arranque. Si en el futuro un cambio de
     `CHECK`/`UNIQUE` debe surtir efecto también en despliegues que no corren Alembic, amplíe esa
     función además de crear la revisión.
+- **Nombres de rama:** el nombre debe decir qué contiene la rama. Nada de nombres autogenerados
+  ni arbitrarios (`claude/festive-meitner-r3yw3q`, `parche-2`, `pruebas`): quien mire la lista
+  tiene que entender para qué es cada una sin abrirla. Formato
+  `prefijo/descripcion-en-castellano`, en minúsculas y con guiones:
+
+  | Prefijo | Para qué | Ejemplo |
+  |---|---|---|
+  | `release/` | Preparar y publicar una versión | `release/v1.3.0` |
+  | `feature/` | Funcionalidad nueva | `feature/gobernanza-rotacion` |
+  | `fix/` | Corrección de un defecto | `fix/exportacion-activos-restringidos` |
+  | `docs/` | Solo documentación | `docs/notas-version-1.3.0` |
+  | `chore/` | Mantenimiento: CI, dependencias, limpieza | `chore/pruebas-navegador-en-ci` |
+
+  Las **etiquetas** siguen su propia política en [`versionado.md`](versionado.md): `vX.Y.Z` para
+  una versión publicada, `vX.Y.Z-rc.N` para un pre-release.
 - **Pruebas:** acompañe cada cambio funcional o de seguridad con su prueba en `tests/`.
 - **Política del proyecto:** **ninguna funcionalidad extra se incorpora sin consultarla antes**
   (ver README y [`hoja-de-ruta.md`](hoja-de-ruta.md)).
@@ -187,4 +202,5 @@ Mapa detallado del backend en [`arquitectura.md`](arquitectura.md) §3; del fron
 - [`hoja-de-ruta.md`](hoja-de-ruta.md) — estado y plan de evolución.
 - [`versionado.md`](versionado.md) — política SemVer y cómo cada PR declara su incremento.
 - [`../CHANGELOG.md`](../CHANGELOG.md) — registro de cambios por versión.
+- [`../CLAUDE.md`](../CLAUDE.md) — reglas que leen los asistentes de IA al empezar.
 </content>
