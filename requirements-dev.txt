@@ -5,3 +5,5 @@ httpx>=0.27
 ruff>=0.6
 bandit>=1.7
 pip-audit>=2.7
+# Buzón SMTP local para las pruebas de navegador (scripts/buzon_pruebas.py).
+aiosmtpd>=1.4

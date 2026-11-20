@@ -23,7 +23,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit, avisos
-from app.api_web.auth import _registrar_fallo, enviar_codigo_correo
 from app.api_web.deps import sesion_activa_json, usuario_actual_json, verificar_csrf_json
 from app.database import get_db
 from app.models import MFA_CORREO, MFA_TOTP, SesionWeb, Usuario
@@ -32,6 +31,8 @@ from app.security import mfa, otp_correo, ratelimit, recovery, segundo_factor
 from app.security.crypto import cifrar, descifrar
 from app.security.passwords import verificar_password
 from app.security.sessions import borrar_cookie, revocar_sesion
+from app.servicios import autenticacion
+from app.servicios.autenticacion import ErrorAutenticacion
 
 router = APIRouter()
 
@@ -60,7 +61,7 @@ def _limitar(db: Session, usuario: Usuario) -> None:
 def _fallo(db: Session, request: Request, usuario: Usuario, sesion: SesionWeb,
            detalle: str, mensaje: str):
     """Fallo de reautenticación: cuenta para el bloqueo; si bloquea, cierra la sesión."""
-    _registrar_fallo(db, request, usuario)
+    autenticacion.registrar_fallo(db, usuario, request)
     audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
                     detalle=detalle, exito=False)
     if usuario.esta_bloqueado():
@@ -119,7 +120,12 @@ def enviar_codigo(
     elif not segundo_factor.correo_principal_disponible(usuario):
         raise HTTPException(status_code=409,
                             detail=segundo_factor.motivo_correo_no_disponible(usuario))
-    return enviar_codigo_correo(db, request, usuario, "Mi seguridad")
+    try:
+        return autenticacion.enviar_codigo_correo(
+            db, usuario=usuario, proposito="Mi seguridad", request=request,
+        )
+    except ErrorAutenticacion as exc:
+        raise HTTPException(status_code=exc.codigo, detail=exc.mensaje) from exc
 
 
 @router.post("/cuenta/mfa/correo/activar", dependencies=[CSRF])

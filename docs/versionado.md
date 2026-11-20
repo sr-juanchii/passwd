@@ -47,6 +47,42 @@ Al publicar `X.Y.Z`:
 `GET /healthz` y la metadata de la API OpenAPI exponen `__version__`, de modo que la versión
 desplegada es siempre verificable en caliente.
 
+## Pre-releases
+
+Cuando el alcance de una versión ya está terminado pero todavía no se quiere publicar —porque
+faltan la documentación, las notas de versión o simplemente pruebas funcionales—, se libera un
+**pre-release**: `X.Y.Z-rc.N`, forma de SemVer 2.0.0 §9 que además es válida como PEP 440.
+
+| | Versión final | Pre-release |
+|---|---|---|
+| Ejemplo | `1.3.0` | `1.3.0-rc.1` |
+| `__version__` | `1.3.0` | `1.3.0-rc.1` |
+| Notas | sección `## [1.3.0]` del CHANGELOG | bloque `## [Sin publicar]` |
+| Dónde vive | `main` | la rama de trabajo |
+| Quién lo publica | [`publicar.yml`](../.github/workflows/publicar.yml) al llegar a `main` | [`prelanzamiento.yml`](../.github/workflows/prelanzamiento.yml) al empujar la etiqueta |
+
+Tres reglas que conviene no saltarse:
+
+1. **`__version__` lleva el sufijo.** Es lo que hace útil al pre-release: `GET /healthz` responde
+   `1.3.0-rc.1` y quien prueba sabe exactamente qué está corriendo. Dejarlo en la versión anterior
+   convertiría cualquier informe de fallo en una adivinanza.
+2. **El pre-release no llega a `main`.** Se etiqueta sobre la rama de trabajo. Si aun así llegara,
+   `publicar.yml` lo detecta y se aparta en vez de romperse, pero no es el camino previsto.
+3. **No se abre una sección propia en el CHANGELOG.** Un pre-release publica cambios que todavía
+   no están cerrados; darles sección propia obligaría a reescribirla al liberar la versión final.
+
+Publicarlo, una vez la rama tiene el commit que sube `__version__`:
+
+```bash
+git tag -a v1.3.0-rc.1 -m "Pre-release 1.3.0-rc.1 para pruebas funcionales"
+git push origin v1.3.0-rc.1
+```
+
+El flujo comprueba que la etiqueta coincide con `__version__` —una etiqueta mal escrita publicaría
+un artefacto que miente sobre su contenido— y crea la Release marcada como *pre-release*. Los
+siguientes son `-rc.2`, `-rc.3`… Al liberar la versión final se sigue el procedimiento de arriba:
+`__version__` pasa a `X.Y.Z` y el bloque «Sin publicar» se convierte en su sección.
+
 ## Relación con la hoja de ruta
 
 [`hoja-de-ruta.md`](hoja-de-ruta.md) describe **qué** se construye y en qué fases; este documento y

@@ -1,7 +1,7 @@
 """API JSON (`/api/web`) consumida por el frontend Next.js.
 
-Reúne los sub-routers (auth, inventario, credenciales, accesos, notas, búsqueda,
-usuarios, tokens, auditoría, métricas e importación) bajo el prefijo común y
+Reúne los sub-routers (auth, inventario, credenciales, rotación, accesos, notas,
+búsqueda, usuarios, tokens, auditoría, métricas e importación) bajo el prefijo común y
 reutiliza el modelo de seguridad de la aplicación (sesión por cookie, CSRF por
 cabecera, RBAC y control de acceso por objeto).
 """
@@ -22,6 +22,7 @@ from app.api_web import (
     inventory,
     metrics,
     notes,
+    rotacion,
     search,
     tokens,
     users,
@@ -37,6 +38,7 @@ for _modulo in (
     search,
     accesos,
     notes,
+    rotacion,
     users,
     tokens,
     configuracion,

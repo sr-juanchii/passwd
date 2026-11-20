@@ -130,6 +130,61 @@ jobs:
           fi
           exit "$estado"
 
+  navegador:
+    name: Pruebas de navegador (Playwright) contra backend + frontend + SMTP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Configurar pnpm (versión de packageManager)
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Instalar dependencias de Python (incluye el receptor SMTP)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Instalar dependencias del frontend (lockfile congelado)
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Instalar Chromium y sus bibliotecas
+        run: pnpm exec playwright install --with-deps chromium
+        working-directory: frontend
+
+      # playwright.config.ts levanta los tres servicios: el receptor SMTP, el
+      # backend FastAPI y el frontend compilado para producción. No hay base de
+      # datos externa: cada tanda estrena la suya en .e2e/.
+      - name: Pruebas de navegador
+        run: pnpm test:e2e
+        working-directory: frontend
+
+      - name: Guardar el informe del fallo
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-informe
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 7
+
   cadena-de-suministro:
     name: Escaneo de secretos e imagen (OWASP A05/A06/A08)
     runs-on: ubuntu-latest

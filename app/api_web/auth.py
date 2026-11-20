@@ -10,16 +10,14 @@ from __future__ import annotations
 
 import hmac
 import secrets
-from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit, avisos
+from app import avisos
 from app.api_web.deps import (
     _sesion_de_cookie,
     en_etapa_json,
@@ -40,32 +38,23 @@ from app.models import (
     MFA_TOTP,
     SesionWeb,
     Usuario,
-    ahora_utc,
 )
-from app.notifications import enviar_a_direccion, enviar_alerta
 from app.rbac import PERMISOS, tiene_permiso
-from app.security import mfa, otp_correo, ratelimit, recovery, recuperacion, segundo_factor
-from app.security.crypto import cifrar, descifrar
-from app.security.passwords import hashear_password, necesita_rehash, validar_politica, verificar_password
+from app.security import mfa, recovery, recuperacion, segundo_factor
 from app.security.sessions import (
     COOKIE_SESION,
     borrar_cookie,
     configurar_cookie,
-    crear_sesion,
     extender,
     plazos,
-    revocar_sesion,
-    revocar_sesiones_de_usuario,
-    rotar_token,
 )
+from app.servicios import autenticacion
+from app.servicios.autenticacion import ErrorAutenticacion
 
 router = APIRouter()
 
 COOKIE_CSRF_LOGIN = "passwd_csrf_login"
 COOKIE_RECUPERACION = "passwd_recuperacion"  # noqa: S105 — nombre de cookie, no es un secreto
-
-# Hash ficticio para igualar tiempos cuando el usuario no existe.
-_HASH_FICTICIO = hashear_password(secrets.token_urlsafe(24))
 
 # Mapa de etapa → ruta siguiente, idéntico al flujo de la web Jinja.
 _SIGUIENTE = {
@@ -107,48 +96,35 @@ class RecuperarCambiar(BaseModel):
     password_confirmacion: str = ""
 
 
-def _etapa_inicial(usuario: Usuario) -> str:
-    """Determina la etapa de la sesión tras validar la contraseña."""
-    if usuario.debe_cambiar_password:
-        return ETAPA_CAMBIO_PASSWORD
-    if not usuario.mfa_habilitado:
-        return ETAPA_MFA_ENROLAMIENTO
-    return ETAPA_MFA_PENDIENTE
-
-
-def _registrar_fallo(db: Session, request: Request, usuario: Usuario) -> None:
-    """Suma un intento fallido y bloquea la cuenta al llegar al límite."""
-    settings = get_settings()
-    usuario.intentos_fallidos += 1
-    if usuario.intentos_fallidos >= settings.max_failed_attempts:
-        usuario.bloqueado_hasta = ahora_utc() + timedelta(minutes=settings.lockout_minutes)
-        usuario.intentos_fallidos = 0
-        revocar_sesiones_de_usuario(db, usuario.id)
-        audit.registrar(
-            db, audit.CUENTA_BLOQUEADA, request=request, usuario=usuario,
-            detalle=f"Bloqueo automático por {settings.lockout_minutes} minutos.", exito=False,
-        )
-        ip = request.client.host if request.client else "desconocida"
-        enviar_alerta(
-            "Cuenta bloqueada",
-            f"La cuenta «{usuario.username}» se bloqueó automáticamente por intentos "
-            f"de acceso fallidos (IP de origen: {ip}).",
-        )
-
-
 def _error(detalle: str, status_code: int) -> HTTPException:
     return HTTPException(status_code=status_code, detail=detalle)
 
 
-def _ip_de(request: Request) -> str:
-    return request.client.host if request.client else "desconocida"
+def _usuario_de(db: Session, sesion: SesionWeb) -> Usuario:
+    """El titular de la sesión. La dependencia de etapa ya garantizó que existe."""
+    usuario = db.get(Usuario, sesion.usuario_id)
+    assert usuario is not None
+    return usuario
 
 
-def _avisar_inicio_sesion(db: Session, request: Request, usuario: Usuario) -> None:
-    """Aviso al titular de que se abrió una sesión con su cuenta (mejor esfuerzo)."""
-    avisos.aviso_inicio_sesion(
-        db, usuario, _ip_de(request), request.headers.get("user-agent", "")
+def _respuesta_de_error(exc: ErrorAutenticacion):
+    """Traduce el desenlace del servicio. Si la sesión se revocó, cae la cookie."""
+    if not exc.revocar_sesion:
+        raise _error(exc.mensaje, exc.codigo)
+    respuesta = JSONResponse(
+        {"detail": exc.mensaje, "next": exc.destino or "/login"}, status_code=exc.codigo,
     )
+    borrar_cookie(respuesta)
+    return respuesta
+
+
+def _respuesta_enrolado(enrolado: autenticacion.EnrolamientoCompletado) -> JSONResponse:
+    respuesta = JSONResponse(
+        {"codigos_recuperacion": enrolado.codigos_recuperacion, "metodo": enrolado.metodo},
+        headers={"Cache-Control": "no-store"},
+    )
+    configurar_cookie(respuesta, enrolado.token)
+    return respuesta
 
 
 # ---------------------------------------------------------------------------
@@ -237,65 +213,18 @@ def login(
     db: Annotated[Session, Depends(get_db)],
     cuerpo: CredencialesLogin,
 ):
-    username = cuerpo.username.strip().lower()
-    ip = request.client.host if request.client else "desconocida"
+    try:
+        iniciada = autenticacion.iniciar_sesion(
+            db, username=cuerpo.username, password=cuerpo.password,
+            csrf_login=cuerpo.csrf_login,
+            cookie_csrf=request.cookies.get(COOKIE_CSRF_LOGIN, ""),
+            request=request,
+        )
+    except ErrorAutenticacion as exc:
+        raise _error(exc.mensaje, exc.codigo) from exc
 
-    cookie_csrf = request.cookies.get(COOKIE_CSRF_LOGIN, "")
-    if not cookie_csrf or not hmac.compare_digest(cuerpo.csrf_login, cookie_csrf):
-        raise _error("Sesión de formulario inválida; intente de nuevo.", 403)
-
-    if not ratelimit.permitir_intento(f"login:{ip}", db=db):
-        audit.registrar(db, audit.LOGIN_TASA_EXCEDIDA, request=request, username=username, exito=False)
-        db.commit()
-        raise _error("Demasiados intentos; espere unos minutos.", 429)
-
-    usuario = db.scalar(select(Usuario).where(func.lower(Usuario.username) == username))
-
-    if usuario is None:
-        verificar_password(_HASH_FICTICIO, cuerpo.password)  # tiempo constante
-        audit.registrar(db, audit.LOGIN_FALLIDO, request=request, username=username,
-                        detalle="Usuario inexistente.", exito=False)
-        db.commit()
-        raise _error("Credenciales inválidas.", 401)
-
-    if usuario.esta_bloqueado():
-        audit.registrar(db, audit.LOGIN_BLOQUEADO, request=request, usuario=usuario, exito=False)
-        db.commit()
-        raise _error("Cuenta bloqueada temporalmente por intentos fallidos.", 423)
-
-    if not usuario.activo:
-        audit.registrar(db, audit.LOGIN_FALLIDO, request=request, usuario=usuario,
-                        detalle="Cuenta desactivada.", exito=False)
-        db.commit()
-        raise _error("Credenciales inválidas.", 401)
-
-    if not verificar_password(usuario.password_hash, cuerpo.password):
-        _registrar_fallo(db, request, usuario)
-        audit.registrar(db, audit.LOGIN_FALLIDO, request=request, usuario=usuario, exito=False)
-        db.commit()
-        raise _error("Credenciales inválidas.", 401)
-
-    # Contraseña correcta
-    usuario.intentos_fallidos = 0
-    usuario.bloqueado_hasta = None
-    if necesita_rehash(usuario.password_hash):
-        usuario.password_hash = hashear_password(cuerpo.password)
-
-    etapa = _etapa_inicial(usuario)
-    _sesion, token = crear_sesion(
-        db, usuario, etapa,
-        direccion_ip=ip, agente_usuario=request.headers.get("user-agent", ""),
-    )
-    audit.registrar(db, audit.LOGIN_OK, request=request, usuario=usuario,
-                    detalle=f"Primer factor correcto; etapa: {etapa}.")
-
-    # Confirmar ANTES de responder: el frontend consulta /session de inmediato y
-    # debe ver la sesión recién creada. El cleanup diferido de get_db (que corre
-    # tras enviar la respuesta) provocaría una lectura-tras-escritura obsoleta en
-    # MySQL (REPEATABLE READ); este commit explícito lo evita.
-    db.commit()
-    respuesta = JSONResponse({"stage": etapa, "next": _SIGUIENTE[etapa]})
-    configurar_cookie(respuesta, token)
+    respuesta = JSONResponse({"stage": iniciada.etapa, "next": _SIGUIENTE[iniciada.etapa]})
+    configurar_cookie(respuesta, iniciada.token)
     respuesta.delete_cookie(COOKIE_CSRF_LOGIN, path="/")
     return respuesta
 
@@ -329,54 +258,26 @@ def cambiar_password(
     if not enviado or not hmac.compare_digest(enviado, sesion.csrf_token):
         raise _error("Token CSRF inválido o ausente.", 403)
 
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-    forzado = sesion.etapa == ETAPA_CAMBIO_PASSWORD
-
-    if not verificar_password(usuario.password_hash, cuerpo.password_actual):
-        _registrar_fallo(db, request, usuario)
-        if usuario.esta_bloqueado():
-            revocar_sesion(sesion)
-            db.commit()
+    try:
+        cambiada = autenticacion.cambiar_password(
+            db, sesion=sesion, actual=cuerpo.password_actual, nueva=cuerpo.password_nueva,
+            confirmacion=cuerpo.password_confirmacion, request=request,
+        )
+    except ErrorAutenticacion as exc:
+        if exc.revocar_sesion:
             respuesta = JSONResponse(
-                {"detail": "Cuenta bloqueada; vuelva a iniciar sesión.", "next": "/login"},
-                status_code=423,
+                {"detail": exc.mensaje, "next": exc.destino or "/login"}, status_code=exc.codigo,
             )
             borrar_cookie(respuesta)
             return respuesta
-        raise _error("La contraseña actual no es correcta.", 400)
+        raise _error(exc.mensaje, exc.codigo) from exc
 
-    if cuerpo.password_nueva != cuerpo.password_confirmacion:
-        raise _error("La confirmación no coincide.", 400)
-    if cuerpo.password_nueva == cuerpo.password_actual:
-        raise _error("La nueva contraseña debe ser distinta de la actual.", 400)
-    errores = validar_politica(cuerpo.password_nueva, usuario.username)
-    if errores:
-        raise _error(" ".join(errores), 400)
-
-    usuario.password_hash = hashear_password(cuerpo.password_nueva)
-    usuario.debe_cambiar_password = False
-    usuario.password_cambiada_en = ahora_utc()
-    usuario.intentos_fallidos = 0
-
-    # Se revocan las demás sesiones del usuario; la actual rota su token.
-    otras = [s for s in db.scalars(select(SesionWeb).where(
-        SesionWeb.usuario_id == usuario.id, SesionWeb.revocada_en.is_(None))).all() if s.id != sesion.id]
-    for s in otras:
-        revocar_sesion(s)
-    token = rotar_token(db, sesion)
-    audit.registrar(db, audit.PASSWORD_CAMBIADA, request=request, usuario=usuario)
-
-    if forzado:
-        sesion.etapa = ETAPA_MFA_PENDIENTE if usuario.mfa_habilitado else ETAPA_MFA_ENROLAMIENTO
-        cuerpo_resp = {"stage": sesion.etapa, "next": _SIGUIENTE[sesion.etapa]}
+    if cambiada.forzado:
+        cuerpo_resp: dict = {"stage": cambiada.etapa, "next": _SIGUIENTE[cambiada.etapa]}
     else:
         cuerpo_resp = {"ok": True, "next": "/"}
-    # Confirmar antes de responder (ver nota en login): el siguiente paso del
-    # flujo lee la etapa/el token recién rotados de inmediato.
-    db.commit()
     respuesta = JSONResponse(cuerpo_resp)
-    configurar_cookie(respuesta, token)
+    configurar_cookie(respuesta, cambiada.token)
     return respuesta
 
 
@@ -385,115 +286,13 @@ def cambiar_password(
 # ---------------------------------------------------------------------------
 
 
-def _fallo_segundo_factor(
-    db: Session, request: Request, usuario: Usuario, sesion: SesionWeb,
-    detalle: str, mensaje: str, status_code: int,
-):
-    """Registra un código incorrecto (cuenta para el bloqueo de la cuenta).
-
-    Devuelve la respuesta 423 si la cuenta quedó bloqueada; en otro caso lanza el
-    error indicado. Vale tanto para el enrolamiento como para la verificación.
-    """
-    _registrar_fallo(db, request, usuario)
-    audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
-                    detalle=detalle, exito=False)
-    if usuario.esta_bloqueado():
-        revocar_sesion(sesion)
-        db.commit()
-        respuesta = JSONResponse(
-            {"detail": "Cuenta bloqueada; vuelva a iniciar sesión.", "next": "/login?motivo=bloqueada"},
-            status_code=423,
-        )
-        borrar_cookie(respuesta)
-        return respuesta
-    db.commit()
-    raise _error(mensaje, status_code)
-
-
-def enviar_codigo_correo(db: Session, request: Request, usuario: Usuario, proposito: str) -> dict:
-    """Emite y envía un código de un solo uso al buzón del usuario.
-
-    Doble límite: por cuenta (evita inundar el buzón de un usuario concreto) y
-    por IP (evita usar el sistema como amplificador de correo). La respuesta
-    NUNCA lleva el código: solo confirma el envío y a qué buzón (enmascarado).
-    """
-    ip = _ip_de(request)
-    for clave in (f"otp-correo-user:{usuario.id}", f"otp-correo-ip:{ip}"):
-        if not ratelimit.permitir_intento(clave, limite=3, ventana_minutos=15, db=db):
-            audit.registrar(db, audit.MFA_OTP_CORREO_SOLICITADO, request=request, usuario=usuario,
-                            detalle="Tasa excedida al pedir código por correo.", exito=False)
-            db.commit()
-            raise _error("Demasiadas solicitudes; espere unos minutos.", 429)
-
-    codigo = otp_correo.emitir(db, usuario, ip)
-    asunto, cuerpo_correo = otp_correo.texto_correo(usuario, codigo, ip)
-    entregado = enviar_a_direccion(usuario.email, asunto, cuerpo_correo)
-    audit.registrar(
-        db, audit.MFA_OTP_CORREO_SOLICITADO, request=request, usuario=usuario,
-        detalle=(f"Código enviado al correo registrado ({proposito})." if entregado
-                 else f"No se pudo entregar el código por correo ({proposito}; fallo SMTP)."),
-        exito=entregado,
-    )
-    db.commit()
-    if not entregado:
-        raise _error("No se pudo enviar el código a su correo. Avise al administrador.", 502)
-    return {
-        "ok": True,
-        "destino": avisos.enmascarar_correo(usuario.email),
-        "vigencia_minutos": get_settings().email_otp_ttl_minutes,
-    }
-
-
-def _completar_enrolamiento(
-    db: Session, request: Request, usuario: Usuario, sesion: SesionWeb, metodo: str,
-) -> JSONResponse:
-    """Activa el MFA con el método elegido, abre la sesión y entrega los códigos
-    de recuperación (una única vez)."""
-    usuario.mfa_habilitado = True
-    usuario.mfa_metodo = metodo
-    if metodo == MFA_CORREO:
-        usuario.totp_secret_cifrado = None
-        usuario.ultimo_totp_paso = None
-        usuario.ultimo_otp_usado = None
-    usuario.intentos_fallidos = 0
-    usuario.ultimo_acceso = ahora_utc()
-    sesion.etapa = ETAPA_ACTIVA
-    token = rotar_token(db, sesion)
-    codigos_recuperacion = recovery.emitir_codigos(db, usuario)
-    audit.registrar(db, audit.MFA_ENROLADO, request=request, usuario=usuario,
-                    detalle=f"Método: {metodo}. {len(codigos_recuperacion)} códigos de "
-                            "recuperación emitidos.")
-    audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
-    _avisar_inicio_sesion(db, request, usuario)
-
-    # Confirmar antes de responder: el frontend consulta /session enseguida y
-    # debe ver la sesión ya activa (ver nota en login).
-    db.commit()
-    respuesta = JSONResponse({"codigos_recuperacion": codigos_recuperacion, "metodo": metodo},
-                             headers={"Cache-Control": "no-store"})
-    configurar_cookie(respuesta, token)
-    return respuesta
-
-
 @router.get("/mfa/configurar/metodos")
 def mfa_configurar_metodos(
     db: Annotated[Session, Depends(get_db)],
     sesion: Annotated[SesionWeb, Depends(en_etapa_json(ETAPA_MFA_ENROLAMIENTO))],
 ):
     """Métodos entre los que el usuario puede elegir su segundo factor."""
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-    disponible = segundo_factor.correo_principal_disponible(usuario)
-    return {
-        "metodos": segundo_factor.metodos_enrolables(usuario),
-        "correo": {
-            "disponible": disponible,
-            "destino": avisos.enmascarar_correo(usuario.email) if disponible else "",
-            "motivo": "" if disponible else segundo_factor.motivo_correo_no_disponible(usuario),
-        },
-        # Cuenta enrolada por correo que ahora debe pasar a aplicación autenticadora.
-        "obligado_totp": segundo_factor.debe_reenrolar_con_totp(usuario),
-    }
+    return autenticacion.metodos_de_enrolamiento(db, _usuario_de(db, sesion))
 
 
 @router.get("/mfa/configurar")
@@ -502,19 +301,8 @@ def mfa_configurar_datos(
     db: Annotated[Session, Depends(get_db)],
     sesion: Annotated[SesionWeb, Depends(en_etapa_json(ETAPA_MFA_ENROLAMIENTO))],
 ):
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-    reenrolando = usuario.mfa_habilitado and usuario.mfa_metodo == MFA_CORREO
-    if usuario.totp_secret_cifrado is None or (usuario.mfa_habilitado and not reenrolando):
-        usuario.totp_secret_cifrado = cifrar(mfa.generar_secreto())
-        # Al pasar de correo a TOTP el MFA NO se desactiva mientras tanto: si el
-        # usuario abandona, su siguiente acceso sigue exigiendo el código por correo.
-        if not reenrolando:
-            usuario.mfa_habilitado = False
-    secreto = descifrar(usuario.totp_secret_cifrado)
-    # Si se regeneró el secreto hay que confirmarlo antes de responder, pues el
-    # POST de confirmación lo lee de la BD para validar el código TOTP.
-    db.commit()
+    usuario = _usuario_de(db, sesion)
+    secreto = autenticacion.secreto_totp_para_enrolar(db, usuario)
     return {"qr_data_uri": mfa.qr_svg_data_uri(secreto, usuario.username), "secreto": secreto}
 
 
@@ -528,20 +316,14 @@ def mfa_configurar(
     # El CSRF se valida en línea: esta etapa aún no es "activa", de modo que no
     # puede depender de ``verificar_csrf_json`` (que exige sesión activa).
     _exigir_csrf(request, sesion)
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-    if usuario.totp_secret_cifrado is None:
-        raise _error("Inicie de nuevo la configuración de la aplicación autenticadora.", 409)
-
-    # El código se registra como usado (paso temporal): no podrá repetirse en
-    # /mfa/verificar ni reformateado con espacios.
-    valido, _reutilizado = segundo_factor.aceptar_totp(usuario, cuerpo.codigo)
-    if not valido:
-        return _fallo_segundo_factor(
-            db, request, usuario, sesion, "Código de enrolamiento incorrecto.",
-            "Código incorrecto. Verifique su aplicación autenticadora.", 400,
+    try:
+        enrolado = autenticacion.confirmar_enrolamiento_totp(
+            db, sesion=sesion, usuario=_usuario_de(db, sesion),
+            codigo=cuerpo.codigo, request=request,
         )
-    return _completar_enrolamiento(db, request, usuario, sesion, MFA_TOTP)
+    except ErrorAutenticacion as exc:
+        return _respuesta_de_error(exc)
+    return _respuesta_enrolado(enrolado)
 
 
 @router.post("/mfa/configurar/correo/enviar")
@@ -553,11 +335,15 @@ def mfa_configurar_correo_enviar(
     """Envía el código con el que el usuario confirma su buzón al elegir el
     correo como método principal de segundo factor."""
     _exigir_csrf(request, sesion)
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
+    usuario = _usuario_de(db, sesion)
     if not segundo_factor.correo_principal_disponible(usuario):
         raise _error(segundo_factor.motivo_correo_no_disponible(usuario), 409)
-    return enviar_codigo_correo(db, request, usuario, "alta de método por correo")
+    try:
+        return autenticacion.enviar_codigo_correo(
+            db, usuario=usuario, proposito="alta de método por correo", request=request,
+        )
+    except ErrorAutenticacion as exc:
+        raise _error(exc.mensaje, exc.codigo) from exc
 
 
 @router.post("/mfa/configurar/correo")
@@ -569,18 +355,14 @@ def mfa_configurar_correo(
 ):
     """Confirma el código recibido y activa el correo como método principal."""
     _exigir_csrf(request, sesion)
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-    if not segundo_factor.correo_principal_disponible(usuario):
-        raise _error(segundo_factor.motivo_correo_no_disponible(usuario), 409)
-
-    if not otp_correo.consumir(db, usuario, cuerpo.codigo):
-        return _fallo_segundo_factor(
-            db, request, usuario, sesion, "Código de enrolamiento por correo incorrecto.",
-            "Código incorrecto o caducado. Revise su correo o pida uno nuevo.", 400,
+    try:
+        enrolado = autenticacion.confirmar_enrolamiento_correo(
+            db, sesion=sesion, usuario=_usuario_de(db, sesion),
+            codigo=cuerpo.codigo, request=request,
         )
-    otp_correo.invalidar_codigos(db, usuario.id)
-    return _completar_enrolamiento(db, request, usuario, sesion, MFA_CORREO)
+    except ErrorAutenticacion as exc:
+        return _respuesta_de_error(exc)
+    return _respuesta_enrolado(enrolado)
 
 
 @router.get("/mfa/verificar")
@@ -604,8 +386,7 @@ def mfa_solicitar_otp_correo(
     código se verifica después en ``POST /mfa/verificar``.
     """
     _exigir_csrf(request, sesion)
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
+    usuario = _usuario_de(db, sesion)
     if not segundo_factor.correo_en_login(usuario):
         raise _error(
             "El código por correo no está disponible. Use un código de recuperación "
@@ -616,8 +397,13 @@ def mfa_solicitar_otp_correo(
             409,
         )
     principal = usuario.mfa_metodo == MFA_CORREO
-    return enviar_codigo_correo(db, request, usuario,
-                                "método principal" if principal else "respaldo")
+    try:
+        return autenticacion.enviar_codigo_correo(
+            db, usuario=usuario, request=request,
+            proposito="método principal" if principal else "respaldo",
+        )
+    except ErrorAutenticacion as exc:
+        raise _error(exc.mensaje, exc.codigo) from exc
 
 
 @router.get("/mfa/metodos")
@@ -630,8 +416,7 @@ def mfa_metodos_disponibles(
     No revela nada que el titular de la sesión no sepa ya: la contraseña está
     validada y solo se indica qué vías tiene para completar el acceso.
     """
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
+    usuario = _usuario_de(db, sesion)
     correo = segundo_factor.correo_en_login(usuario)
     return {
         "principal": usuario.mfa_metodo,
@@ -650,73 +435,21 @@ def mfa_verificar(
     cuerpo: CodigoMFA,
 ):
     _exigir_csrf(request, sesion)
-    usuario = db.get(Usuario, sesion.usuario_id)
-    assert usuario is not None
-
-    # Límite propio de la verificación, además del bloqueo de cuenta por fallos.
-    if not ratelimit.permitir_intento(f"mfa-verif:{usuario.id}", db=db):
-        audit.registrar(db, audit.MFA_FALLIDO, request=request, usuario=usuario,
-                        detalle="Tasa de verificación excedida.", exito=False)
-        db.commit()
-        raise _error("Demasiados intentos; espere unos minutos.", 429)
-
-    resultado = segundo_factor.comprobar(db, usuario, cuerpo.codigo)
-    if not resultado.valido:
-        return _fallo_segundo_factor(
-            db, request, usuario, sesion,
-            "Código reutilizado." if resultado.reutilizado else "Código incorrecto.",
-            "Código incorrecto.", 401,
+    try:
+        verificado = autenticacion.verificar_segundo_factor(
+            db, sesion=sesion, usuario=_usuario_de(db, sesion),
+            codigo=cuerpo.codigo, request=request,
         )
+    except ErrorAutenticacion as exc:
+        return _respuesta_de_error(exc)
 
-    usuario.intentos_fallidos = 0
-    aviso = None
-    if resultado.via == segundo_factor.VIA_RECUPERACION:
-        restantes = recovery.codigos_restantes(db, usuario)
-        audit.registrar(db, audit.MFA_RECUPERACION, request=request, usuario=usuario,
-                        detalle=f"Quedan {restantes} código(s) de recuperación sin usar.")
-        aviso = (f"Código de recuperación aceptado; le quedan {restantes}. "
-                 "Puede generar códigos nuevos en «Mi seguridad».")
-    elif resultado.via == segundo_factor.VIA_CORREO and usuario.mfa_metodo == MFA_TOTP:
-        # Un acceso por el factor de RESPALDO merece revisión: se audita y se
-        # alerta al equipo de seguridad, no solo al titular.
-        audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
-                        detalle="Acceso completado con código de respaldo enviado al correo.")
-        enviar_alerta(
-            "Acceso con MFA de respaldo (OTP por correo)",
-            f"La cuenta «{usuario.username}» completó el segundo factor con un código "
-            f"enviado por correo, no con su aplicación autenticadora "
-            f"(IP de origen: {_ip_de(request)}). Si no corresponde a una pérdida de "
-            f"dispositivo conocida, revíselo.",
-        )
-        aviso = ("Acceso verificado con el código enviado a su correo. Vuelva a "
-                 "configurar su aplicación autenticadora en cuanto pueda.")
-    elif resultado.via == segundo_factor.VIA_CORREO:
-        audit.registrar(db, audit.MFA_OTP_CORREO_USADO, request=request, usuario=usuario,
-                        detalle="Acceso completado con código por correo (método principal).")
-    else:
-        audit.registrar(db, audit.MFA_OK, request=request, usuario=usuario)
-
-    token = rotar_token(db, sesion)
-    if segundo_factor.debe_reenrolar_con_totp(usuario):
-        # Los dos factores ya están verificados, pero la política ya no admite
-        # el correo como método principal para esta cuenta: antes de entrar debe
-        # configurar una aplicación autenticadora.
-        sesion.etapa = ETAPA_MFA_ENROLAMIENTO
-        cuerpo_resp: dict = {
-            "ok": True, "stage": sesion.etapa, "next": _SIGUIENTE[sesion.etapa],
-            "aviso": "Su cuenta debe usar ahora una aplicación autenticadora. Configúrela para continuar.",
-        }
-    else:
-        usuario.ultimo_acceso = ahora_utc()
-        sesion.etapa = ETAPA_ACTIVA
-        _avisar_inicio_sesion(db, request, usuario)
-        cuerpo_resp = {"ok": True, "stage": sesion.etapa, "next": "/"}
-        if aviso is not None:
-            cuerpo_resp["aviso"] = aviso
-    # Confirmar antes de responder: el frontend consulta /session a continuación.
-    db.commit()
+    cuerpo_resp: dict = {"ok": True, "stage": verificado.etapa}
+    cuerpo_resp["next"] = ("/" if verificado.etapa == ETAPA_ACTIVA
+                           else _SIGUIENTE[verificado.etapa])
+    if verificado.aviso is not None:
+        cuerpo_resp["aviso"] = verificado.aviso
     respuesta = JSONResponse(cuerpo_resp)
-    configurar_cookie(respuesta, token)
+    configurar_cookie(respuesta, verificado.token)
     return respuesta
 
 
@@ -750,44 +483,15 @@ def recuperar_iniciar(
     en caso contrario la cookie lleva un token aleatorio sin respaldo, de modo
     que el atacante no puede distinguir ambos casos por la respuesta.
     """
-    ip = request.client.host if request.client else "desconocida"
-    cookie_csrf = request.cookies.get(COOKIE_CSRF_LOGIN, "")
-    if not cookie_csrf or not hmac.compare_digest(cuerpo.csrf_login, cookie_csrf):
-        raise _error("Sesión de formulario inválida; intente de nuevo.", 403)
-
-    if not ratelimit.permitir_intento(f"recuperar:{ip}", db=db):
-        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
-                        username=cuerpo.username.strip().lower(), detalle="Tasa excedida.", exito=False)
-        db.commit()
-        raise _error("Demasiados intentos; espere unos minutos.", 429)
-
-    username = cuerpo.username.strip().lower()
-    email = cuerpo.email.strip().lower()
-    usuario = db.scalar(select(Usuario).where(func.lower(Usuario.username) == username))
-    coincide = (
-        usuario is not None
-        and usuario.activo
-        and usuario.mfa_habilitado
-        and hmac.compare_digest(usuario.email.strip().lower(), email)
-    )
-
-    # Se crea SIEMPRE un desafío (real si la identidad coincide y la tasa por
-    # usuario lo permite; señuelo sin usuario en caso contrario), con el mismo
-    # trabajo de BD y la misma respuesta, de modo que ni el cuerpo ni la cookie
-    # ni la latencia distingan si la cuenta existe (anti-enumeración).
-    if coincide and ratelimit.permitir_intento(f"recuperar-user:{usuario.id}", db=db):
-        token, csrf_desafio = recuperacion.crear_desafio(db, usuario.id)
-        audit.registrar(db, audit.RECUPERACION_INICIADA, request=request, usuario=usuario,
-                        detalle="Identidad verificada; desafío de recuperación emitido.")
-    else:
-        token, csrf_desafio = recuperacion.crear_desafio(db, None)
-        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request,
-                        usuario=usuario if coincide else None, username=username,
-                        detalle="Tasa por usuario excedida." if coincide else "Identidad no coincide.",
-                        exito=False)
-    db.commit()
-    respuesta = JSONResponse({"ok": True, "csrf": csrf_desafio})
-    _cookie_recuperacion(respuesta, token)
+    try:
+        desafio = autenticacion.recuperacion_iniciar(
+            db, username=cuerpo.username, email=cuerpo.email, csrf_login=cuerpo.csrf_login,
+            cookie_csrf=request.cookies.get(COOKIE_CSRF_LOGIN, ""), request=request,
+        )
+    except ErrorAutenticacion as exc:
+        raise _error(exc.mensaje, exc.codigo) from exc
+    respuesta = JSONResponse({"ok": True, "csrf": desafio.csrf})
+    _cookie_recuperacion(respuesta, desafio.token)
     return respuesta
 
 
@@ -798,56 +502,21 @@ def recuperar_verificar(
     cuerpo: RecuperarVerificar,
 ):
     """Paso 2: valida el segundo factor (TOTP en vivo o código de recuperación)."""
-    desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
-    if desafio is None:
-        raise _error("Solicitud de recuperación inválida o caducada. Reiníciela.", 400)
-    enviado = request.headers.get("x-csrf-token", "")
-    if not enviado or not hmac.compare_digest(enviado, desafio.csrf_token):
-        raise _error("Token CSRF inválido o ausente.", 403)
-    if desafio.verificado:
-        return {"ok": True}  # idempotente: permite reintentar el paso de cambio
-
-    if not ratelimit.permitir_intento(f"recuperar-verif:{desafio.usuario_id}", db=db):
-        db.commit()
-        raise _error("Demasiados intentos; espere unos minutos.", 429)
-
-    # Un desafío señuelo (usuario_id nulo) o una cuenta ya inválida se tratan
-    # EXACTAMENTE como un segundo factor incorrecto: mismo trabajo criptográfico
-    # y misma respuesta que un código erróneo sobre una cuenta real, para no
-    # reintroducir un oráculo de enumeración en este paso.
-    usuario = db.get(Usuario, desafio.usuario_id) if desafio.usuario_id is not None else None
-    recuperable = usuario is not None and usuario.activo and usuario.mfa_habilitado
-    if recuperable:
-        # TOTP en vivo (si es su método) o código de recuperación. El código por
-        # correo NO vale aquí: la identidad ya se acreditó con el correo, así que
-        # aceptarlo dejaría la recuperación en un único factor.
-        resultado = segundo_factor.comprobar(db, usuario, cuerpo.codigo, permitir_correo=False)
-        totp_valido = resultado.via == segundo_factor.VIA_TOTP
-        codigo_recuperacion = resultado.via == segundo_factor.VIA_RECUPERACION
-    else:
-        mfa.verificar_codigo(mfa.generar_secreto(), cuerpo.codigo)  # equipara el tiempo, nunca válido
-        totp_valido = False
-        codigo_recuperacion = False
-
-    if not totp_valido and not codigo_recuperacion:
-        agotado = recuperacion.registrar_fallo(db, desafio)
-        audit.registrar(db, audit.RECUPERACION_FALLIDA, request=request, usuario=usuario,
-                        detalle="Segundo factor incorrecto." + (" Desafío agotado." if agotado else ""),
-                        exito=False)
-        db.commit()
-        if agotado:
+    try:
+        autenticacion.recuperacion_verificar(
+            db, token_desafio=request.cookies.get(COOKIE_RECUPERACION),
+            csrf_enviado=request.headers.get("x-csrf-token", ""),
+            codigo=cuerpo.codigo, request=request,
+        )
+    except ErrorAutenticacion as exc:
+        if exc.revocar_sesion:  # desafío agotado: se retira la cookie
             respuesta = JSONResponse(
-                {"detail": "Demasiados códigos incorrectos; reinicie la recuperación.", "next": "/recuperar"},
-                status_code=400,
+                {"detail": exc.mensaje, "next": exc.destino or "/recuperar"},
+                status_code=exc.codigo,
             )
             _borrar_cookie_recuperacion(respuesta)
             return respuesta
-        raise _error("Código incorrecto.", 401)
-
-    recuperacion.marcar_verificado(db, desafio)
-    audit.registrar(db, audit.RECUPERACION_VERIFICADA, request=request, usuario=usuario,
-                    detalle="Código de recuperación usado." if codigo_recuperacion else "TOTP verificado.")
-    db.commit()
+        raise _error(exc.mensaje, exc.codigo) from exc
     return {"ok": True}
 
 
@@ -858,44 +527,15 @@ def recuperar_cambiar(
     cuerpo: RecuperarCambiar,
 ):
     """Paso 3: fija la nueva contraseña y revoca todas las sesiones del usuario."""
-    desafio = recuperacion.desafio_vigente(db, request.cookies.get(COOKIE_RECUPERACION))
-    if desafio is None or not desafio.verificado:
-        raise _error("Solicitud de recuperación inválida o sin verificar. Reiníciela.", 400)
-    enviado = request.headers.get("x-csrf-token", "")
-    if not enviado or not hmac.compare_digest(enviado, desafio.csrf_token):
-        raise _error("Token CSRF inválido o ausente.", 403)
-
-    usuario = db.get(Usuario, desafio.usuario_id)
-    if usuario is None or not usuario.activo:
-        recuperacion.consumir(db, desafio)
-        db.commit()
-        raise _error("Solicitud de recuperación inválida. Reiníciela.", 400)
-
-    if cuerpo.password_nueva != cuerpo.password_confirmacion:
-        raise _error("La confirmación no coincide.", 400)
-    errores = validar_politica(cuerpo.password_nueva, usuario.username)
-    if errores:
-        raise _error(" ".join(errores), 400)
-    if verificar_password(usuario.password_hash, cuerpo.password_nueva):
-        raise _error("La nueva contraseña debe ser distinta de la anterior.", 400)
-
-    usuario.password_hash = hashear_password(cuerpo.password_nueva)
-    usuario.debe_cambiar_password = False
-    usuario.password_cambiada_en = ahora_utc()
-    usuario.intentos_fallidos = 0
-    usuario.bloqueado_hasta = None
-    revocar_sesiones_de_usuario(db, usuario.id)
-    recuperacion.consumir(db, desafio)
-    audit.registrar(db, audit.RECUPERACION_COMPLETADA, request=request, usuario=usuario,
-                    detalle="Contraseña restablecida por auto-recuperación.")
-    ip = request.client.host if request.client else "desconocida"
-    enviar_alerta(
-        "Contraseña restablecida por auto-recuperación",
-        f"La contraseña de «{usuario.username}» se restableció mediante el flujo de "
-        f"auto-recuperación (IP de origen: {ip}). Si no fue usted, contacte al "
-        f"administrador de inmediato.",
-    )
-    db.commit()
+    try:
+        autenticacion.recuperacion_cambiar(
+            db, token_desafio=request.cookies.get(COOKIE_RECUPERACION),
+            csrf_enviado=request.headers.get("x-csrf-token", ""),
+            nueva=cuerpo.password_nueva, confirmacion=cuerpo.password_confirmacion,
+            request=request,
+        )
+    except ErrorAutenticacion as exc:
+        raise _error(exc.mensaje, exc.codigo) from exc
     respuesta = JSONResponse({"ok": True, "next": "/login"})
     _borrar_cookie_recuperacion(respuesta)
     return respuesta
@@ -913,11 +553,9 @@ def logout(
     sesion: Annotated[SesionWeb, Depends(sesion_activa_json)],
     usuario: Annotated[Usuario, Depends(usuario_actual_json)],
 ):
-    revocar_sesion(sesion)
-    audit.registrar(db, audit.LOGOUT, request=request, usuario=usuario)
-    # Confirmar antes de responder: el frontend consulta /session tras el logout
-    # y debe ver la sesión ya revocada.
-    db.commit()
+    # El servicio confirma antes de devolver: el frontend consulta /session tras
+    # el logout y debe ver la sesión ya revocada.
+    autenticacion.cerrar_sesion(db, sesion=sesion, usuario=usuario, request=request)
     respuesta = JSONResponse({"ok": True})
     borrar_cookie(respuesta)
     return respuesta

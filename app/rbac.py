@@ -14,6 +14,10 @@ Matriz de permisos (a nivel de ruta):
     credenciales.ver_lista     ✔       ✔ (†)     ✔        ✔ (*)
     credenciales.revelar       ✔       ✔ (†)     ✘        ✔ (*)
     credenciales.gestionar     ✔       ✔ (†)     ✘        ✘
+    rotacion.ver               ✔       ✔ (†)     ✔        ✘
+    rotacion.solicitar         ✔       ✔ (†)     ✘        ✘
+    rotacion.autorizar         ✔       ✘         ✘        ✘
+    rotacion.revisar           ✔       ✘         ✘        ✘
     inventario.exportar        ✔       ✔ (†)     ✘        ✘
     vault.usar                 ✔       ✔         ✔        ✔
     usuarios.gestionar         ✔       ✘         ✘        ✘
@@ -27,6 +31,16 @@ Matriz de permisos (a nivel de ruta):
     inexistentes (404) en toda operación. El auditor sí ve que existen
     (supervisión del inventario completo) pero, como siempre, no revela
     contraseñas; ver ``app/access.py``.
+
+Los permisos ``rotacion.*`` gobiernan el ciclo de autorización de rotaciones
+(``app/servicios/rotacion.py``). ``rotacion.solicitar`` NO introduce un modelo
+nuevo de responsabilidad por activo: alcanza exactamente las credenciales que el
+rol ya puede gestionar hoy, de modo que los activos restringidos siguen siendo
+inexistentes para el operador y el analista sigue fuera. ``rotacion.autorizar``
+es solo de administradores y, además, el servicio impide que nadie autorice su
+propia solicitud (regla de dos pares); ``rotacion.revisar`` cierra la revisión
+obligatoria de una emergencia y la hace un administrador distinto del que la
+autorizó.
 
 ``vault.usar`` habilita el vault PERSONAL de cada usuario (todos los roles): no
 es un permiso sobre datos ajenos, cada quien solo accede al suyo (ver
@@ -45,6 +59,10 @@ PERMISOS: dict[str, frozenset[str]] = {
     "credenciales.ver_lista": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA}),
     "credenciales.revelar": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_ANALISTA}),
     "credenciales.gestionar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
+    "rotacion.ver": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR}),
+    "rotacion.solicitar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
+    "rotacion.autorizar": frozenset({ROL_ADMIN}),
+    "rotacion.revisar": frozenset({ROL_ADMIN}),
     "inventario.exportar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
     "vault.usar": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA}),
     "usuarios.gestionar": frozenset({ROL_ADMIN}),

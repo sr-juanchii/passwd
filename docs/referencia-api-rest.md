@@ -98,6 +98,14 @@ balanceador | otro`), firmware (`version`) y `puertos`.
 **Parámetros de paginación (opcionales):** `limit` (>0, tope **500**) y `offset` paginan cada
 colección por separado; omitidos, devuelve todo el inventario.
 
+> ⚠️ **Aviso de retirada (rotura R7 de la versión 2.0).** En la 2.0 este endpoint **paginará
+> siempre** y **excluirá por defecto los activos restringidos**; para seguir recibiéndolos hará
+> falta un token con el alcance `inventario:restringidos`. Si su integración hoy llama sin `limit`
+> y espera el inventario completo en una sola respuesta, adáptela antes de actualizar: pase `limit`
+> y recorra las páginas. La aplicación registra un aviso la primera vez que recibe una llamada sin
+> `limit`. El contrato **no cambia en la serie 1.x**: la respuesta de esta versión es exactamente
+> la de la 1.2.0.
+
 **Respuesta:**
 
 ```json

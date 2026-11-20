@@ -19,6 +19,8 @@ from app.api_web.serializers import _iso, serializar_concesion
 from app.config import get_settings
 from app.database import get_db
 from app.models import ConcesionAcceso, Credencial, RegistroAuditoria, Usuario, ahora_utc
+from app.servicios import patrones
+from app.servicios import rotacion as servicio_rotacion
 
 router = APIRouter()
 
@@ -113,6 +115,13 @@ def metricas(
 
     return {
         "rotacion_vencida": rotacion_vencida,
+        # Gobernanza de rotación: qué espera decisión y qué señalan las reglas.
+        "gobernanza_rotacion": {
+            "pendientes_de_autorizar": len(servicio_rotacion.pendientes_de_autorizar(db)),
+            "pendientes_de_ejecutar": len(servicio_rotacion.pendientes_de_ejecutar(db)),
+            "revisiones_pendientes": len(servicio_rotacion.revisiones_pendientes(db)),
+        },
+        "patrones_rotacion": patrones.resumen(db),
         "logins_fallidos_24h": logins_fallidos_24h,
         "logins_fallidos_7d": logins_fallidos_7d,
         "bloqueados": bloqueados,

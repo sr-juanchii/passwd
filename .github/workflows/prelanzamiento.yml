@@ -1,0 +1,104 @@
+name: Publicar pre-release
+
+# Publica una Release de GitHub marcada como *pre-release* al empujar una
+# etiqueta con sufijo (vX.Y.Z-rc.N). Sirve para entregar un punto fijo e
+# identificable con el que hacer pruebas funcionales ANTES de liberar la
+# versión definitiva.
+#
+# Dos diferencias con publicar.yml, que es su hermano para versiones finales:
+#
+#   - Se dispara por la etiqueta, no por un push a `main`. Un flujo lanzado por
+#     una etiqueta se ejecuta desde el árbol de ESA etiqueta, así que un
+#     pre-release se puede publicar desde una rama de trabajo sin tocar `main`.
+#   - Las notas salen de «## [Sin publicar]» del CHANGELOG: un pre-release
+#     publica, por definición, cambios que aún no están cerrados.
+#
+# Política y nomenclatura: docs/versionado.md §«Pre-releases».
+
+on:
+  push:
+    tags: ["v*.*.*-*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prelanzamiento-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    name: Release de pre-lanzamiento
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Comprobar que la etiqueta y la versión dicen lo mismo
+        id: version
+        run: |
+          etiqueta="${GITHUB_REF_NAME}"
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' app/__init__.py)
+
+          # Una etiqueta que no case con __version__ publicaría un artefacto
+          # que miente sobre su propio contenido: GET /healthz respondería una
+          # cosa y la Release diría otra.
+          if [ "$etiqueta" != "v$version" ]; then
+            echo "::error::La etiqueta '$etiqueta' no corresponde a __version__ ('$version'); se esperaba 'v$version'."
+            exit 1
+          fi
+          if ! grep -q "^version = \"$version\"$" pyproject.toml; then
+            echo "::error::pyproject.toml no coincide con __version__ ($version)"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "etiqueta=$etiqueta" >> "$GITHUB_OUTPUT"
+
+      - name: ¿Ya está publicada?
+        id: existe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.etiqueta }}" >/dev/null 2>&1; then
+            echo "La Release ${{ steps.version.outputs.etiqueta }} ya existe: nada que publicar."
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Preparar las notas
+        if: steps.existe.outputs.existe == 'false'
+        run: |
+          {
+            echo "> **Pre-release para pruebas funcionales.** No es la versión definitiva:"
+            echo "> faltan la documentación y las notas de versión. Despliéguelo solo en"
+            echo "> entornos de prueba."
+            echo
+            echo "\`GET /healthz\` responde \`${{ steps.version.outputs.version }}\`, de modo que"
+            echo "siempre se puede verificar en caliente qué está corriendo."
+            echo
+            echo "Cambios acumulados desde la última versión publicada:"
+            echo
+          } > notas.md
+
+          awk '
+            index($0, "## [Sin publicar]") == 1 { dentro = 1; next }
+            dentro && /^## \[/ { exit }
+            dentro { print }
+          ' CHANGELOG.md >> notas.md
+
+          if ! grep -q '[^[:space:]]' notas.md; then
+            echo "::error::CHANGELOG.md no tiene contenido bajo «## [Sin publicar]»"; exit 1
+          fi
+          wc -l notas.md
+
+      - name: Crear la Release
+        if: steps.existe.outputs.existe == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.etiqueta }}" \
+            --prerelease \
+            --title "Pre-release ${{ steps.version.outputs.version }}" \
+            --notes-file notas.md

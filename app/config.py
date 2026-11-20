@@ -131,8 +131,29 @@ class Settings:
     # Auditoría (CIS 8.10 — retención mínima de 90 días; por defecto 365)
     audit_retention_days: int = field(default_factory=lambda: _env_int("AUDIT_RETENTION_DAYS", 365))
 
-    # Rotación de credenciales: días sin rotar antes de alertar
+    # Rotación de credenciales: días sin rotar antes de alertar. Es también el
+    # INTERVALO DE POLÍTICA con el que la gobernanza calcula la fecha programada
+    # de cada credencial y la desviación al rotar; no se duplica en otro ajuste.
     rotation_max_days: int = field(default_factory=lambda: _env_int("ROTATION_MAX_DAYS", 90))
+
+    # --- Gobernanza de rotación (v1.3.0) ---------------------------------
+    # Porcentaje del intervalo de política por debajo del cual una rotación se
+    # marca TEMPRANA y exige motivo reforzado (25 % de 90 días = 22 días).
+    rotacion_temprana_pct: int = field(default_factory=lambda: _env_int("ROTACION_TEMPRANA_PCT", 25))
+    # Vía de emergencia: ventana, desde la solicitud, en la que un único
+    # administrador puede autorizar su propia solicitud de emergencia. Fuera de
+    # ella vuelve a exigirse la regla de dos pares.
+    rotacion_emergencia_ventana_min: int = field(
+        default_factory=lambda: _env_int("ROTACION_EMERGENCIA_VENTANA_MIN", 60))
+    # Emergencias sin segundo par admitidas en 30 días antes de considerarlo un
+    # patrón de abuso (se señala; nunca se bloquea una contención en curso).
+    rotacion_emergencia_max_por_mes: int = field(
+        default_factory=lambda: _env_int("ROTACION_EMERGENCIA_MAX_POR_MES", 3))
+    # Las reglas de patrón arrancan en MODO OBSERVACIÓN: se evalúan y se ven en
+    # métricas, pero no notifican. Se desactiva cuando los umbrales están
+    # calibrados con datos reales de la instalación.
+    rotacion_patrones_modo_observacion: bool = field(
+        default_factory=lambda: _env_bool("ROTACION_PATRONES_MODO_OBSERVACION", True))
     # Historial de contraseñas anteriores conservadas por credencial
     password_history_max: int = field(default_factory=lambda: _env_int("PASSWORD_HISTORY_MAX", 5))
 
@@ -193,6 +214,11 @@ class Settings:
 
     secret_key: str = field(default="", repr=False)
     encryption_key: str = field(default="", repr=False)
+    # Clave de firma de la bitácora de auditoría (HMAC-SHA256). Sin ella el
+    # encadenamiento es un SHA-256 público que cualquiera con acceso de
+    # escritura a la base de datos puede recalcular entero; con ella, reescribir
+    # la bitácora exige además la clave, que vive fuera de la base de datos.
+    audit_key: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         self.data_dir = self.data_dir.resolve()
@@ -230,6 +256,22 @@ class Settings:
         )
         self.encryption_key = encryption_env or _leer_o_generar_secreto(
             self.data_dir / ".encryption_key", lambda: Fernet.generate_key().decode("ascii")
+        )
+        # Clave de la bitácora. Deliberadamente NO entra en REQUIRE_ENV_KEYS en
+        # esta versión: exigirla dejaría sin arrancar a una instalación que hoy
+        # funciona en modo estricto, y eso sería una rotura en una versión MENOR.
+        # Se avisa cuando se autogenera estando el modo estricto activo; la 2.0
+        # la incorpora al grupo de claves obligatorias por entorno (rotura R2).
+        audit_env = _secreto_entorno("AUDIT_KEY")
+        if requiere_env and not audit_env:
+            logger.warning(
+                "%sREQUIRE_ENV_KEYS=true pero %sAUDIT_KEY no está definida: la clave de firma "
+                "de la bitácora se autogenera en %s. Defínala por entorno (su gestor de "
+                "secretos) para que la evidencia de auditoría no comparta volumen con la "
+                "base de datos.", _PREFIX, _PREFIX, self.data_dir,
+            )
+        self.audit_key = audit_env or _leer_o_generar_secreto(
+            self.data_dir / ".audit_key", lambda: secrets.token_urlsafe(48)
         )
         self.smtp_password = _secreto_entorno("SMTP_PASSWORD") or ""
 
@@ -276,6 +318,10 @@ OVERRIDABLES: dict[str, tuple[str, str, object]] = {
     "mfa_totp_required_admin": ("MFA_TOTP_REQUIRED_ADMIN", "booleano", True),
     "notify_users_enabled": ("NOTIFY_USERS_ENABLED", "booleano", True),
     "rotation_warning_days": ("ROTATION_WARNING_DAYS", "entero", 14),
+    "rotacion_temprana_pct": ("ROTACION_TEMPRANA_PCT", "entero", 25),
+    "rotacion_emergencia_ventana_min": ("ROTACION_EMERGENCIA_VENTANA_MIN", "entero", 60),
+    "rotacion_emergencia_max_por_mes": ("ROTACION_EMERGENCIA_MAX_POR_MES", "entero", 3),
+    "rotacion_patrones_modo_observacion": ("ROTACION_PATRONES_MODO_OBSERVACION", "booleano", True),
 }
 
 
@@ -306,15 +352,48 @@ def base_overridables() -> dict[str, object]:
     return {clave: base_overridable(clave) for clave in OVERRIDABLES}
 
 
+# Variables antiguas que todavía fijan el valor base de una clave editable, y
+# que la 2.0 elimina (rotura R4 de docs/plan-v2.0.md). Una sola fuente de
+# verdad: la usan `env_definida()` para resolver el origen de un ajuste y
+# `obsoletas_en_uso()` para avisar en el arranque.
+SUFIJOS_OBSOLETOS: dict[str, list[tuple[str, str]]] = {
+    # clave editable → [(variable antigua, variable que la sustituye)]
+    "smtp_enabled": [("NOTIFY_ENABLED", "SMTP_ENABLED")],
+    "smtp_security": [("SMTP_TLS", "SMTP_SECURITY")],
+}
+
+
+def _env_presente(sufijo: str) -> bool:
+    return bool(os.environ.get(f"{_PREFIX}{sufijo}") or os.environ.get(f"{_PREFIX}{sufijo}_FILE"))
+
+
 def env_definida(clave: str) -> bool:
     """¿La clave editable está fijada por variable de entorno (o su *_FILE)?"""
     sufijos = [OVERRIDABLES[clave][0]]
-    # Variables antiguas que también fijan el valor base de estas claves.
-    sufijos += {"smtp_enabled": ["NOTIFY_ENABLED"], "smtp_security": ["SMTP_TLS"]}.get(clave, [])
-    return any(
-        os.environ.get(f"{_PREFIX}{sufijo}") or os.environ.get(f"{_PREFIX}{sufijo}_FILE")
-        for sufijo in sufijos
-    )
+    sufijos += [antigua for antigua, _nueva in SUFIJOS_OBSOLETOS.get(clave, [])]
+    return any(_env_presente(sufijo) for sufijo in sufijos)
+
+
+def obsoletas_en_uso() -> list[tuple[str, str]]:
+    """Herencias obsoletas que hoy están EN EFECTO, con la variable sustituta.
+
+    Lo que la 2.0 retira no son las variables en sí, sino que una fije el valor
+    de otra. Por eso solo se avisa cuando la sustituta no está definida, que es
+    cuando la herencia decide de verdad: con las dos puestas manda la nueva y no
+    hay nada que corregir.
+
+    La distinción no es cosmética. `PASSWD_NOTIFY_ENABLED` sigue teniendo
+    significado propio —gobierna las alertas de seguridad a los
+    administradores— y solo es obsoleta como origen de `PASSWD_SMTP_ENABLED`.
+    Avisar de ella sin más llevaría a quien la use a borrarla y quedarse sin
+    alertas, que es peor que no avisar.
+    """
+    return [
+        (antigua, nueva)
+        for pares in SUFIJOS_OBSOLETOS.values()
+        for antigua, nueva in pares
+        if _env_presente(antigua) and not _env_presente(nueva)
+    ]
 
 
 _settings: Settings | None = None

@@ -192,11 +192,12 @@ def test_respaldo_v2_declara_kdf_y_es_restaurable(client):
     try:
         datos = backup.exportar(db, FRASE)
         contenedor = json.loads(datos)
-        assert contenedor["version"] == 2
+        assert contenedor["version"] == backup.VERSION
         assert contenedor["kdf"] == {"algoritmo": "scrypt", "n": 2**17, "r": 8, "p": 1}
         resumen = backup.restaurar(db, datos, FRASE, sobrescribir=True)
         db.commit()
         assert resumen["credenciales"] == 1
+        assert "rotaciones" in resumen
     finally:
         db.close()
     assert _password_credencial_descifrada() == CLAVE_SECRETA

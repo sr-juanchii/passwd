@@ -56,8 +56,10 @@ corresponda a su rol.
 
 | Documento | Para qué |
 |---|---|
+| [`notas-version-1.3.0.md`](notas-version-1.3.0.md) | **Notas de la versión 1.3.0**: gobernanza de rotación, bitácora firmada, pasos de actualización desde la 1.2.0, verificación y limitaciones conocidas. |
 | [`notas-version-1.2.0.md`](notas-version-1.2.0.md) | **Notas de la versión 1.2.0**: catálogo de cambios, pasos de actualización desde la 1.1.0, verificación y limitaciones conocidas. |
 | [`plan-v2.0.md`](plan-v2.0.md) | **Plan de la versión 2.0** (propuesta): objetivos, qué rompe, alcance por bloques, orden, riesgos y decisiones pendientes. |
+| [`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) | **Plan maestro de rotación asistida por agentes y monitoreo** (propuesta): gobernanza de autorización con dos pares, contrato *deny-by-default* del agente, indicadores de cobertura, conectores de red y desglose por versiones coordinado con el plan de la 2.0. |
 | [`hoja-de-ruta.md`](hoja-de-ruta.md) | Estado de las mejoras y plan de evolución por fases. |
 | [`analisis-mejoras.md`](analisis-mejoras.md) | **Análisis integral de mejoras** (seguridad, escalabilidad, calidad y DevSecOps), priorizado y con evidencia. |
 
@@ -72,4 +74,5 @@ corresponda a su rol.
 - **Quiero entender el código** → [`arquitectura.md`](arquitectura.md) + [`guia-desarrollo.md`](guia-desarrollo.md).
 - **Necesito integrarlo con un SIEM** → [`referencia-api-rest.md`](referencia-api-rest.md).
 - **Me piden la evidencia de cumplimiento** → [`verificacion-cumplimiento.md`](verificacion-cumplimiento.md).
+- **Quiero saber cómo se rotarán las contraseñas y con qué controles** → [`plan-rotacion-agentes.md`](plan-rotacion-agentes.md).
 </content>

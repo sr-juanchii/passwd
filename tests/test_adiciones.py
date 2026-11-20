@@ -18,6 +18,7 @@ from tests.conftest import (
     enrolar_mfa_con_codigos,
     extraer_csrf,
     login_password,
+    rotar_credencial,
     sesion_bd,
 )
 from tests.test_credenciales import CLAVE_SECRETA, _crear_credencial
@@ -94,12 +95,10 @@ def test_rotar_credencial_reinicia_el_contador(client):
     finally:
         db.close()
 
-    csrf = csrf_de(client, f"/credenciales/{credencial_id}/editar")
-    respuesta = client.post(f"/credenciales/{credencial_id}/editar", data={
-        "usuario_acceso": "root", "password": "NuevaClaveRotada#2026", "servicio": "SSH",
-        "puerto": "22", "descripcion": "", "csrf_token": csrf,
-    })
-    assert respuesta.status_code == 303
+    # Desde la 1.3.0 la rotación pasa por el ciclo de gobernanza.
+    asiento = rotar_credencial(client, credencial_id, "NuevaClaveRotada#2026")
+    assert asiento["resultado"] == "manual"
+    assert asiento["dias_al_rotar"] == 120
 
     detalle = client.get(f"/servidores/{fisico}")
     assert "sin rotar" not in detalle.text  # contador reiniciado

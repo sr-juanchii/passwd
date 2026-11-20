@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.access import usuarios_con_acceso_a_activo, usuarios_con_acceso_a_credencial
@@ -41,6 +42,7 @@ from app.models import (
     ACTIVO_FISICO,
     ACTIVO_HIPERVISOR,
     ACTIVO_VM,
+    ROL_ADMIN,
     Credencial,
     Usuario,
     ahora_utc,
@@ -430,3 +432,138 @@ def enmascarar_correo(correo: str) -> str:
     local, dominio = correo.rsplit("@", 1)
     oculto = "*" * len(local) if len(local) <= 2 else f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}"
     return f"{oculto}@{dominio}"
+
+
+# ---------------------------------------------------------------------------
+# 5. Gobernanza de rotación (v1.3.0)
+# ---------------------------------------------------------------------------
+#
+# Estos avisos acompañan a cada transición del ciclo. Siguen la misma regla
+# inviolable que el resto del módulo: comunican el HECHO —qué credencial, quién,
+# cuándo y con qué motivo— y nunca la contraseña, ni la anterior ni la nueva.
+
+
+def _administradores(db: Session) -> list[Usuario]:
+    """Administradores activos, destinatarios de las decisiones de gobernanza."""
+    return list(db.scalars(
+        select(Usuario).where(Usuario.rol == ROL_ADMIN, Usuario.activo.is_(True))
+    ).all())
+
+
+def _ficha(rotacion) -> str:
+    """Bloque común de identificación de una rotación, sin secretos."""
+    return (
+        f"  Activo:             {rotacion.activo_nombre}\n"
+        f"  Usuario de acceso:  {rotacion.usuario_acceso}\n"
+        f"  Servicio:           {rotacion.servicio}\n"
+        f"  Solicitada por:     {rotacion.solicitado_por_username}\n"
+        f"  Tipo:               {rotacion.tipo}\n"
+        f"  Antigüedad actual:  {rotacion.dias_al_solicitar} día(s)\n"
+        f"  Motivo:             {rotacion.motivo}\n"
+    )
+
+
+def aviso_rotacion_solicitada(db: Session, rotacion) -> int:
+    """Avisa a los administradores de que hay una rotación esperando autorización."""
+    if not avisos_activos():
+        return 0
+    destinatarios = [u for u in _administradores(db) if u.id != rotacion.solicitado_por_id]
+    if not destinatarios:
+        return 0
+    urgencia = "ROTACIÓN DE EMERGENCIA" if rotacion.tipo == "emergencia" else "Rotación"
+    cuerpo = (
+        "Hay una solicitud de rotación esperando autorización.\n\n"
+        + _ficha(rotacion)
+        + ("\n  ATENCIÓN: rotación TEMPRANA (muy por debajo de la vigencia).\n"
+           if rotacion.temprana else "")
+        + "\nLa autoriza otro administrador distinto del solicitante, confirmando su "
+          "contraseña y un código de su aplicación autenticadora."
+    ) + _PIE
+    return enviar_a_usuarios(destinatarios, f"{urgencia} pendiente: {rotacion.activo_nombre}", cuerpo)
+
+
+def aviso_rotacion_decidida(db: Session, rotacion, *, autorizada: bool) -> int:
+    """Avisa al solicitante y a los administradores de la decisión tomada."""
+    if not avisos_activos():
+        return 0
+    destinatarios = {u.id: u for u in _administradores(db)}
+    solicitante = db.get(Usuario, rotacion.solicitado_por_id) if rotacion.solicitado_por_id else None
+    if solicitante is not None and solicitante.activo:
+        destinatarios[solicitante.id] = solicitante
+    if not destinatarios:
+        return 0
+    if autorizada:
+        desenlace = (
+            f"  Autorizada por:     {rotacion.autorizado_por_username}\n"
+            f"  Fecha (UTC):        {rotacion.autorizado_en:%Y-%m-%d %H:%M:%S}\n"
+        )
+        cierre = ("\nQueda pendiente de ejecución: cambie la contraseña en el activo y "
+                  "regístrela en la aplicación para cerrar el ciclo.")
+        asunto = f"Rotación autorizada: {rotacion.activo_nombre}"
+    else:
+        quien = db.get(Usuario, rotacion.rechazado_por_id) if rotacion.rechazado_por_id else None
+        desenlace = (
+            f"  Rechazada por:      {quien.username if quien else 'un administrador'}\n"
+            f"  Fecha (UTC):        {rotacion.rechazado_en:%Y-%m-%d %H:%M:%S}\n"
+            f"  Motivo del rechazo: {rotacion.motivo_rechazo}\n"
+        )
+        cierre = "\nLa contraseña no se ha cambiado."
+        asunto = f"Rotación rechazada: {rotacion.activo_nombre}"
+    cuerpo = ("Se resolvió una solicitud de rotación.\n\n" + _ficha(rotacion) + desenlace + cierre) + _PIE
+    return enviar_a_usuarios(list(destinatarios.values()), asunto, cuerpo)
+
+
+def aviso_rotacion_aplicada(db: Session, rotacion) -> int:
+    """Avisa al solicitante y al autorizador de que la rotación quedó cerrada."""
+    if not avisos_activos():
+        return 0
+    destinatarios: dict[int, Usuario] = {}
+    for id_usuario in (rotacion.solicitado_por_id, rotacion.autorizado_por_id):
+        if not id_usuario:
+            continue
+        usuario = db.get(Usuario, id_usuario)
+        if usuario is not None and usuario.activo:
+            destinatarios[usuario.id] = usuario
+    if not destinatarios:
+        return 0
+    cuerpo = (
+        "Una rotación autorizada quedó registrada como aplicada.\n\n"
+        + _ficha(rotacion)
+        + f"  Autorizada por:     {rotacion.autorizado_por_username}\n"
+          f"  Aplicada (UTC):     {rotacion.confirmado_en:%Y-%m-%d %H:%M:%S}\n"
+          f"  Antigüedad al rotar:{rotacion.dias_al_rotar} día(s) "
+          f"(desvío {rotacion.desvio_dias:+d} respecto a la política)\n"
+          f"  Verificación:       sin comprobación automática (cambio manual)\n\n"
+        "Quien necesite la contraseña vigente la revela en la aplicación, donde el "
+        "acceso se comprueba, se limita por tasa y queda en la bitácora. Por seguridad, "
+        "este aviso no la incluye."
+    ) + _PIE
+    return enviar_a_usuarios(list(destinatarios.values()),
+                             f"Rotación aplicada: {rotacion.activo_nombre}", cuerpo)
+
+
+def aviso_emergencia_sin_par(db: Session, rotacion) -> int:
+    """Alerta urgente: una emergencia se autorizó sin segundo par.
+
+    Va a **todos** los administradores, incluido quien la autorizó. La vía de
+    emergencia es legítima, pero solo se sostiene si es ruidosa: la alternativa
+    a instrumentarla era que el cambio ocurriese fuera del sistema.
+    """
+    if not avisos_activos():
+        return 0
+    destinatarios = _administradores(db)
+    if not destinatarios:
+        return 0
+    cuerpo = (
+        "Se autorizó una rotación de EMERGENCIA sin segundo par: el mismo "
+        "administrador que la solicitó la autorizó.\n\n"
+        + _ficha(rotacion)
+        + f"  Autorizada por:     {rotacion.autorizado_por_username}\n"
+          f"  Fecha (UTC):        {rotacion.autorizado_en:%Y-%m-%d %H:%M:%S}\n\n"
+        "Esta rotación queda marcada de forma imborrable y PENDIENTE DE REVISIÓN: "
+        "otro administrador debe revisarla en la aplicación. Mientras no se revise "
+        "aparecerá en el panel de rotación y en las métricas."
+    ) + _PIE
+    return enviar_a_usuarios(destinatarios,
+                             f"URGENTE — Emergencia sin segundo par: {rotacion.activo_nombre}",
+                             cuerpo)

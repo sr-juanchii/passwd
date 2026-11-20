@@ -70,29 +70,74 @@ Ejercita de extremo a extremo la API `/api/web` (auth+MFA, inventario, credencia
 historial, notas, acceso por objeto, usuarios, tokens, auditoría con export CSV, métricas, búsqueda,
 importación CSV y cascadas).
 
+### Pruebas de navegador (Playwright)
+
+Ejercitan el sistema entero con un navegador de verdad: backend, frontend **compilado para
+producción** y un receptor SMTP local. Desde `frontend/`:
+
+```bash
+pnpm exec playwright install chromium   # solo la primera vez
+pnpm test:e2e                           # compila el frontend y corre la tanda
+```
+
+Compilar cuesta unos 40 s. Para repetir la tanda sin recompilar —solo si no ha tocado el
+frontend— defina `PASSWD_E2E_SIN_BUILD=1`:
+
+```bash
+PASSWD_E2E_SIN_BUILD=1 pnpm test:e2e            # bash
+```
+
+```powershell
+$env:PASSWD_E2E_SIN_BUILD=1; pnpm test:e2e      # PowerShell
+```
+
+No hace falta levantar nada a mano: [`playwright.config.ts`](../frontend/playwright.config.ts)
+arranca los tres servicios en puertos propios (8111 backend, 3111 frontend, 8125 SMTP) sobre una
+base de datos efímera en `.e2e/`, que se puede borrar entre tandas.
+
+Lo que conviene saber antes de añadir una prueba:
+
+- **El frontend se sirve como en el contenedor** (`node .next/standalone/server.js`, vía
+  `e2e/servidor.mjs`). Ni `next dev` —la CSP no permite el `eval()` que React necesita en
+  desarrollo— ni `next start`, que Next rechaza con `output: "standalone"`.
+- **El correo se lee del buzón simulado** ([`scripts/buzon_pruebas.py`](../scripts/buzon_pruebas.py)),
+  nunca de un endpoint de prueba: un atajo para probar sería un atajo para atacar.
+- **La ventana de inactividad se pone en 1 minuto** para poder probar la expiración. Por eso el
+  tiempo de acción está limitado a 10 s: un selector equivocado debe fallar enseguida y no
+  esperar a que venza la sesión, porque entonces la acción acabaría ejecutándose sobre el login.
+- **Un trabajador y sin reintentos**: la tanda comparte una base de datos y la va modificando
+  (crea cuentas, consume códigos de un solo uso, gasta el límite de envíos de correo). Repetir
+  desde un estado ya alterado daría verde o rojo por motivos ajenos al cambio bajo prueba.
+- El envío de códigos por correo está **limitado a 3 por cuenta cada 15 minutos**. Es un control
+  del sistema: las pruebas se ajustan a él, no al revés.
+
 ## 5. Integración continua
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) ejecuta, en cada **push** y **pull
-request**, cuatro jobs:
+request**, cinco jobs:
 
 1. **calidad-y-pruebas** (backend): `ruff` → `bandit` → `pip-audit` → `pytest` con **cobertura**
    (umbral 70 %) sobre Python 3.12.
 2. **pruebas-mysql**: levanta MySQL 8.4 y corre `scripts/verificar_api_web.py` de extremo a extremo
    (verifica la vía `READ COMMITTED` cross-engine).
 3. **frontend**: `eslint` → `tsc --noEmit` → **`vitest`** → `next build` → `pnpm audit`.
-4. **cadena-de-suministro**: escaneo de secretos (**gitleaks**) y de vulnerabilidades/config
+4. **navegador**: Playwright contra backend + frontend + SMTP simulado. Si falla, sube el informe
+   y las trazas como artefacto.
+5. **cadena-de-suministro**: escaneo de secretos (**gitleaks**) y de vulnerabilidades/config
    (**Trivy**, sistema de archivos).
 
 Antes de abrir un PR, ejecute localmente los comandos de la §4 y, en `frontend/`, `pnpm lint`,
-`pnpm typecheck`, `pnpm test` y `pnpm build`.
+`pnpm typecheck`, `pnpm test`, `pnpm build` y `pnpm test:e2e`.
 
 ## 6. Estructura del repositorio
 
 ```
 app/            # backend FastAPI (ver arquitectura.md §3)
 frontend/       # frontend Next.js (App Router, React 19, shadcn/ui)
-tests/          # suite pytest (14 archivos de prueba + conftest.py)
-scripts/        # verificar_api_web.py (verificación funcional de /api/web)
+tests/          # suite pytest (+ conftest.py y rutas.py, enumeración del registro de rutas)
+frontend/e2e/   # pruebas de navegador (Playwright) y sus ayudantes
+scripts/        # verificar_api_web.py (verificación funcional de /api/web),
+                # buzon_pruebas.py (receptor SMTP del banco de pruebas)
 infrastructure/ # nginx (plantillas TLS) y scripts de certificados
 docs/           # esta documentación
 .github/        # workflow de CI
@@ -130,6 +175,21 @@ Mapa detallado del backend en [`arquitectura.md`](arquitectura.md) §3; del fron
     registra la reparación manual necesaria sin abortar el arranque. Si en el futuro un cambio de
     `CHECK`/`UNIQUE` debe surtir efecto también en despliegues que no corren Alembic, amplíe esa
     función además de crear la revisión.
+- **Nombres de rama:** el nombre debe decir qué contiene la rama. Nada de nombres autogenerados
+  ni arbitrarios (`claude/festive-meitner-r3yw3q`, `parche-2`, `pruebas`): quien mire la lista
+  tiene que entender para qué es cada una sin abrirla. Formato
+  `prefijo/descripcion-en-castellano`, en minúsculas y con guiones:
+
+  | Prefijo | Para qué | Ejemplo |
+  |---|---|---|
+  | `release/` | Preparar y publicar una versión | `release/v1.3.0` |
+  | `feature/` | Funcionalidad nueva | `feature/gobernanza-rotacion` |
+  | `fix/` | Corrección de un defecto | `fix/exportacion-activos-restringidos` |
+  | `docs/` | Solo documentación | `docs/notas-version-1.3.0` |
+  | `chore/` | Mantenimiento: CI, dependencias, limpieza | `chore/pruebas-navegador-en-ci` |
+
+  Las **etiquetas** siguen su propia política en [`versionado.md`](versionado.md): `vX.Y.Z` para
+  una versión publicada, `vX.Y.Z-rc.N` para un pre-release.
 - **Pruebas:** acompañe cada cambio funcional o de seguridad con su prueba en `tests/`.
 - **Política del proyecto:** **ninguna funcionalidad extra se incorpora sin consultarla antes**
   (ver README y [`hoja-de-ruta.md`](hoja-de-ruta.md)).
@@ -142,4 +202,5 @@ Mapa detallado del backend en [`arquitectura.md`](arquitectura.md) §3; del fron
 - [`hoja-de-ruta.md`](hoja-de-ruta.md) — estado y plan de evolución.
 - [`versionado.md`](versionado.md) — política SemVer y cómo cada PR declara su incremento.
 - [`../CHANGELOG.md`](../CHANGELOG.md) — registro de cambios por versión.
+- [`../CLAUDE.md`](../CLAUDE.md) — reglas que leen los asistentes de IA al empezar.
 </content>

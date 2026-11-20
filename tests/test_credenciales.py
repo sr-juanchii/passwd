@@ -187,3 +187,36 @@ def test_restriccion_un_solo_activo_por_credencial(client):
         db.rollback()
     finally:
         db.close()
+
+
+def test_el_formulario_clasico_conserva_el_servicio_elegido(client):
+    """Regresión: el campo `servicio` del formulario debe llegar al servicio.
+
+    El parámetro del controlador no puede llamarse `servicio` (colisiona con el
+    módulo del caso de uso) y viaja con un alias. Se comprueba con un valor
+    DISTINTO del valor por defecto: con «SSH» —que es el valor por defecto— un
+    alias roto pasaría inadvertido.
+    """
+    from sqlalchemy import select
+
+    from tests.conftest import sesion_bd
+
+    autenticar_admin(client)
+    sid = _crear_servidor(client, "srv-alias-servicio")
+    csrf = csrf_de(client, f"/credenciales/nueva?activo=fisico&activo_id={sid}")
+    respuesta = client.post("/credenciales/nueva", data={
+        "activo": "fisico", "activo_id": str(sid), "usuario_acceso": "root",
+        "password": CLAVE_SECRETA, "servicio": "iLO/IPMI", "puerto": "443",
+        "descripcion": "", "usada_por": "", "csrf_token": csrf,
+    })
+    assert respuesta.status_code == 303
+
+    db = sesion_bd()
+    try:
+        from app.models import Credencial
+
+        credencial = db.scalar(select(Credencial))
+        assert credencial.servicio == "iLO/IPMI"
+        assert credencial.puerto == 443
+    finally:
+        db.close()

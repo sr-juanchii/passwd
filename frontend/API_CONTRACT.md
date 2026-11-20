@@ -139,13 +139,36 @@ nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`. `tipo` pued
 
 | Método | Path | Permiso | Notas |
 |---|---|---|---|
-| POST | `/credenciales` | credenciales.gestionar | `{activo('fisico'|'hipervisor'|'vm'|'dispositivo'), activo_id, usuario_acceso, password, servicio, puerto?, descripcion}` → `{ id }` |
-| GET | `/credenciales/{id}` | credenciales.gestionar | datos para editar + `historial: {id, rotada_en, rotada_por}[]` (sin password) |
-| PUT | `/credenciales/{id}` | credenciales.gestionar | `{usuario_acceso, password(''=conservar), servicio, puerto?, descripcion}` → `{ id }` |
+| POST | `/credenciales` | credenciales.gestionar | `{activo('fisico'|'hipervisor'|'vm'|'dispositivo'), activo_id, usuario_acceso, password, servicio, puerto?, descripcion, usada_por?}` → `{ id }` |
+| GET | `/credenciales/{id}` | credenciales.gestionar | datos para editar + `usada_por`, `via_rotacion`, `dias_sin_rotar` y `historial: {id, rotada_en, rotada_por}[]` (sin password) |
+| PUT | `/credenciales/{id}` | credenciales.gestionar | `{usuario_acceso, password(''=conservar), servicio, puerto?, descripcion, usada_por?}` → `{ id }`. **Enviar `password` exige una rotación ya autorizada** para esa credencial; si no la hay responde **409** y el intento queda auditado |
 | DELETE | `/credenciales/{id}` | credenciales.gestionar | `{ ok }` |
 | POST | `/credenciales/{id}/revelar` | credenciales.revelar (+objeto) | `{ usuario, password }` (auditado, rate-limited) |
 | POST | `/credenciales/{id}/copiar` | credenciales.revelar (+objeto) | `{ usuario, password }` (auditado, rate-limited) |
 | POST | `/credenciales/{id}/historial/{hid}/revelar` | credenciales.gestionar | `{ password }` (auditado, rate-limited) |
+
+## Rotación (gobernanza)
+
+Cambiar la contraseña de una credencial del inventario es un ciclo con dos personas, no una
+edición: se solicita con motivo, la autoriza **otro** administrador reautenticándose, y solo
+entonces se registra la contraseña que quedó aplicada en el activo. Ninguna respuesta de estos
+endpoints incluye contraseñas.
+
+| Método | Path | Permiso | Notas |
+|---|---|---|---|
+| GET | `/rotacion/panel` | rotacion.ver | `{ pendientes_de_autorizar:[], pendientes_de_ejecutar:[], revisiones_pendientes:[], politica:{intervalo_dias, umbral_temprana_dias, motivo_min, motivo_reforzado_min}, patrones:{modo_observacion, ventana_dias, senales:[]} }` |
+| GET | `/rotacion/credenciales/{id}` | rotacion.ver | `{ credencial_id, activo_nombre, usuario_acceso, via_rotacion, usada_por, dias_sin_rotar, fecha_programada, temprana_si_se_rota_ahora, solicitud_abierta, historial:[] }` |
+| POST | `/rotacion/solicitudes` | rotacion.solicitar | `{credencial_id, motivo, tipo('programada'|'manual'|'emergencia'|'masiva')}` → asiento. **409** si ya hay una solicitud abierta; **400** si el motivo no basta (10 caracteres, 30 si la rotación es temprana o de emergencia) |
+| POST | `/rotacion/solicitudes/{id}/autorizar` | rotacion.autorizar | `{password, codigo}` → asiento. El código es de **aplicación autenticadora**; el OTP por correo se rechaza. **403** al autorizar la propia solicitud, salvo emergencia dentro de la ventana |
+| POST | `/rotacion/solicitudes/autorizar-lote` | rotacion.autorizar | `{ids:[], password, codigo}` → `{autorizadas:[], rechazadas:[{id, motivo}]}`. Una reautenticación, pero cada solicitud se autoriza por separado |
+| POST | `/rotacion/solicitudes/{id}/rechazar` | rotacion.autorizar | `{motivo}` → asiento |
+| POST | `/rotacion/solicitudes/{id}/cancelar` | rotacion.solicitar | → asiento (propia; el administrador, cualquiera) |
+| POST | `/rotacion/solicitudes/{id}/aplicar-manual` | rotacion.solicitar | `{password}` → asiento cerrado. **409** sin autorización vigente |
+| POST | `/rotacion/solicitudes/{id}/revisar` | rotacion.revisar | `{nota}` → asiento. Cierra la revisión de una emergencia sin segundo par; **403** si lo intenta quien la autorizó |
+
+Un asiento trae, entre otros: `estado`, `tipo`, `motivo`, `solicitado_por`, `dias_al_solicitar`,
+`temprana`, `autorizado_por`, `emergencia_sin_segundo_par`, `revision_pendiente`, `dias_al_rotar`,
+`desvio_dias` (negativo = se adelantó), `resultado`, `via` y `verificacion`.
 
 ## Búsqueda
 
@@ -189,7 +212,7 @@ nivel_label, expira_en, expirada, tipo, activo_id, activo_nombre }`. `tipo` pued
 
 ## Métricas
 
-| GET | `/metricas` | metricas.ver | `{ rotacion_vencida:[], logins_fallidos_24h, logins_fallidos_7d, bloqueados:[], sin_mfa:[], top_accesos:[], concesiones_por_caducar:[] }` (mismos datos que `metricas.html`) |
+| GET | `/metricas` | metricas.ver | `{ rotacion_vencida:[], logins_fallidos_24h, logins_fallidos_7d, bloqueados:[], sin_mfa:[], top_accesos:[], concesiones_por_caducar:[], gobernanza_rotacion:{...}, patrones_rotacion:{...} }` |
 
 ## Configuración del sistema
 

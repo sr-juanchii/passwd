@@ -12,9 +12,141 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
+## [1.3.0] - 2026-11-20
+
+**Gobernanza de rotación y bitácora firmada.** Versión MENOR: cambiar la contraseña de una
+credencial del inventario deja de ser una edición y pasa a ser un acto gobernado por dos personas,
+con motivo, autorización y rastro permanente. Corresponde a la **Fase 9** (parcial) de la
+[hoja de ruta](docs/hoja-de-ruta.md).
+
+**Al actualizar desde la 1.2.x** (detalle en [`docs/notas-version-1.3.0.md`](docs/notas-version-1.3.0.md)):
+
+- **Defina `PASSWD_AUDIT_KEY`** por entorno antes de arrancar: si no, se autogenera y se avisa.
+- Aplique la migración `0010` (aditiva); en contenedor las columnas se añaden solas al arrancar.
+- **Hacen falta dos administradores activos**: con uno solo, toda rotación cae por la vía de
+  emergencia, queda marcada y espera revisión. El arranque lo avisa.
+- El formulario de edición de una credencial **ya no cambia la contraseña**.
+
 ### Añadido
 
+- **Gobernanza de rotación de credenciales.** Cambiar la contraseña de una credencial del
+  inventario deja de ser una edición y pasa a ser un ciclo con dos personas:
+  `SOLICITADA → AUTORIZADA → CERRADA`, con **motivo obligatorio**, **regla de dos pares** (nadie
+  autoriza lo que pidió) y **reautenticación con aplicación autenticadora** del autorizador. Cada
+  rotación deja un asiento permanente en el libro mayor `rotaciones_credencial` con la antigüedad
+  de la contraseña al solicitar, al autorizar y al rotar, y la desviación respecto a la fecha que
+  marcaba la política.
+- **Vía de emergencia acotada**: con un solo administrador disponible, una solicitud de emergencia
+  la puede autorizar su propio solicitante dentro de una ventana corta. Queda marcada de forma
+  imborrable, alerta a todos los administradores y exige revisión posterior de otro administrador.
+- **Panel de rotación** (`/rotacion`) con pendientes de autorizar, autorización en lote,
+  pendientes de aplicar y emergencias por revisar; y **línea de tiempo de gobernanza** en la ficha
+  de cada credencial.
+- **Reglas de patrón** sobre el libro mayor (tempranas repetidas, fuera de horario, concentración,
+  abuso de la vía de emergencia), en **modo observación** por defecto.
+- Campo **«usada por»** en la credencial: servicios y automatismos que consumen la cuenta, visible
+  al solicitar y al autorizar una rotación.
+- Capa **`app/servicios/`** con los casos de uso de rotación, reautenticación, patrones,
+  **credenciales** y **autenticación completa** (login por etapas, cambio de contraseña, segundo
+  factor por ambos métodos, auto-recuperación y cierre de sesión). Los controladores pasan a
+  traducir HTTP ↔ servicio y no contienen ya consultas ni decisiones de acceso.
+- Permisos `rotacion.ver`, `rotacion.solicitar`, `rotacion.autorizar` y `rotacion.revisar`.
+- **Matriz de permisos generada del registro de rutas.** Cada dependencia de autorización declara
+  el permiso que exige, de modo que el registro es autodescriptivo y la matriz se genera leyéndolo
+  en vez de mantener una lista a mano. Añadir un endpoint sin declarar su política —un permiso
+  RBAC, o una exención con su motivo escrito— hace fallar la suite.
+- **Pruebas de navegador en CI** (Playwright) contra el sistema entero: backend, frontend
+  compilado para producción y un receptor SMTP local. Cubren el acceso completo, la expiración de
+  sesión, el alta y la verificación del segundo factor por **los dos métodos** (aplicación
+  autenticadora y correo), la configuración y la exportación del inventario en claro. No hay
+  endpoints de prueba en la aplicación: el correo se lee del buzón simulado, como lo leería una
+  persona.
+- Ajustes nuevos: `PASSWD_ROTACION_TEMPRANA_PCT`, `PASSWD_ROTACION_EMERGENCIA_VENTANA_MIN`,
+  `PASSWD_ROTACION_EMERGENCIA_MAX_POR_MES` y `PASSWD_ROTACION_PATRONES_MODO_OBSERVACION`.
+- [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md): plan maestro de rotación
+  asistida por agentes y monitoreo (propuesta revisada contra el código).
 - [`docs/plan-v2.0.md`](docs/plan-v2.0.md): plan de la versión 2.0 (propuesta para aprobación).
+
+### Seguridad
+
+- **Bitácora de auditoría firmada con HMAC-SHA256** y clave `PASSWD_AUDIT_KEY` fuera de la base de
+  datos. El encadenamiento anterior era un SHA-256 sin clave: quien pudiera escribir en la base
+  podía recalcular la cadena entera y reescribir quién hizo qué. El material previo se conserva
+  como **tramo heredado**, `verificar-auditoria` valida ambos tramos e informa del punto de corte,
+  y un registro sin firmar después del corte se trata como cadena rota, de modo que la firma no se
+  puede degradar reescribiendo filas con el algoritmo público.
+- **Punto único de escritura de contraseñas del inventario.** Hasta ahora había tres caminos que
+  escribían `Credencial.password_cifrada` con lógica duplicada (formulario clásico, API JSON e
+  importación CSV); un circuito de autorización en uno solo no habría sido un control. Todos
+  delegan ahora en `app/servicios/rotacion.py`, y una prueba de arquitectura falla si alguno
+  vuelve a hacerlo por su cuenta. Un intento de cambiar la contraseña sin autorización vigente se
+  rechaza con 409 y queda auditado.
+- La reautenticación para autorizar una rotación **rechaza el código por correo**: un buzón puede
+  estar compartido o abierto en la misma sesión, de modo que no acredita a una segunda persona.
+- **Tres divergencias entre la interfaz clásica y la API JSON**, encontradas al unificar la
+  autenticación. En las tres la interfaz clásica era la débil:
+  - La **verificación del segundo factor no tenía límite de tasa por usuario**: solo la API JSON lo
+    aplicaba. El bloqueo de cuenta seguía frenando la prueba sistemática, de modo que no era una
+    puerta abierta, pero sí una defensa menos. Ahora la tienen las dos.
+  - Un **código de enrolamiento incorrecto no contaba para el bloqueo** de la cuenta; solo se
+    auditaba. Ahora cuenta, como ya hacía la API JSON.
+  - Una cuenta con **segundo factor por correo no podía iniciar la auto-recuperación**, porque se
+    exigía un secreto TOTP que esas cuentas no tienen. Quedaba atrapada en un desafío señuelo
+    imposible de superar, aun teniendo códigos de recuperación válidos con los que completar el
+    paso 2. Ahora puede.
+- **El login deja de estar escrito dos veces.** El CSRF de doble cookie, el límite por IP, la
+  comparación en tiempo constante contra un hash ficticio, el bloqueo de cuenta y el *rehash*
+  oportunista vivían duplicados en los dos controladores de autenticación. Ahora hay una sola
+  implementación, con pruebas propias sin HTTP. Al retirarlos, el hash ficticio que cada
+  controlador calculaba al importarse (un Argon2id por módulo y por proceso) deja de computarse
+  dos veces de más.
+- **La entrega de una contraseña en claro deja de estar escrita dos veces.** El control de acceso
+  por objeto, el límite anti-exfiltración y la auditoría vivían duplicados, línea por línea, en los
+  dos controladores de credenciales, y mantenerlos sincronizados a mano es lo que falló en la
+  1.2.0. Ahora hay una sola implementación en `app/servicios/credenciales.py`, con pruebas propias
+  que no pasan por HTTP.
+
+### Obsoleto
+
+Avisos previos de las roturas de la 2.0, para que ninguna llegue por sorpresa
+([`docs/plan-v2.0.md`](docs/plan-v2.0.md) §4):
+
+- **La interfaz clásica (HTML) se retira en la 2.0** (R1). Sus respuestas llevan ya
+  `Deprecation: true` y un `Link` a la documentación, y sus páginas muestran un aviso. `/api/web`,
+  `/api/v1` y los estáticos no se marcan: siguen vivos.
+- **`PASSWD_SMTP_TLS` y el uso de `PASSWD_NOTIFY_ENABLED` como interruptor del servicio de correo**
+  dejarán de aceptarse en la 2.0 (R4). El arranque avisa **solo cuando esa herencia decide de
+  verdad**, es decir cuando la variable nueva no está definida, y el aviso pide definirla, no
+  sustituir la antigua: `PASSWD_NOTIFY_ENABLED` conserva su significado propio —las alertas de
+  seguridad a los administradores— y pedir que se borre dejaría a quien lo hiciera sin ellas. Una
+  instalación que no dependa de la herencia no ve nada.
+- **`/api/v1/inventario` paginará siempre y excluirá por defecto los activos restringidos** en la
+  2.0 (R7). La aplicación lo registra la primera vez que recibe una llamada sin `limit`. El
+  contrato de `/api/v1` **no cambia en esta versión**: el aviso va por registro y documentación, no
+  por el cuerpo de la respuesta, para no romper a un cliente con validación estricta de esquema.
+
+### Cambiado
+
+- El formulario de edición de una credencial **ya no permite cambiar la contraseña**: se rota por
+  el ciclo de gobernanza. El resto de campos se siguen editando igual.
+- El respaldo cifrado (formato `3`) incluye el libro mayor de rotaciones y las columnas nuevas de
+  la credencial. Los respaldos de formato `1` y `2` se siguen restaurando.
+- La verificación funcional de `/api/web` (`scripts/verificar_api_web.py`, el único control que
+  corre sobre **MySQL**) recorre ya el ciclo de gobernanza completo —dos administradores,
+  solicitud con motivo, autorización con reautenticación y registro— y comprueba que editar la
+  credencial **ya no** cambia la contraseña. La matriz de permisos se valida contra `app/rbac.py`
+  en vez de contra un número fijo, que envejecía con cada permiso nuevo.
+
+## [1.2.1] - 2026-11-17
+
+Versión PARCHE publicada desde `main` sin pasar por este registro; se documenta aquí para que el
+histórico no tenga huecos.
+
+### Corregido
+
+- Sincronizar los permisos del menú **renovaba la sesión**, de modo que una sesión inactiva no
+  llegaba a vencer mientras la pestaña siguiera abierta
+  ([#29](https://github.com/sr-juanchii/passwd/pull/29)).
 
 ## [1.2.0] - 2026-11-14
 
@@ -357,7 +489,9 @@ Primera versión estable. Establece la línea base sobre la que se versionan los
 
 El detalle del alcance por fases está en [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md).
 
-[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.2.0...HEAD
+[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/sr-juanchii/passwd/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/sr-juanchii/passwd/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/sr-juanchii/passwd/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.1.0
 [1.0.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.0.0

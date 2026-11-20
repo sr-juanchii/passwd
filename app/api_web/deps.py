@@ -109,6 +109,8 @@ def requiere_permiso_json(permiso: str):
             raise HTTPException(status_code=403, detail="No tiene permisos para esta operación.")
         return usuario
 
+    # Ver la nota en app/deps.py: el registro de rutas declara su política.
+    _dep.permiso_requerido = permiso
     return _dep
 
 

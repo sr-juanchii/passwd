@@ -20,7 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app import __version__, ajustes, audit
-from app.config import get_settings
+from app.config import get_settings, obsoletas_en_uso
 from app.database import get_db, init_db
 from app.deps import RedirigirLogin, render
 from app.models import ROL_ADMIN, Usuario
@@ -61,11 +61,31 @@ class RefrescoConfiguracionMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+# Prefijos que NO pertenecen a la interfaz clásica: las dos APIs, los estáticos
+# y la sonda de salud. Todo lo demás que sirve esta aplicación es HTML de Jinja,
+# y es lo que la 2.0 retira (rotura R1 de docs/plan-v2.0.md).
+_PREFIJOS_NO_CLASICOS = ("/api/", "/static", "/healthz")
+_DOC_RETIRADA = "https://github.com/sr-juanchii/passwd/blob/main/docs/plan-v2.0.md"
+
+
+def _es_interfaz_clasica(ruta: str) -> bool:
+    return not ruta.startswith(_PREFIJOS_NO_CLASICOS)
+
+
 class CabecerasSeguridadMiddleware(BaseHTTPMiddleware):
     """Cabeceras endurecidas para toda respuesta (CIS 16.x / OWASP)."""
 
     async def dispatch(self, request: Request, call_next):
         respuesta = await call_next(request)
+        # Aviso de retirada de la interfaz clásica (R1). Se marca aquí, en el
+        # único punto por el que pasan todas las respuestas, en vez de decorar
+        # las 62 rutas Jinja una a una.
+        #
+        # NO se emite «Sunset»: la RFC 8594 pide una fecha y la 2.0 no tiene
+        # fecha comprometida. Inventar una sería peor que no ponerla.
+        if _es_interfaz_clasica(request.url.path):
+            respuesta.headers["Deprecation"] = "true"
+            respuesta.headers["Link"] = f'<{_DOC_RETIRADA}>; rel="deprecation"'
         respuesta.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self'; "
             "script-src 'self'; form-action 'self'; frame-ancestors 'none'; "
@@ -203,9 +223,31 @@ def ejecutar_mantenimiento() -> None:
         audit.purgar_antiguos(db, settings.audit_retention_days)
         purgar_sesiones_expiradas(db)
         otp_correo.purgar_expirados(db)
+        _avisar_si_falta_el_segundo_par(db)
         db.commit()
     finally:
         db.close()
+
+
+def _avisar_si_falta_el_segundo_par(db) -> None:
+    """Avisa si no hay administradores suficientes para la regla de dos pares.
+
+    La gobernanza de rotación exige que autorice alguien distinto del
+    solicitante. Con un solo administrador activo esa regla no se puede aplicar:
+    toda rotación cae por la vía de emergencia, que queda marcada y pendiente de
+    una revisión que tampoco puede hacer nadie más. Conviene saberlo antes de
+    descubrirlo durante un incidente.
+    """
+    from app.servicios.rotacion import MIN_ADMINISTRADORES, administradores_activos
+
+    activos = administradores_activos(db)
+    if activos < MIN_ADMINISTRADORES:
+        logger.warning(
+            "Solo hay %d administrador(es) activo(s): la regla de dos pares de la rotación no se "
+            "puede aplicar y toda rotación caerá por la vía de emergencia, marcada y pendiente de "
+            "revisión. Cree un segundo administrador (ver docs/manual-administrador.md §4 bis).",
+            activos,
+        )
 
 
 async def _mantenimiento_periodico() -> None:
@@ -254,6 +296,21 @@ def create_app() -> FastAPI:
             "PASSWD_RATE_LIMIT_BACKEND=%s: el límite de tasa vive en la memoria de CADA proceso. "
             "Con varios workers o réplicas use \"bd\" para compartir el presupuesto.",
             settings.rate_limit_backend,
+        )
+
+    # Aviso de retirada de configuración obsoleta (R4). Solo si la herencia está
+    # en efecto: una instalación limpia —o una que ya define la variable nueva—
+    # no debe ver nada. Quien dependa de ella se entera ahora y no al actualizar
+    # a la 2.0, cuando deje de aplicarse.
+    #
+    # El aviso habla de la HERENCIA, no de la variable: `PASSWD_NOTIFY_ENABLED`
+    # conserva su significado propio (las alertas a los administradores) y
+    # pedir que se sustituya dejaría a quien lo hiciera sin ellas.
+    for antigua, nueva in obsoletas_en_uso():
+        logger.warning(
+            "PASSWD_%s está fijando PASSWD_%s; la versión 2.0 dejará de heredarla. Defina "
+            "PASSWD_%s explícitamente (ver docs/referencia-configuracion.md).",
+            antigua, nueva, nueva,
         )
 
     # El orden importa: el último en añadirse queda como capa MÁS EXTERNA. Se

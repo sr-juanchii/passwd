@@ -178,26 +178,41 @@ Configuración:
 > Las fases 9 a 12 se ordenan, con sus roturas, dependencias y criterios de aceptación, como
 > **versión 2.0** en [`plan-v2.0.md`](plan-v2.0.md).
 
-## Fase 9 — Unificación de interfaces 🔜
+## Fase 9 — Unificación de interfaces 🚧 (parcial en la v1.3.0)
 
 La lógica duplicada entre `app/routes/` (interfaz clásica) y `app/api_web/` (JSON) ya causó una
-divergencia de seguridad (la exportación de la Fase 8). Plan:
+divergencia de seguridad (la exportación de la Fase 8). Al unificar la autenticación en la v1.3.0
+aparecieron **tres divergencias más**, las tres con la interfaz clásica en el lado débil: sin
+límite de tasa en la verificación del segundo factor, sin contar los fallos de enrolamiento para
+el bloqueo, y sin auto-recuperación para las cuentas con segundo factor por correo. Plan:
 
-1. 🔜 Extraer los casos de uso a `app/servicios/` (autenticación, credenciales, inventario,
-   usuarios, accesos), como ya se hizo con la exportación, la importación y el segundo factor.
+1. ✅ **Entregado en la v1.3.0.** Casos de uso extraídos a `app/servicios/`: rotación,
+   reautenticación, patrones, credenciales y autenticación completa (login por etapas, cambio de
+   contraseña, segundo factor por ambos métodos, auto-recuperación y cierre de sesión), además de
+   la exportación, la importación y el segundo factor que ya vivían ahí. Quedan inventario,
+   usuarios y accesos.
 2. 🔜 Dejar `api_web` como única interfaz de aplicación y **retirar la interfaz clásica**
    (`app/routes` salvo `/api/v1`, `app/templates`, `app/static`), migrando antes las pruebas
-   que hoy la usan como vía de entrada.
-3. 🔜 Matriz de pruebas **restricciones × endpoints JSON** para que ninguna ruta nueva quede
-   sin cubrir.
+   que hoy la usan como vía de entrada. Es la rotura R1 de la 2.0 y **ya está avisada** desde la
+   v1.3.0: cabecera `Deprecation`, `Link` a la documentación y aviso en las páginas.
+3. ✅ **Entregado en la v1.3.0.** Matriz de permisos **generada del registro de rutas**: cada
+   dependencia de autorización declara el permiso que exige, y añadir un endpoint sin declarar su
+   política hace fallar la suite. La acompañan las pruebas de navegador en CI, que recorren el
+   sistema entero (backend + frontend + SMTP simulado).
+
+> La capa `app/servicios/` es además prerrequisito de la gobernanza de rotación: ver
+> [`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §3.4 y §8.1.
 
 ## Fase 10 — Endurecimiento 🔜
 
 - 🔜 **Reautenticación (contraseña + código) para exportar** y otras acciones de alto impacto,
-  con el mecanismo ya usado en «Mi seguridad».
+  con el mecanismo ya usado en «Mi seguridad». La autorización de rotaciones la exige con TOTP y
+  sin OTP por correo ([`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §3.5).
 - 🔜 **Cifrar las notas del vault personal** (hoy en claro en `EntradaVault.notas`).
 - 🔜 **Cadena de auditoría con clave (HMAC)** y escritura serializada, para que quien escriba
-  en la base de datos no pueda recalcularla ni bifurcarla.
+  en la base de datos no pueda recalcularla ni bifurcarla. **Se adelanta a la 1.3.0**: el libro
+  mayor de rotaciones solo prueba quién aprobó qué si la cadena no se puede recalcular
+  ([`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §3.6).
 - 🔜 **CSP con nonce en el frontend** (retirar `'unsafe-inline'` de `script-src`).
 - 🔜 **Valores seguros por defecto**: `RATE_LIMIT_BACKEND=bd` y `REQUIRE_ENV_KEYS=true`.
 - 🔜 **Contenedores**: `read_only`, `cap_drop: ALL`, `no-new-privileges`.

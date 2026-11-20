@@ -18,7 +18,12 @@ from app.database import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False a propósito: el valor por defecto de
+    # fileConfig es True y DESHABILITA todos los loggers ya creados. Cuando
+    # Alembic corre en el mismo proceso que la aplicación —las pruebas, o un
+    # futuro arranque que migre solo— eso apaga en silencio la bitácora
+    # operativa de `app.*` para el resto de la vida del proceso.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

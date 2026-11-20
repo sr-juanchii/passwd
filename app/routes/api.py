@@ -9,6 +9,7 @@ programática. Debe usarse siempre sobre TLS.
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -31,9 +32,34 @@ from app.models import (
 )
 from app.security import ratelimit
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1")
 
 MAX_LIMIT = 500
+
+# Aviso de retirada R7 (docs/plan-v2.0.md): en la 2.0, /api/v1/inventario
+# excluirá por defecto los activos restringidos y paginará SIEMPRE. Quien hoy
+# llama sin `limit` recibe todo el inventario, y esa llamada cambiará.
+#
+# El aviso NO viaja en la respuesta: la serie 1.x mantiene el contrato de
+# /api/v1 sin cambios, y añadir una clave al JSON rompería a un cliente con
+# validación estricta de esquema. Va por registro, documentación y notas de
+# versión, que es donde un integrador lo puede leer a tiempo.
+_aviso_inventario_emitido = False
+
+
+def _avisar_cambio_de_inventario(limit: int) -> None:
+    """Registra una vez por proceso que esta llamada cambiará en la 2.0."""
+    global _aviso_inventario_emitido
+    if limit > 0 or _aviso_inventario_emitido:
+        return
+    _aviso_inventario_emitido = True
+    logger.warning(
+        "/api/v1/inventario se consultó sin «limit»: en la versión 2.0 este endpoint paginará "
+        "siempre y excluirá por defecto los activos restringidos. Adapte la integración antes de "
+        "actualizar (ver docs/referencia-api-rest.md)."
+    )
 
 
 def token_api(request: Request, db: Annotated[Session, Depends(get_db)]) -> TokenApi:
@@ -117,6 +143,7 @@ def api_inventario(
     (>0, tope ``MAX_LIMIT``) y `offset` paginan cada colección por separado.
     """
     _exigir_alcance(token, TOKEN_ALCANCE_INVENTARIO)
+    _avisar_cambio_de_inventario(limit)
     offset = max(0, offset)
 
     def _pag(consulta):

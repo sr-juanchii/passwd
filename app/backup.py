@@ -23,7 +23,9 @@ from app import audit
 from app.models import (
     ESTADO_ACTIVO,
     MFA_TOTP,
+    ROT_VERIF_NINGUNA,
     TIPO_DISPOSITIVO_SWITCH,
+    VIA_ROTACION_MANUAL,
     CodigoRecuperacionMFA,
     Configuracion,
     Credencial,
@@ -32,6 +34,7 @@ from app.models import (
     Hipervisor,
     MaquinaVirtual,
     RegistroAuditoria,
+    RotacionCredencial,
     ServidorFisico,
     SesionWeb,
     Usuario,
@@ -40,7 +43,7 @@ from app.models import (
 from app.security.crypto import cifrar, descifrar
 
 FORMATO = "respaldo-passwd"
-VERSION = 2
+VERSION = 3
 LARGO_MINIMO_FRASE = 16
 
 # Parámetros del KDF (scrypt). Los vigentes se escriben en el archivo (v2) y
@@ -151,8 +154,34 @@ def exportar(db: Session, frase: str) -> bytes:
              "usuario_acceso": c.usuario_acceso, "password": descifrar(c.password_cifrada),
              "servicio": c.servicio, "puerto": c.puerto, "descripcion": c.descripcion,
              "creado_por_id": c.creado_por_id, "creado_en": _fecha(c.creado_en),
-             "password_rotada_en": _fecha(c.password_rotada_en)}
+             "password_rotada_en": _fecha(c.password_rotada_en),
+             "via_rotacion": c.via_rotacion, "usada_por": c.usada_por}
             for c in db.scalars(select(Credencial)).all()
+        ],
+        # Libro mayor de rotaciones: evidencia de gobernanza, no estado de
+        # ejecución. Se respalda ENTERO —nunca se purga— y no contiene secretos,
+        # de modo que viaja como el resto del contenido del respaldo cifrado.
+        "rotaciones": [
+            {"id": r.id, "credencial_id": r.credencial_id, "activo_nombre": r.activo_nombre,
+             "usuario_acceso": r.usuario_acceso, "servicio": r.servicio, "estado": r.estado,
+             "tipo": r.tipo, "solicitado_por_id": r.solicitado_por_id,
+             "solicitado_por_username": r.solicitado_por_username,
+             "solicitado_en": _fecha(r.solicitado_en), "motivo": r.motivo,
+             "dias_al_solicitar": r.dias_al_solicitar, "dias_al_autorizar": r.dias_al_autorizar,
+             "temprana": r.temprana, "autorizado_por_id": r.autorizado_por_id,
+             "autorizado_por_username": r.autorizado_por_username,
+             "autorizado_en": _fecha(r.autorizado_en), "reautenticado": r.reautenticado,
+             "emergencia_sin_segundo_par": r.emergencia_sin_segundo_par,
+             "revisada_por_id": r.revisada_por_id, "revisada_en": _fecha(r.revisada_en),
+             "nota_revision": r.nota_revision, "rechazado_por_id": r.rechazado_por_id,
+             "rechazado_en": _fecha(r.rechazado_en), "motivo_rechazo": r.motivo_rechazo,
+             "cancelado_por_id": r.cancelado_por_id, "cancelado_en": _fecha(r.cancelado_en),
+             "fecha_programada": _fecha(r.fecha_programada),
+             "ejecutado_en": _fecha(r.ejecutado_en), "confirmado_en": _fecha(r.confirmado_en),
+             "dias_al_rotar": r.dias_al_rotar, "desvio_dias": r.desvio_dias,
+             "resultado": r.resultado, "via": r.via, "verificacion": r.verificacion,
+             "detalle_error": r.detalle_error}
+            for r in db.scalars(select(RotacionCredencial).order_by(RotacionCredencial.id)).all()
         ],
         # Vaults personales: privados por usuario, pero SÍ se respaldan (dato del
         # sistema). La contraseña se guarda en claro dentro del JSON cifrado, como
@@ -237,7 +266,8 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
         raise ErrorRespaldo("La base de datos ya contiene información; use --sobrescribir para reemplazarla.")
 
     # Limpieza total en orden inverso de dependencias
-    for modelo in (Configuracion, SesionWeb, CodigoRecuperacionMFA, RegistroAuditoria, EntradaVault, Credencial,
+    for modelo in (Configuracion, SesionWeb, CodigoRecuperacionMFA, RegistroAuditoria,
+                   RotacionCredencial, EntradaVault, Credencial,
                    MaquinaVirtual, Hipervisor, DispositivoRed, ServidorFisico, Usuario):
         for fila in db.scalars(select(modelo)).all():
             db.delete(fila)
@@ -326,6 +356,8 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             creado_por_id=c["creado_por_id"],
             creado_en=_parse_fecha(c["creado_en"]) or ahora_utc(),
             password_rotada_en=_parse_fecha(c.get("password_rotada_en")) or ahora_utc(),
+            via_rotacion=c.get("via_rotacion") or VIA_ROTACION_MANUAL,
+            usada_por=c.get("usada_por", ""),
         ))
     for e in carga.get("vaults", []):
         db.add(EntradaVault(
@@ -334,6 +366,43 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             url=e.get("url", ""), categoria=e.get("categoria", "cuenta"), notas=e.get("notas", ""),
             creado_en=_parse_fecha(e.get("creado_en")) or ahora_utc(),
             password_rotada_en=_parse_fecha(e.get("password_rotada_en")) or ahora_utc(),
+        ))
+    db.flush()
+    # El libro mayor se repone tal cual: es evidencia histórica, no estado vivo.
+    # Si una credencial ya no existe, el asiento queda con credencial_id nulo y
+    # sigue siendo legible por sus campos desnormalizados.
+    ids_credencial = {c["id"] for c in carga["credenciales"]}
+    for r in carga.get("rotaciones", []):
+        db.add(RotacionCredencial(
+            id=r["id"],
+            credencial_id=r["credencial_id"] if r["credencial_id"] in ids_credencial else None,
+            activo_nombre=r.get("activo_nombre", ""), usuario_acceso=r.get("usuario_acceso", ""),
+            servicio=r.get("servicio", ""), estado=r["estado"], tipo=r["tipo"],
+            solicitado_por_id=r.get("solicitado_por_id"),
+            solicitado_por_username=r.get("solicitado_por_username", ""),
+            solicitado_en=_parse_fecha(r.get("solicitado_en")) or ahora_utc(),
+            motivo=r.get("motivo", ""), dias_al_solicitar=r.get("dias_al_solicitar"),
+            dias_al_autorizar=r.get("dias_al_autorizar"), temprana=r.get("temprana", False),
+            autorizado_por_id=r.get("autorizado_por_id"),
+            autorizado_por_username=r.get("autorizado_por_username", ""),
+            autorizado_en=_parse_fecha(r.get("autorizado_en")),
+            reautenticado=r.get("reautenticado", False),
+            emergencia_sin_segundo_par=r.get("emergencia_sin_segundo_par", False),
+            revisada_por_id=r.get("revisada_por_id"),
+            revisada_en=_parse_fecha(r.get("revisada_en")),
+            nota_revision=r.get("nota_revision", ""),
+            rechazado_por_id=r.get("rechazado_por_id"),
+            rechazado_en=_parse_fecha(r.get("rechazado_en")),
+            motivo_rechazo=r.get("motivo_rechazo", ""),
+            cancelado_por_id=r.get("cancelado_por_id"),
+            cancelado_en=_parse_fecha(r.get("cancelado_en")),
+            fecha_programada=_parse_fecha(r.get("fecha_programada")),
+            ejecutado_en=_parse_fecha(r.get("ejecutado_en")),
+            confirmado_en=_parse_fecha(r.get("confirmado_en")),
+            dias_al_rotar=r.get("dias_al_rotar"), desvio_dias=r.get("desvio_dias"),
+            resultado=r.get("resultado", ""), via=r.get("via") or VIA_ROTACION_MANUAL,
+            verificacion=r.get("verificacion") or ROT_VERIF_NINGUNA,
+            detalle_error=r.get("detalle_error", ""),
         ))
     for r in carga.get("auditoria", []):
         db.add(RegistroAuditoria(
@@ -352,6 +421,7 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
         "dispositivos_red": len(carga.get("dispositivos_red", [])),
         "credenciales": len(carga["credenciales"]),
         "vaults": len(carga.get("vaults", [])),
+        "rotaciones": len(carga.get("rotaciones", [])),
         "auditoria": len(carga.get("auditoria", [])),
     }
     audit.registrar(db, audit.RESPALDO_RESTAURADO, username="cli",
