@@ -1153,6 +1153,7 @@ traza de cómo se construyó y con qué se verificó.
 | 2026-11-19 | v1.3.0 | Ciclo de gobernanza en el navegador | `d1e567f` | 7 de 7 (3,5 min), `eslint`, `tsc` | Dos personas, dos segundos factores; la regla de dos pares comprobada en la interfaz real |
 | 2026-11-19 | v1.3.0 | Documentación y notas de versión | `29fde2e` | 29 de 29 en navegador, enlaces de `docs/` resueltos | Notas 1.3.0, Fase 9 como parcial, registro de ejecución al día |
 | 2026-11-19 | v1.3.0 | Publicación de la 1.3.0 | (este) | `pytest` (400), `ruff`, `GET /healthz` → `1.3.0` | Versión, CHANGELOG y cierre del registro |
+| 2026-11-20 | v1.3.0 | Smoke de `/api/web` sobre MySQL al día | (este) | `scripts/verificar_api_web.py`, `pytest`, `ruff` | Lo destapó la CI del PR: el script no es parte de `pytest` y la verificación local nunca lo ejecutó |
 
 **Estado de la v1.3.0: cerrada.** Se entregó todo el alcance que este plan comparte con
 [`plan-v2.0.md`](plan-v2.0.md) §3: gobernanza de rotación, avisos de retirada R1/R4/R7, migración a

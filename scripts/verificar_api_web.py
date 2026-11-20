@@ -13,7 +13,7 @@ raíz del repo con las dependencias instaladas:
 
 Sale con código 0 si todo pasa; 1 si alguna comprobación falla.
 """
-import os, tempfile, sys
+import os, tempfile, sys, time
 from pathlib import Path
 
 # Permite ejecutarlo como `python scripts/verificar_api_web.py` desde la raíz.
@@ -34,6 +34,7 @@ from app.main import create_app
 from app.database import get_db
 from app.security.crypto import descifrar
 from app.models import Usuario
+from app.rbac import PERMISOS
 from sqlalchemy import select
 
 fallos = []
@@ -52,6 +53,23 @@ def secreto_de(username):
     db.close()
     return s
 
+
+_ultimo_paso = {}
+
+def codigo_totp(username):
+    """Código TOTP de una ventana que esta cuenta no haya usado todavía.
+
+    El servidor rechaza un código cuyo contador no sea mayor que el último
+    aceptado (RFC 6238 §5.2): reutilizar el del login haría fallar la
+    reautenticación al autorizar una rotación, y con razón. Se espera a la
+    ventana siguiente en vez de bajarle el listón al servidor.
+    """
+    paso = lambda: int(time.time()) // 30  # noqa: E731
+    while paso() <= _ultimo_paso.get(username, -1):
+        time.sleep(0.5)
+    _ultimo_paso[username] = paso()
+    return pyotp.TOTP(secreto_de(username)).now()
+
 def login_completo(c, username, password, nueva=None):
     """Hace el ciclo login -> (cambio) -> enrol/verif MFA hasta sesión activa."""
     csrf = c.get("/api/web/csrf").json()["csrf_login"]
@@ -67,14 +85,14 @@ def login_completo(c, username, password, nueva=None):
         tok = c.get("/api/web/session").json()["csrf_token"]
     if stage == "mfa_enrolamiento":
         c.get("/api/web/mfa/configurar")
-        code = pyotp.TOTP(secreto_de(username)).now()
+        code = codigo_totp(username)
         r = c.post("/api/web/mfa/configurar", headers={"X-CSRF-Token": tok}, json={"codigo": code})
         assert r.status_code == 200, r.text
         codigos = r.json()["codigos_recuperacion"]
     else:
         codigos = None
     if stage == "mfa_pendiente":
-        code = pyotp.TOTP(secreto_de(username)).now()
+        code = codigo_totp(username)
         r = c.post("/api/web/mfa/verificar", headers={"X-CSRF-Token": tok}, json={"codigo": code})
         assert r.status_code == 200, r.text
     tok = c.get("/api/web/session").json()["csrf_token"]
@@ -85,7 +103,10 @@ admin = TestClient(app)
 tok, recovery_admin = login_completo(admin, "admin", "ClaveInicialRobusta!9", nueva="Cl4veMaestra!Segura26")
 s = admin.get("/api/web/session").json()
 check("auth admin -> sesión activa", s["stage"] == "activa" and s["authenticated"])
-check("admin tiene 14 permisos", sum(1 for v in s["permisos"].values() if v) == 14)
+check(
+    f"admin tiene todos los permisos ({len(PERMISOS)})",
+    set(s["permisos"]) == set(PERMISOS) and all(s["permisos"].values()),
+)
 H = {"X-CSRF-Token": tok}
 
 # === 2. Inventario: servidor dedicado + hipervisor de nivel superior -> vm + credenciales ===
@@ -109,9 +130,49 @@ check("revelar credencial", r.status_code == 200 and r.json()["password"] == "Pw
 r = admin.post(f"/api/web/credenciales/{cred_vm}/copiar", headers=H)
 check("copiar credencial", r.status_code == 200 and r.json()["password"] == "PwdVm!2026xyz")
 
-# === 4. Rotación -> historial ===
+# === 4. Rotación bajo gobernanza -> historial ===
+# Desde la 1.3.0 la contraseña de una credencial del inventario NO se cambia
+# editándola: pasa por SOLICITADA -> AUTORIZADA -> CERRADA, con motivo, regla de
+# dos pares y reautenticación del autorizador. Se comprueba el ciclo entero,
+# porque este script es la única verificación que corre sobre MySQL.
+
+# Editar con contraseña ya no rota: lo rechaza el punto único de escritura.
 r = admin.put(f"/api/web/credenciales/{cred_vm}", headers=H, json={"usuario_acceso":"deploy","password":"PwdVm!ROTADA2026","servicio":"SSH","puerto":22,"descripcion":"deploy vm"})
-check("rotar credencial (editar password)", r.status_code == 200)
+check("editar la credencial ya no cambia la contraseña (409)", r.status_code == 409)
+r = admin.get(f"/api/web/credenciales/{cred_vm}")
+check("la contraseña sigue siendo la original", r.json()["historial"] == [])
+
+# Hace falta un segundo administrador: sin él no hay regla de dos pares que
+# aplicar y todo caería por la vía de emergencia.
+r = admin.post("/api/web/usuarios", headers=H, json={"username":"admin2","email":"admin2@example.com","nombre_completo":"Segundo Administrador","rol":"admin"})
+check("crear segundo administrador", r.status_code == 200)
+admin2_pwd = r.json()["password_temporal"]
+admin2 = TestClient(app)
+tok2, _ = login_completo(admin2, "admin2", admin2_pwd, nueva="S3gundoPar!Custodia26")
+H2 = {"X-CSRF-Token": tok2}
+
+r = admin.post("/api/web/rotacion/solicitudes", headers=H, json={"credencial_id": cred_vm, "motivo": "Verificación del ciclo de gobernanza sobre MySQL.", "tipo": "manual"})
+check("solicitar rotación", r.status_code == 200 and r.json()["estado"] == "solicitada")
+rot_id = r.json()["id"]
+
+# La regla de dos pares: quien pidió la rotación no la autoriza.
+r = admin.post(f"/api/web/rotacion/solicitudes/{rot_id}/autorizar", headers=H,
+               json={"password": "Cl4veMaestra!Segura26", "codigo": codigo_totp("admin")})
+check("el solicitante NO puede autorizar su propia solicitud", r.status_code == 403, r.text)
+r = admin.get(f"/api/web/rotacion/credenciales/{cred_vm}")
+check("la solicitud sigue esperando autorización", r.status_code == 200 and r.json()["solicitud_abierta"]["estado"] == "solicitada", r.text)
+
+# El segundo administrador sí, reautenticándose con su aplicación autenticadora.
+r = admin2.post(f"/api/web/rotacion/solicitudes/{rot_id}/autorizar", headers=H2,
+                json={"password": "S3gundoPar!Custodia26", "codigo": codigo_totp("admin2")})
+check("el segundo administrador autoriza con reautenticación", r.status_code == 200 and r.json()["estado"] == "autorizada", r.text)
+check("la autorización no cayó por la vía de emergencia", r.status_code == 200 and not r.json()["emergencia_sin_segundo_par"])
+
+r = admin.post(f"/api/web/rotacion/solicitudes/{rot_id}/aplicar-manual", headers=H, json={"password": "PwdVm!ROTADA2026"})
+check("registrar la contraseña aplicada cierra el ciclo", r.status_code == 200 and r.json()["estado"] == "cerrada", r.text)
+
+r = admin.post(f"/api/web/credenciales/{cred_vm}/revelar", headers=H)
+check("la credencial quedó rotada", r.status_code == 200 and r.json()["password"] == "PwdVm!ROTADA2026")
 r = admin.get(f"/api/web/credenciales/{cred_vm}")
 hist = r.json()["historial"]
 check("historial tras rotación", len(hist) == 1)
@@ -134,7 +195,7 @@ def crear_usuario(u, e, rol):
 r = crear_usuario("ana","ana@example.com","analista"); ana_pwd = r.json()["password_temporal"]; check("crear analista", r.status_code == 200)
 r = crear_usuario("ope","ope@example.com","operador"); ope_pwd = r.json()["password_temporal"]; check("crear operador", r.status_code == 200)
 r = crear_usuario("aud","aud@example.com","auditor"); check("crear auditor", r.status_code == 200)
-r = admin.get("/api/web/usuarios"); check("listar usuarios (4)", len(r.json()["usuarios"]) == 4)
+r = admin.get("/api/web/usuarios"); check("listar usuarios (5)", len(r.json()["usuarios"]) == 5)  # admin, admin2, ana, ope, aud
 
 # ana_id
 db = next(get_db()); ana = db.scalar(select(Usuario).where(Usuario.username=="ana")); ana_id = ana.id; db.close()

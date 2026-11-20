@@ -131,6 +131,11 @@ Avisos previos de las roturas de la 2.0, para que ninguna llegue por sorpresa
   el ciclo de gobernanza. El resto de campos se siguen editando igual.
 - El respaldo cifrado (formato `3`) incluye el libro mayor de rotaciones y las columnas nuevas de
   la credencial. Los respaldos de formato `1` y `2` se siguen restaurando.
+- La verificación funcional de `/api/web` (`scripts/verificar_api_web.py`, el único control que
+  corre sobre **MySQL**) recorre ya el ciclo de gobernanza completo —dos administradores,
+  solicitud con motivo, autorización con reautenticación y registro— y comprueba que editar la
+  credencial **ya no** cambia la contraseña. La matriz de permisos se valida contra `app/rbac.py`
+  en vez de contra un número fijo, que envejecía con cada permiso nuevo.
 
 ## [1.2.1] - 2026-11-17
 
