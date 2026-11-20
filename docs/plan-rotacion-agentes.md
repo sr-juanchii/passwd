@@ -1149,14 +1149,21 @@ traza de cómo se construyó y con qué se verificó.
 | 2026-11-19 | v1.3.0 | Pruebas de navegador en CI (C1) | `944b628` | 22 de 22 desde cero (4,4 min), `eslint`, `tsc` | Backend + frontend `standalone` + receptor SMTP local; job `navegador` nuevo |
 | 2026-11-19 | v1.3.0 | Corrección del aviso R4 (defecto propio) | `db668bf` | `pytest`, `ruff` | El aviso pedía sustituir `PASSWD_NOTIFY_ENABLED`, que sigue gobernando las alertas: habría dejado sin ellas a quien lo siguiera |
 | 2026-11-19 | v1.3.0 | Pre-release `v1.3.0-rc.1` | `047d6e2` | suite (393), `ruff`, `GET /healthz` | La política admite pre-releases; `prelanzamiento.yml` publica al empujar la etiqueta |
+| 2026-11-19 | v1.3.0 | Regla de nombres de rama | `0e1f0f0` | `ruff`, `pytest tests/test_version.py` | `CLAUDE.md` nuevo, para que la regla se aplique sola en sesiones futuras |
+| 2026-11-19 | v1.3.0 | Ciclo de gobernanza en el navegador | `d1e567f` | 7 de 7 (3,5 min), `eslint`, `tsc` | Dos personas, dos segundos factores; la regla de dos pares comprobada en la interfaz real |
+| 2026-11-19 | v1.3.0 | Documentación y notas de versión | `29fde2e` | 29 de 29 en navegador, enlaces de `docs/` resueltos | Notas 1.3.0, Fase 9 como parcial, registro de ejecución al día |
+| 2026-11-19 | v1.3.0 | Publicación de la 1.3.0 | (este) | `pytest` (400), `ruff`, `GET /healthz` → `1.3.0` | Versión, CHANGELOG y cierre del registro |
 
-**Estado de la v1.3.0.** La **gobernanza de rotación está entregada y verificada**. La versión
-**no se publica** hasta completar el resto de su alcance, que este plan comparte con
-[`plan-v2.0.md`](plan-v2.0.md) §3: avisos de retirada R1/R4/R7, migración del **resto** de casos de
-uso a `app/servicios/` (hoy solo viven ahí rotación, reautenticación y patrones), pruebas de
-navegador y matriz de permisos. Por eso `app/__init__.py` sigue en `1.2.0` y las entradas están
-bajo `[Sin publicar]`: declarar publicada una versión a medias sería exactamente el tipo de
-afirmación que este plan existe para evitar.
+**Estado de la v1.3.0: cerrada.** Se entregó todo el alcance que este plan comparte con
+[`plan-v2.0.md`](plan-v2.0.md) §3: gobernanza de rotación, avisos de retirada R1/R4/R7, migración a
+`app/servicios/` de credenciales y de la autenticación completa, matriz de permisos generada del
+registro de rutas y pruebas de navegador en CI. Antes de publicar se liberó el pre-release
+`v1.3.0-rc.1` para pruebas funcionales.
+
+Queda **fuera** de esta versión, y pasa a la 2.0, el punto 2 de la Fase 9: retirar la interfaz
+clásica. Ya está avisado —cabecera `Deprecation`, aviso en las páginas— y migrar a `app/servicios/`
+el inventario, los usuarios y los accesos sigue pendiente. Decirlo aquí es parte del trato: una
+versión se cierra con lo que entregó y con lo que no.
 
 Al arrancar cada versión se añaden sus filas según el desglose de §8. Una versión cerrada no deja
 filas pendientes.

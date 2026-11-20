@@ -4,7 +4,7 @@
 |---|---|
 | **Versión** | 1.3.0 |
 | **Etiqueta** | `v1.3.0` |
-| **Fecha** | 2026-11-19 |
+| **Fecha** | 2026-11-20 |
 | **Versión anterior** | 1.2.1 (2026-11-17) |
 | **Tipo (SemVer)** | MENOR — funcionalidad nueva retrocompatible, más endurecimiento de la auditoría |
 | **Fase de la hoja de ruta** | Fase 9 (parcial: puntos 1 y 3) |

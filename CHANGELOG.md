@@ -12,11 +12,20 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
-> Camino hacia la **1.3.0**. El alcance funcional está completo y verificado (gobernanza de
-> rotación, avisos de retirada R1/R4/R7, capa de servicios, matriz de permisos y pruebas de
-> navegador), según [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md) §8.1 y
-> [`docs/plan-v2.0.md`](docs/plan-v2.0.md) §3. Queda la documentación y las notas de versión, así
-> que la versión viva es el pre-release **1.3.0-rc.1**, publicado para pruebas funcionales.
+## [1.3.0] - 2026-11-20
+
+**Gobernanza de rotación y bitácora firmada.** Versión MENOR: cambiar la contraseña de una
+credencial del inventario deja de ser una edición y pasa a ser un acto gobernado por dos personas,
+con motivo, autorización y rastro permanente. Corresponde a la **Fase 9** (parcial) de la
+[hoja de ruta](docs/hoja-de-ruta.md).
+
+**Al actualizar desde la 1.2.x** (detalle en [`docs/notas-version-1.3.0.md`](docs/notas-version-1.3.0.md)):
+
+- **Defina `PASSWD_AUDIT_KEY`** por entorno antes de arrancar: si no, se autogenera y se avisa.
+- Aplique la migración `0010` (aditiva); en contenedor las columnas se añaden solas al arrancar.
+- **Hacen falta dos administradores activos**: con uno solo, toda rotación cae por la vía de
+  emergencia, queda marcada y espera revisión. El arranque lo avisa.
+- El formulario de edición de una credencial **ya no cambia la contraseña**.
 
 ### Añadido
 
@@ -122,6 +131,17 @@ Avisos previos de las roturas de la 2.0, para que ninguna llegue por sorpresa
   el ciclo de gobernanza. El resto de campos se siguen editando igual.
 - El respaldo cifrado (formato `3`) incluye el libro mayor de rotaciones y las columnas nuevas de
   la credencial. Los respaldos de formato `1` y `2` se siguen restaurando.
+
+## [1.2.1] - 2026-11-17
+
+Versión PARCHE publicada desde `main` sin pasar por este registro; se documenta aquí para que el
+histórico no tenga huecos.
+
+### Corregido
+
+- Sincronizar los permisos del menú **renovaba la sesión**, de modo que una sesión inactiva no
+  llegaba a vencer mientras la pestaña siguiera abierta
+  ([#29](https://github.com/sr-juanchii/passwd/pull/29)).
 
 ## [1.2.0] - 2026-11-14
 
@@ -464,7 +484,9 @@ Primera versión estable. Establece la línea base sobre la que se versionan los
 
 El detalle del alcance por fases está en [`docs/hoja-de-ruta.md`](docs/hoja-de-ruta.md).
 
-[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.2.0...HEAD
+[Sin publicar]: https://github.com/sr-juanchii/passwd/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/sr-juanchii/passwd/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/sr-juanchii/passwd/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/sr-juanchii/passwd/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.1.0
 [1.0.0]: https://github.com/sr-juanchii/passwd/releases/tag/v1.0.0
