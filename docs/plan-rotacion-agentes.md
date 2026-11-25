@@ -155,7 +155,7 @@ Trazabilidad de la revisión: qué asumía el plan, qué dice el código de la v
 | H6 | Sin segundo admin, la vía es manual | Con un solo administrador la rotación por agente **nunca** se puede autorizar: las versiones con agente no entregan nada usable | §2.3 break-glass acotado + mínimo operativo documentado |
 | H7 | «Bitácora encadenada» basta para la no repudiación | La cadena es SHA-256 **sin clave** (`app/models.py:874-875`, `app/audit.py:103`); el HMAC está en la Fase 10 de `plan-v2.0.md` | HMAC adelantado a la v1.3.0 (§3.6) |
 | H8 | Reautenticación con «contraseña + segundo factor» | `segundo_factor.comprobar()` admite OTP por correo (`app/security/segundo_factor.py:132`) | §3.5 exige TOTP |
-| H9 | Hace falta un planificador nuevo | Ya existe `_mantenimiento_periodico` (`app/main.py:191-218`), con la nota «uno por proceso» | Se reutiliza, con clave de idempotencia por si algún día hay varios *workers* (§3.1) |
+| H9 | Hace falta un planificador nuevo | Ya existe `_mantenimiento_periodico` (`app/main.py:253`), con la nota «uno por proceso» | Se reutiliza, con clave de idempotencia por si algún día hay varios *workers* (§3.1) |
 | H10 | Ajustes anidados `rotacion.*` / `agentes.*` | `CLAVES_EDITABLES` usa nombres planos (`app/config.py:255-278`) | §3.9 renombrado a claves planas |
 | H11 | La telemetría cabe sin más | `max_request_bytes` por defecto es 64 KB (`app/config.py:123`) | §3.3 y §4.4 acotan el tamaño por contrato |
 | H12 | El respaldo «incluye las tablas nuevas» | `app/backup.py:154-164, 328-336` repone `password_rotada_en` | §8.0 precisa: se repone el libro mayor y los agentes, **nunca** trabajos pendientes |
@@ -1165,6 +1165,24 @@ Queda **fuera** de esta versión, y pasa a la 2.0, el punto 2 de la Fase 9: reti
 clásica. Ya está avisado —cabecera `Deprecation`, aviso en las páginas— y migrar a `app/servicios/`
 el inventario, los usuarios y los accesos sigue pendiente. Decirlo aquí es parte del trato: una
 versión se cierra con lo que entregó y con lo que no.
+
+**Arranque de la v1.4.0 (§9.1, paso 2).** Premisas de §8.2 vueltas a comprobar contra `main` el
+2026-11-25:
+
+| Premisa | Resultado |
+|---|---|
+| `max_request_bytes` de 64 KB (`app/config.py:123`) | Vigente |
+| `_mantenimiento_periodico` reutilizable (H9) | Vigente; se movió a `app/main.py:253` |
+| Patrón `token_hash` de `TokenApi` para la identidad del agente | Vigente (`app/models.py:717-735`) |
+| Libro mayor con `despachada`, `via` y `verificacion` | Vigente desde la migración `0010` |
+| Libro mayor con `agente_id` (§3.1) | **No existe**: entra en la migración `0011` |
+| `Credencial.via_rotacion` y `usada_por` | Vigentes (`app/models.py:429, 438`) |
+| X25519 + HKDF disponibles en `cryptography` | Vigente (`>=41.0`); aún sin uso en `app/` |
+| Módulo `agente/` y job Go en CI | No existen: los crea esta versión |
+
+| Fecha | Versión | Capa | Commit | Verificación ejecutada | Notas |
+|---|---|---|---|---|---|
+| 2026-11-25 | v1.4.0 | Arranque | (este) | enlaces de `docs/` resueltos, `pytest tests/test_version.py` | Rama `feature/1.4.0-agente-linux`; hoja de ruta; nginx en una sola versión en todo el repositorio |
 
 Al arrancar cada versión se añaden sus filas según el desglose de §8. Una versión cerrada no deja
 filas pendientes.

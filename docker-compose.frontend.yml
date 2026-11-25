@@ -47,7 +47,7 @@ services:
     pids_limit: 256
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.31.10-alpine
     restart: unless-stopped
     depends_on:
       app:

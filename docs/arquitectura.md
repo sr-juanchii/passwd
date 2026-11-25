@@ -70,7 +70,7 @@ automatización, que nunca devuelve secretos.
 |---|---|---|
 | **Backend** | FastAPI + uvicorn (Python 3.11+) | Lógica, autenticación, autorización, cifrado, auditoría; sirve la web Jinja, la API JSON y la API REST |
 | **Frontend** | Next.js (App Router, React 19), Tailwind v4, shadcn/ui | Interfaz moderna que consume `/api/web` |
-| **Proxy** | nginx 1.27 | Termina TLS, enruta, fija HSTS y la IP real del cliente |
+| **Proxy** | nginx 1.31 | Termina TLS, enruta, fija HSTS y la IP real del cliente |
 | **Base de datos** | SQLite (defecto) o MySQL 8.4 | Persistencia; secretos cifrados en reposo |
 | **CLI** | `python -m app.cli` | Alta de admin, respaldo y restauración cifrados |
 | **Certbot** | certbot (opcional) | Emisión y renovación automática de Let's Encrypt |

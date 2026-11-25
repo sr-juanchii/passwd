@@ -12,6 +12,16 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
+Comienza la **v1.4.0** (agente Linux y protocolo `/api/agent`): alcance en
+[`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md) §8.2.
+
+### Cambiado
+
+- La imagen de nginx sube de `1.27-alpine` a **`1.31.10-alpine`** en los dos despliegues con
+  proxy (`docker-compose.nginx.yml` y `docker-compose.frontend.yml`). La subida llegó primero solo
+  al primero; ahora ambos usan la misma versión. Las plantillas de `infrastructure/nginx/` no
+  cambian.
+
 ## [1.3.0] - 2026-11-20
 
 **Gobernanza de rotación y bitácora firmada.** Versión MENOR: cambiar la contraseña de una

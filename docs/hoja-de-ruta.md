@@ -203,6 +203,30 @@ el bloqueo, y sin auto-recuperación para las cuentas con segundo factor por cor
 > La capa `app/servicios/` es además prerrequisito de la gobernanza de rotación: ver
 > [`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §3.4 y §8.1.
 
+## Serie de agentes — v1.4.0 🚧 (en curso)
+
+Primera rotación **desde el sistema**: un agente Go por activo Linux (servidor físico, hipervisor
+o VM) recoge un trabajo autorizado, cambia la contraseña de la cuenta local, la verifica y la
+confirma o la **revierte**. Corre bajo la gobernanza de la v1.3.0 sin atajos: «Rotar ahora» crea
+una solicitud, y nada se despacha sin `AUTORIZADA`. Especificación completa en
+[`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §8.2.
+
+No pertenece a las Fases 9-12, que son el camino de la 2.0 ([`plan-v2.0.md`](plan-v2.0.md)): es
+una versión **intercalada y aditiva**, sin roturas, que no retrasa ninguna de las ocho de la 2.0.
+
+1. 🔜 Modelo de datos aditivo: agentes, trabajos de rotación y telemetría.
+2. 🔜 Servicios: enrolamiento de un solo uso, identidad de vida corta renovada en cada latido,
+   despacho cifrado al par del agente (X25519 + HKDF + Fernet) y cierre por el punto único de
+   escritura de la v1.3.0.
+3. 🔜 Protocolo `/api/agent/*` con anti-replay, límite de tasa y de tamaño y auditoría de cada
+   llamada. `/api/v1` no cambia.
+4. 🔜 Agente Go para Linux: sin privilegios, con un *helper* root de una sola acción, journal
+   cifrado y unidad systemd endurecida.
+5. 🔜 Panel `/agentes` e insignias de cobertura en la ficha del activo.
+
+Todo queda tras `agentes_enabled` apagado hasta el cierre: una credencial de rotación manual se
+comporta exactamente igual que en la v1.3.0.
+
 ## Fase 10 — Endurecimiento 🔜
 
 - 🔜 **Reautenticación (contraseña + código) para exportar** y otras acciones de alto impacto,
