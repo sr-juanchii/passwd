@@ -370,7 +370,7 @@ el libro mayor registra qué par de claves se usó.
 | Endpoint | Método | Entrada | Salida / efectos |
 |---|---|---|---|
 | `/api/agent/enrolar` | POST | `token_un_uso` + huella/hostinfo + clave pública | token del agente (solo-hash en BD) con caducidad; token de uso único, ligado al activo, con expiración corta |
-| `/api/agent/saludo` | GET | — | heartbeat: versión mínima exigida, ajustes de cadencia, **token renovado** si entra en la ventana de renovación; actualiza `ultimo_contacto`/IP |
+| `/api/agent/saludo` | POST (no GET: renueva la identidad y escribe el contacto) | versión | heartbeat: versión mínima exigida, ajustes de cadencia, **token renovado** si entra en la ventana de renovación; actualiza `ultimo_contacto`/IP |
 | `/api/agent/trabajos/pendiente` | GET | — | job único cifrado para ese agente (o 204); marca `entregado`; registra anti-replay |
 | `/api/agent/trabajos/{id}/resultado` | POST | `estado` (`aplicado`/`revertido`/`fallado`) + evidencia + `verificacion` | cierra el job, aplica los efectos en credencial/libro mayor, notifica, purga secretos |
 | `/api/agent/telemetria` | POST | métricas agregadas + specs | persiste con retención; refresca latido |
@@ -379,7 +379,14 @@ Límites: rate limit por agente, **tamaño máximo de cuerpo coherente con `max_
 (64 KB por defecto, `app/config.py:123`)** — la telemetría se acota por contrato (§4.4) y el
 servidor rechaza lo que exceda en vez de ampliarlo; auditoría encadenada de **cada** llamada;
 binding agente↔activo validado por credencial antes de despachar; rechazo de versiones antiguas
-tras la gracia. **`/api/v1` (SIEM) no cambia**: sigue de solo lectura y sin secretos.
+tras la gracia.
+
+**Alcance de la auditoría (decisión del 2026-11-25).** Se audita todo cambio de estado
+(enrolamiento, renovación de identidad, entrega de un trabajo, su resultado) y **todo rechazo**;
+el latido rutinario y la consulta sin trabajo no dejan asiento y quedan como «último contacto».
+Auditar cada latido —unas 96 entradas por agente y día— llenaría la bitácora de «sigue vivo» y
+escondería lo que importa. Los rechazos sin identidad se acotan por IP, y un 429 repetido se
+audita una vez por ventana, para que nadie pueda llenar la bitácora a base de peticiones. **`/api/v1` (SIEM) no cambia**: sigue de solo lectura y sin secretos.
 
 ### 3.4 API `/api/web` nueva (sesión + CSRF, para el frontend)
 
@@ -1191,7 +1198,8 @@ versión se cierra con lo que entregó y con lo que no.
 | 2026-11-25 | v1.4.0 | Modelos + migración aditiva `0011` | `1e08fe7` | `pytest tests/test_schema.py tests/test_migraciones_alembic.py tests/test_agentes_modelo.py`, suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; paridad de índices, `UNIQUE`, `CHECK` y FK entre modelo y migración | `agentes`, `trabajos_rotacion`, `telemetria_agente`; `agente_id` en el libro mayor **sin FK** (el reconciliador no las crea). Un agente vigente por activo y un trabajo activo por agente, garantizados por `UNIQUE` sobre columnas que se anulan al cerrar. Estado del agente reducido a `pendiente`/`activo`/`revocado`: conexión y falta de contacto se derivan. Las claves `agentes_*` pasan al commit de servicios, que es quien las lee |
 | 2026-11-25 | v1.4.0 | Servicios (2a): identidad del agente y cifrado | `de64607` | `pytest tests/test_servicio_agentes.py` (20), suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`, `gitleaks` sobre el vector; tres garantías quitadas a mano y su prueba falla | Alta, enrolamiento de un solo uso, identidad de vida corta con solapamiento, anomalía de IP, revocación, cobertura derivada, versión mínima. **H14**: el sellado al agente es en la entrega, no en reposo. Ajustes `agentes_*` |
 | 2026-11-25 | v1.4.0 | Servicios (2b): despacho y resultado | `f473d89` | `pytest tests/test_despacho_agentes.py` (17) y `tests/test_rotacion_gobernanza.py`, suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; cinco garantías quitadas a mano y su prueba falla | Despacho solo de lo `AUTORIZADA`, entrega sellada, resultado único por trabajo y escritura por `_escribir_password`; pendiente vencido vuelve a `AUTORIZADA`, entregado sin respuesta queda «sin confirmar» con sus secretos hasta que una persona lo resuelve. Respaldo: agentes revocados, nunca trabajos, y un asiento despachado vuelve a `AUTORIZADA` con nota. La prueba de arquitectura del punto único recorre ahora todo `app/` |
-| 2026-11-25 | v1.4.0 | Servicios (3a): telemetría | (este) | `pytest tests/test_servicio_agentes.py` (22), suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; el acotado quitado a mano y su prueba falla | Pieza de servicio que faltaba para la ruta de telemetría: acota porcentajes, discos y textos, y marca `recortada` en vez de ocultarlo. Commit propio para no mezclar capas con la API |
+| 2026-11-25 | v1.4.0 | Servicios (3a): telemetría | `6d3ef75` | `pytest tests/test_servicio_agentes.py` (22), suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; el acotado quitado a mano y su prueba falla | Pieza de servicio que faltaba para la ruta de telemetría: acota porcentajes, discos y textos, y marca `recortada` en vez de ocultarlo. Commit propio para no mezclar capas con la API |
+| 2026-11-25 | v1.4.0 | API del agente (3b): `/api/agent` | (este) | `pytest tests/test_api_agente.py` (9), matriz de permisos y barrido pre-MFA, suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; cuatro garantías quitadas a mano y su prueba falla (una no fallaba: la prueba de superficie corría sin agentes en la base y se endureció) | Cinco rutas, 404 con el interruptor apagado, límite por IP y por agente, tope propio de 16 KB para la telemetría y rechazos auditados que sobreviven al rollback. `saludo` pasa a POST. `/api/agent` se excluye de la matriz como `/api/v1`, con su propia prueba que enumera el prefijo |
 
 Al arrancar cada versión se añaden sus filas según el desglose de §8. Una versión cerrada no deja
 filas pendientes.

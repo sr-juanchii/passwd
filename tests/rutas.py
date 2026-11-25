@@ -26,7 +26,10 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
 # Prefijos con su propio esquema de autenticación o sin lógica de aplicación.
-PREFIJOS_EXCLUIDOS = ("/api/v1", "/static", "/docs", "/redoc", "/openapi.json")
+# `/api/agent` se autentica con la identidad del agente, no con una sesión de
+# usuario: su propia prueba (tests/test_api_agente.py) exige que TODAS sus rutas
+# rechacen sin esa identidad, de modo que una ruta nueva no se cuela por aquí.
+PREFIJOS_EXCLUIDOS = ("/api/v1", "/api/agent", "/static", "/docs", "/redoc", "/openapi.json")
 
 METODOS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 

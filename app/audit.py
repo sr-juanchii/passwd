@@ -121,6 +121,7 @@ AGENTE_ENROLAMIENTO_RECHAZADO = "agente_enrolamiento_rechazado"
 AGENTE_TOKEN_RENOVADO = "agente_token_renovado"  # noqa: S105 — nombre de acción, no es un secreto
 AGENTE_ANOMALIA_IP = "agente_anomalia_ip"
 AGENTE_REVOCADO = "agente_revocado"
+AGENTE_ACCESO_RECHAZADO = "agente_acceso_rechazado"
 CREDENCIAL_VIA_CAMBIADA = "credencial_via_rotacion_cambiada"
 ROTACION_DESPACHADA = "rotacion_despachada"
 ROTACION_NO_DESPACHADA = "rotacion_no_despachada"

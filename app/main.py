@@ -362,6 +362,11 @@ def create_app() -> FastAPI:
 
     app.include_router(api_web_router)
 
+    # API de los agentes de rotación (v1.4.0): Bearer por agente, 404 si están apagados.
+    from app.api_agent import router as api_agent_router
+
+    app.include_router(api_agent_router)
+
     @app.get("/healthz")
     def healthz() -> JSONResponse:
         return JSONResponse({"estado": "ok", "version": __version__})

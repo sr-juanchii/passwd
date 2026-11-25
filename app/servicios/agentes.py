@@ -122,6 +122,11 @@ def _exigir_habilitados() -> None:
         )
 
 
+def saludo_intervalo_min() -> int:
+    """Cadencia de latido que se indica a los agentes."""
+    return max(get_settings().agentes_telemetria_intervalo_min, 1)
+
+
 def vida_token() -> timedelta:
     return timedelta(hours=max(get_settings().agentes_token_vida_horas, 1))
 
@@ -371,7 +376,7 @@ def saludo(
     return {
         "token_nuevo": token_nuevo,
         "token_expira_en": agente.token_expira_en,
-        "intervalo_min": max(get_settings().agentes_telemetria_intervalo_min, 1),
+        "intervalo_min": saludo_intervalo_min(),
         "version_minima": get_settings().agentes_version_minima or "",
         "version_admitida": admitida,
         "version_en_gracia": en_gracia,
