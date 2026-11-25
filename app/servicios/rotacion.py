@@ -26,9 +26,15 @@ además de la desviación respecto a la fecha que marcaba la política. Ese dato
 —«se rotó a los dos días» frente a «se rotó a los noventa exactos»— es lo que
 permite ver un patrón raro sin recalcular nada después.
 
-En esta versión la ejecución es **manual**: autorizada la rotación, una persona
-cambia la contraseña en el activo y la registra aquí. Los agentes (1.4.0) y los
-conectores (2.3.0) se enganchan al mismo ciclo sin cambiarlo.
+La ejecución tiene dos vías. **Manual**: autorizada la rotación, una persona
+cambia la contraseña en el activo y la registra aquí. **Por agente** (v1.4.0):
+autorizada la rotación de una credencial que rota por agente, se le despacha un
+trabajo al agente de su activo, que la aplica, la verifica y confirma o revierte;
+la confirmación vuelve aquí y es este módulo quien escribe la contraseña:
+
+    AUTORIZADA ──despachar──► DESPACHADA ──resultado del agente──► CERRADA
+
+Los conectores (2.3.0) se engancharán al mismo ciclo sin cambiarlo.
 """
 
 from __future__ import annotations
@@ -39,30 +45,47 @@ from fastapi import Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, notifications
 from app.config import get_settings
 from app.models import (
+    AGENTE_ACTIVO,
     ESTADOS_ROTACION_ABIERTOS,
     ROL_ADMIN,
     ROT_AUTORIZADA,
     ROT_CANCELADA,
     ROT_CERRADA,
+    ROT_DESPACHADA,
     ROT_RECHAZADA,
+    ROT_RES_APLICADA,
     ROT_RES_CANCELADA,
+    ROT_RES_FALLADA,
     ROT_RES_MANUAL,
+    ROT_RES_REVERTIDA,
     ROT_SOLICITADA,
     ROT_TIPO_EMERGENCIA,
     ROT_TIPO_MANUAL,
+    ROT_VERIF_LOCAL,
     ROT_VERIF_NINGUNA,
     TIPOS_ROTACION,
+    TRABAJO_APLICADO,
+    TRABAJO_CANCELADO,
+    TRABAJO_ENTREGADO,
+    TRABAJO_EXPIRADO,
+    TRABAJO_FALLADO,
+    TRABAJO_PENDIENTE,
+    TRABAJO_REVERTIDO,
+    VIA_ROTACION_AGENTE,
     VIA_ROTACION_MANUAL,
+    Agente,
     Credencial,
     HistorialCredencial,
     RotacionCredencial,
+    TrabajoRotacion,
     Usuario,
     ahora_utc,
 )
-from app.security.crypto import cifrar
+from app.security.crypto import cifrar, descifrar
+from app.security.passwords import generar_password
 
 # Longitud mínima del motivo. No es burocracia: «rotación» no dice nada dentro
 # de seis meses, cuando alguien revise por qué esta contraseña cambió a los dos
@@ -400,6 +423,8 @@ def autorizar(
             objeto_tipo="rotacion", objeto_id=rotacion.id,
             detalle=f"Autorización propia en vía de emergencia — motivo: {rotacion.motivo[:300]}",
         )
+    if credencial is not None and credencial.via_rotacion == VIA_ROTACION_AGENTE:
+        _intentar_despacho(db, rotacion, usuario, request)
     return rotacion
 
 
@@ -452,6 +477,18 @@ def cancelar(
     propia = rotacion.solicitado_por_id == usuario.id
     if not propia and usuario.rol != ROL_ADMIN:
         raise ErrorRotacion("Solo puede cancelar sus propias solicitudes.", codigo=403)
+    if rotacion.estado == ROT_DESPACHADA:
+        trabajo = trabajo_de(db, rotacion)
+        if trabajo is not None and trabajo.estado == TRABAJO_ENTREGADO:
+            raise ErrorRotacion(
+                "El agente ya recogió este trabajo y puede estar aplicándolo: no se puede "
+                "cancelar. Espere a su resultado.", codigo=409,
+            )
+        if trabajo is not None:
+            _cerrar_trabajo(trabajo, TRABAJO_CANCELADO, "Cancelado junto con la solicitud")
+            audit.registrar(db, audit.TRABAJO_CANCELADO, request=request, usuario=usuario,
+                            objeto_tipo="trabajo", objeto_id=trabajo.id,
+                            detalle=f"Solicitud {rotacion.id} cancelada antes de la entrega")
 
     rotacion.estado = ROT_CANCELADA
     rotacion.resultado = ROT_RES_CANCELADA
@@ -576,3 +613,412 @@ def marcar_revisada(
         detalle=f"Revisión de la emergencia autorizada por {rotacion.autorizado_por_username}",
     )
     return rotacion
+
+
+# ---------------------------------------------------------------------------
+# Ejecución por agente (v1.4.0) — docs/plan-rotacion-agentes.md §2.2 y §3.2
+# ---------------------------------------------------------------------------
+#
+# El agente nunca decide nada: recibe un trabajo que ya está AUTORIZADO, lo
+# aplica, lo verifica y confirma o revierte. La contraseña nueva la genera el
+# backend y no pasa a la credencial hasta que el agente confirma «aplicado»;
+# entonces la escribe ``_escribir_password``, como en la vía manual.
+
+# Tras la ventana, cuánto se espera al resultado de un trabajo ya entregado
+# antes de darlo por «sin confirmar». El agente pudo aplicarlo justo al final
+# de la ventana y estar confirmando: no es motivo de alarma inmediata.
+MARGEN_CONFIRMACION = timedelta(minutes=15)
+MARCA_SIN_CONFIRMAR = (
+    "Sin confirmación del agente: la contraseña pudo cambiarse en el activo o no. "
+    "Compruébelo y resuélvalo a mano."
+)
+RESULTADOS_AGENTE = {
+    TRABAJO_APLICADO: ROT_RES_APLICADA,
+    TRABAJO_REVERTIDO: ROT_RES_REVERTIDA,
+    TRABAJO_FALLADO: ROT_RES_FALLADA,
+}
+_LARGO_DETALLE = 2000
+
+
+def trabajo_activo_de(db: Session, agente: Agente) -> TrabajoRotacion | None:
+    """El trabajo que ocupa el único turno del agente, si lo hay."""
+    return db.scalar(select(TrabajoRotacion).where(TrabajoRotacion.activo_agente_id == agente.id))
+
+
+def trabajo_de(db: Session, rotacion: RotacionCredencial) -> TrabajoRotacion | None:
+    """El último trabajo despachado para un asiento del libro mayor."""
+    return db.scalar(
+        select(TrabajoRotacion).where(TrabajoRotacion.rotacion_id == rotacion.id)
+        .order_by(TrabajoRotacion.id.desc())
+    )
+
+
+def _cerrar_trabajo(trabajo: TrabajoRotacion, estado: str, detalle: str = "") -> None:
+    """Cierra un trabajo: libera el turno del agente y **purga sus secretos**."""
+    trabajo.estado = estado
+    trabajo.activo_agente_id = None
+    trabajo.nueva_cifrada = None
+    trabajo.actual_cifrada = None
+    trabajo.confirmado_en = ahora_utc()
+    if detalle:
+        trabajo.detalle_error = detalle[:_LARGO_DETALLE]
+
+
+def despachar(
+    db: Session,
+    *,
+    rotacion: RotacionCredencial,
+    usuario: Usuario | None = None,
+    request: Request | None = None,
+) -> TrabajoRotacion:
+    """Crea el trabajo del agente para una rotación **autorizada**.
+
+    Invariante 1 del plan (§3.2): no hay despacho sin ``AUTORIZADA``. El agente
+    tiene que ser el vigente **del activo de la credencial**, estar enrolado con
+    identidad válida, admitir rotaciones y tener una versión aceptada.
+    """
+    from app.servicios import agentes
+
+    if not agentes.habilitados():
+        raise ErrorRotacion("Los agentes de rotación están desactivados.", codigo=409)
+    if rotacion.estado != ROT_AUTORIZADA:
+        raise ErrorRotacion(
+            "Solo se despacha a un agente una rotación AUTORIZADA; esta está en "
+            f"«{rotacion.estado}».", codigo=409,
+        )
+    credencial = rotacion.credencial
+    if credencial is None:
+        raise ErrorRotacion("La credencial de esta rotación ya no existe.", codigo=404)
+    if credencial.via_rotacion != VIA_ROTACION_AGENTE:
+        raise ErrorRotacion("Esta credencial no rota por agente.", codigo=409)
+
+    agente = agentes.agente_vigente_de(db, *agentes.activo_de_credencial(credencial))
+    if agente is None or agente.estado != AGENTE_ACTIVO:
+        raise ErrorRotacion("El activo de esta credencial no tiene un agente enrolado.", codigo=409)
+    if agentes.cobertura(agente) == agentes.COBERTURA_CADUCADO:
+        raise ErrorRotacion(
+            f"La identidad del agente {agente.nombre} caducó: vuelva a enrolarlo.", codigo=409,
+        )
+    if not agente.rotacion_habilitada:
+        raise ErrorRotacion(f"El agente {agente.nombre} tiene las rotaciones desactivadas.", codigo=409)
+    if not agentes.version_admitida(db, agente)[0]:
+        raise ErrorRotacion(
+            f"El agente {agente.nombre} (versión {agente.version_agente or '?'}) está por debajo "
+            "de la versión mínima: actualícelo.", codigo=409,
+        )
+    if trabajo_activo_de(db, agente) is not None:
+        raise ErrorRotacion(f"El agente {agente.nombre} tiene otro trabajo en curso.", codigo=409)
+
+    horas = max(get_settings().rotacion_anti_thrash_horas, 0)
+    desde_ultima = ahora_utc() - credencial.password_rotada_en
+    if desde_ultima < timedelta(hours=horas):
+        if rotacion.tipo != ROT_TIPO_EMERGENCIA:
+            raise ErrorRotacion(
+                f"Esta credencial se rotó hace menos de {horas} h. Para volver a rotarla tan "
+                "pronto por agente hace falta una solicitud de emergencia.", codigo=409,
+            )
+        # La única excepción (§4.1, prohibición 13): ruidosa y registrada. En el
+        # libro mayor queda por el tipo y la antigüedad al rotar.
+        audit.registrar(
+            db, audit.ROTACION_ANTI_THRASH_SALTADO, request=request, usuario=usuario,
+            username="" if usuario else "sistema", objeto_tipo="rotacion", objeto_id=rotacion.id,
+            detalle=f"Emergencia: rotada hace {int(desde_ultima.total_seconds() // 3600)} h, "
+                    f"por debajo del mínimo de {horas} h",
+        )
+
+    ahora = ahora_utc()
+    ventana = timedelta(minutes=max(get_settings().rotacion_ventana_job_min, 1))
+    trabajo = TrabajoRotacion(
+        agente_id=agente.id,
+        credencial_id=credencial.id,
+        rotacion_id=rotacion.id,
+        activo_agente_id=agente.id,
+        estado=TRABAJO_PENDIENTE,
+        # En reposo, el Fernet del backend (H14): al confirmar hay que escribirla.
+        nueva_cifrada=cifrar(generar_password(credencial.usuario_acceso)),
+        actual_cifrada=credencial.password_cifrada,
+        clave_huella=agente.clave_huella,
+        ventana_expira_en=ahora + ventana,
+        disparado_por_id=usuario.id if usuario else None,
+    )
+    db.add(trabajo)
+    rotacion.estado = ROT_DESPACHADA
+    rotacion.via = VIA_ROTACION_AGENTE
+    rotacion.agente_id = agente.id
+    rotacion.agente_nombre = agente.nombre
+    rotacion.clave_agente_huella = agente.clave_huella
+    db.flush()
+    audit.registrar(
+        db, audit.ROTACION_DESPACHADA, request=request, usuario=usuario,
+        username="" if usuario else "sistema", objeto_tipo="rotacion", objeto_id=rotacion.id,
+        detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo} → agente {agente.nombre}, "
+                f"trabajo {trabajo.id}, válido hasta {trabajo.ventana_expira_en:%Y-%m-%d %H:%M} UTC",
+    )
+    return trabajo
+
+
+def _intentar_despacho(db: Session, rotacion: RotacionCredencial, usuario: Usuario,
+                       request: Request | None) -> None:
+    """Despacha tras autorizar; si no se puede, la autorización **se mantiene**.
+
+    Que el agente esté sin contacto o el interruptor apagado no invalida la
+    decisión de dos personas: se registra por qué no salió el trabajo, y se
+    despacha cuando se corrija o se registra la rotación a mano.
+    """
+    try:
+        despachar(db, rotacion=rotacion, usuario=usuario, request=request)
+    except ErrorRotacion as exc:
+        audit.registrar(
+            db, audit.ROTACION_NO_DESPACHADA, request=request, usuario=usuario,
+            objeto_tipo="rotacion", objeto_id=rotacion.id, exito=False,
+            detalle=f"Autorizada pero no despachada: {exc.mensaje}",
+        )
+
+
+def entregar(
+    db: Session, *, agente: Agente, request: Request | None = None,
+) -> tuple[TrabajoRotacion, dict] | None:
+    """El trabajo del agente, **sellado** a su clave, o ``None`` si no hay ninguno.
+
+    Un trabajo entregado se vuelve a entregar al mismo agente mientras su
+    ventana siga abierta (``intentos`` lo cuenta): si el agente se reinició tras
+    recibirlo, su journal decide con el ``trabajo_id`` si ya lo había empezado.
+    """
+    from app.servicios import agentes, cifrado_agente
+
+    expirar_trabajos(db, agente_id=agente.id)
+    if not agentes.version_admitida(db, agente)[0]:
+        return None
+    trabajo = trabajo_activo_de(db, agente)
+    if trabajo is None or trabajo.ventana_expira_en <= ahora_utc():
+        return None
+
+    primera = trabajo.estado == TRABAJO_PENDIENTE
+    trabajo.estado = TRABAJO_ENTREGADO
+    trabajo.intentos += 1
+    if primera:
+        trabajo.entregado_en = ahora_utc()
+        trabajo.rotacion.ejecutado_en = trabajo.entregado_en
+    sobre = cifrado_agente.sellar(agente.clave_publica, {
+        "trabajo_id": trabajo.id,
+        "tipo": "rotar_cuenta",
+        "usuario": trabajo.credencial.usuario_acceso,
+        "nueva": descifrar(trabajo.nueva_cifrada),     # type: ignore[arg-type]
+        "actual": descifrar(trabajo.actual_cifrada),   # type: ignore[arg-type]
+        "expira_en": trabajo.ventana_expira_en.isoformat(timespec="seconds"),
+    })
+    audit.registrar(
+        db, audit.TRABAJO_ENTREGADO, request=request, username=agentes.sujeto(agente),
+        objeto_tipo="trabajo", objeto_id=trabajo.id,
+        detalle=f"Entrega {trabajo.intentos} de la rotación {trabajo.rotacion_id} "
+                f"({trabajo.credencial.usuario_acceso})",
+    )
+    return trabajo, sobre
+
+
+def registrar_resultado(
+    db: Session,
+    *,
+    agente: Agente,
+    trabajo_id: int,
+    estado: str,
+    verificacion: str = ROT_VERIF_LOCAL,
+    detalle: str = "",
+    request: Request | None = None,
+) -> TrabajoRotacion:
+    """Cierra un trabajo con lo que informa su agente. Un resultado por trabajo.
+
+    ``aplicado`` escribe la contraseña nueva por ``_escribir_password`` —el
+    mismo y único punto que la vía manual— y archiva la anterior. ``revertido``
+    y ``fallado`` no la tocan: el activo quedó como estaba, y se avisa.
+    """
+    from app.servicios import agentes
+
+    if estado not in RESULTADOS_AGENTE:
+        raise ErrorRotacion(f"Resultado desconocido: {estado}.")
+    if verificacion not in (ROT_VERIF_LOCAL, ROT_VERIF_NINGUNA):
+        # Un agente verifica en el propio sistema; la remota la hace el backend (2.2.0).
+        raise ErrorRotacion("Un agente solo puede declarar verificación local.")
+    trabajo = db.get(TrabajoRotacion, trabajo_id)
+    if trabajo is None:
+        raise ErrorRotacion("No existe ese trabajo.", codigo=404)
+    if trabajo.agente_id != agente.id:
+        audit.registrar(
+            db, audit.TRABAJO_RESULTADO_RECHAZADO, request=request, username=agentes.sujeto(agente),
+            objeto_tipo="trabajo", objeto_id=trabajo_id, exito=False,
+            detalle="Resultado de un trabajo de otro agente",
+        )
+        raise ErrorRotacion("Ese trabajo no es de este agente.", codigo=403)
+    if trabajo.estado != TRABAJO_ENTREGADO:
+        # Anti-replay: cada trabajo admite un único resultado, y solo tras entregarse.
+        audit.registrar(
+            db, audit.TRABAJO_RESULTADO_RECHAZADO, request=request, username=agentes.sujeto(agente),
+            objeto_tipo="trabajo", objeto_id=trabajo_id, exito=False,
+            detalle=f"Resultado «{estado}» para un trabajo en estado «{trabajo.estado}»",
+        )
+        raise ErrorRotacion(f"Este trabajo ya está en «{trabajo.estado}».", codigo=409)
+
+    rotacion = trabajo.rotacion
+    credencial = trabajo.credencial
+    detalle = (detalle or "").strip()[:_LARGO_DETALLE]
+    ahora = ahora_utc()
+    dias = credencial.dias_sin_rotar
+    if estado == TRABAJO_APLICADO:
+        _escribir_password(db, credencial, descifrar(trabajo.nueva_cifrada), None)  # type: ignore[arg-type]
+        rotacion.dias_al_rotar = dias
+        rotacion.desvio_dias = dias - intervalo_dias()
+
+    rotacion.estado = ROT_CERRADA
+    rotacion.resultado = RESULTADOS_AGENTE[estado]
+    rotacion.verificacion = verificacion if estado == TRABAJO_APLICADO else ROT_VERIF_NINGUNA
+    rotacion.confirmado_en = ahora
+    rotacion.detalle_error = detalle
+    trabajo.verificacion = rotacion.verificacion
+    _cerrar_trabajo(trabajo, estado, detalle)
+
+    audit.registrar(
+        db, audit.TRABAJO_RESULTADO, request=request, username=agentes.sujeto(agente),
+        objeto_tipo="rotacion", objeto_id=rotacion.id, exito=estado == TRABAJO_APLICADO,
+        detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo}: {estado}"
+                + (f" (verificación {rotacion.verificacion})" if estado == TRABAJO_APLICADO else "")
+                + (f" — {detalle[:300]}" if detalle else ""),
+    )
+    if estado == TRABAJO_APLICADO:
+        audit.registrar(
+            db, audit.ROTACION_APLICADA, request=request, username=agentes.sujeto(agente),
+            objeto_tipo="credencial", objeto_id=credencial.id,
+            detalle=f"Contraseña rotada por el agente {agente.nombre} bajo la solicitud {rotacion.id}",
+        )
+    else:
+        notifications.enviar_alerta(
+            f"[passwd] Rotación {estado} en {credencial.nombre_activo}",
+            f"El agente «{agente.nombre}» informa «{estado}» al rotar "
+            f"{credencial.usuario_acceso}@{credencial.nombre_activo} (solicitud {rotacion.id}).\n\n"
+            "La contraseña registrada NO ha cambiado. "
+            + (f"Detalle del agente: {detalle[:500]}" if detalle else ""),
+        )
+    return trabajo
+
+
+def expirar_trabajos(db: Session, *, agente_id: int | None = None) -> dict[str, int]:
+    """Cierra lo que venció. Se llama al entregar, al consultar y en el mantenimiento.
+
+    - **Pendiente** vencido: nadie lo recogió. Se purga y el asiento vuelve a
+      ``AUTORIZADA``: la decisión de dos personas sigue en pie.
+    - **Entregado** sin resultado pasada la ventana y un margen: el agente pudo
+      cambiar la contraseña o no. No se purga nada —la nueva puede ser la que
+      vale ahora en el activo— y se marca para que una persona lo resuelva.
+      Nunca un estado indeterminado en silencio (§2.2, paso 5).
+    """
+    ahora = ahora_utc()
+    consulta = select(TrabajoRotacion).where(TrabajoRotacion.activo_agente_id.is_not(None))
+    if agente_id is not None:
+        consulta = consulta.where(TrabajoRotacion.agente_id == agente_id)
+    cuenta = {"expirados": 0, "sin_confirmar": 0}
+    for trabajo in db.scalars(consulta).all():
+        if trabajo.estado == TRABAJO_PENDIENTE and trabajo.ventana_expira_en <= ahora:
+            _cerrar_trabajo(trabajo, TRABAJO_EXPIRADO, "El agente no lo recogió dentro de su ventana")
+            if trabajo.rotacion.estado == ROT_DESPACHADA:
+                trabajo.rotacion.estado = ROT_AUTORIZADA
+            audit.registrar(
+                db, audit.TRABAJO_EXPIRADO, username="sistema", objeto_tipo="trabajo",
+                objeto_id=trabajo.id,
+                detalle=f"Rotación {trabajo.rotacion_id} sin recoger: vuelve a quedar autorizada",
+            )
+            cuenta["expirados"] += 1
+        elif (trabajo.estado == TRABAJO_ENTREGADO and not trabajo.detalle_error
+              and trabajo.ventana_expira_en + MARGEN_CONFIRMACION <= ahora):
+            _marcar_sin_confirmar(db, trabajo)
+            cuenta["sin_confirmar"] += 1
+    return cuenta
+
+
+def sin_confirmar(trabajo: TrabajoRotacion) -> bool:
+    """¿Este trabajo espera que una persona diga qué quedó en el activo?"""
+    return trabajo.estado == TRABAJO_ENTREGADO and trabajo.detalle_error == MARCA_SIN_CONFIRMAR
+
+
+def _marcar_sin_confirmar(db: Session, trabajo: TrabajoRotacion) -> None:
+    trabajo.detalle_error = MARCA_SIN_CONFIRMAR
+    credencial = trabajo.credencial
+    audit.registrar(
+        db, audit.TRABAJO_SIN_CONFIRMAR, username="sistema", objeto_tipo="trabajo",
+        objeto_id=trabajo.id, exito=False,
+        detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo}: entregado al agente "
+                f"{trabajo.agente.nombre} sin resultado",
+    )
+    notifications.enviar_alerta(
+        f"[passwd] Rotación sin confirmar en {credencial.nombre_activo}",
+        f"El agente «{trabajo.agente.nombre}» recogió la rotación de "
+        f"{credencial.usuario_acceso}@{credencial.nombre_activo} y no ha informado del resultado.\n\n"
+        "La contraseña pudo cambiar en el activo o no. Compruébelo y resuélvalo desde el panel: "
+        "hasta entonces la credencial no admite otra rotación.",
+    )
+
+
+def resolver_sin_confirmar(
+    db: Session,
+    *,
+    trabajo: TrabajoRotacion,
+    aplicada: bool,
+    usuario: Usuario,
+    request: Request | None = None,
+) -> TrabajoRotacion:
+    """Una persona comprueba el activo y dice qué contraseña quedó.
+
+    Solo para trabajos entregados que ya no van a confirmarse: marcados «sin
+    confirmar» o de un agente revocado. Si quedó la nueva, se escribe por el
+    punto único; si no, se descarta. En los dos casos se purgan los secretos.
+    """
+    if usuario.rol != ROL_ADMIN:
+        raise ErrorRotacion("Solo un administrador puede resolver una rotación sin confirmar.", codigo=403)
+    if trabajo.estado != TRABAJO_ENTREGADO:
+        raise ErrorRotacion(f"Este trabajo ya está en «{trabajo.estado}».", codigo=409)
+    if not (sin_confirmar(trabajo) or trabajo.agente.revocado):
+        raise ErrorRotacion(
+            "El agente aún puede confirmar este trabajo: espere a su resultado.", codigo=409,
+        )
+    rotacion = trabajo.rotacion
+    credencial = trabajo.credencial
+    dias = credencial.dias_sin_rotar
+    if aplicada:
+        _escribir_password(db, credencial, descifrar(trabajo.nueva_cifrada), usuario.id)  # type: ignore[arg-type]
+        rotacion.dias_al_rotar = dias
+        rotacion.desvio_dias = dias - intervalo_dias()
+    explicacion = (f"Resuelto a mano por {usuario.username}: "
+                   + ("la contraseña nueva SÍ quedó aplicada en el activo" if aplicada
+                      else "la contraseña nueva NO quedó aplicada en el activo"))
+    rotacion.estado = ROT_CERRADA
+    rotacion.resultado = ROT_RES_APLICADA if aplicada else ROT_RES_FALLADA
+    rotacion.verificacion = ROT_VERIF_NINGUNA  # lo comprobó una persona, no el sistema
+    rotacion.confirmado_en = ahora_utc()
+    rotacion.detalle_error = explicacion
+    _cerrar_trabajo(trabajo, TRABAJO_APLICADO if aplicada else TRABAJO_FALLADO, explicacion)
+    audit.registrar(
+        db, audit.TRABAJO_RESUELTO, request=request, usuario=usuario,
+        objeto_tipo="rotacion", objeto_id=rotacion.id,
+        detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo}: {explicacion}",
+    )
+    return trabajo
+
+
+def al_revocar_agente(db: Session, agente: Agente, usuario: Usuario,
+                      request: Request | None = None) -> None:
+    """Trabajos de un agente que se revoca: sin estados fantasma.
+
+    El pendiente se cancela y su asiento vuelve a ``AUTORIZADA``. El entregado
+    queda «sin confirmar»: el agente pudo aplicarlo antes de perder la identidad,
+    y ya no podrá decirlo.
+    """
+    trabajo = trabajo_activo_de(db, agente)
+    if trabajo is None:
+        return
+    if trabajo.estado == TRABAJO_PENDIENTE:
+        _cerrar_trabajo(trabajo, TRABAJO_CANCELADO, "Agente revocado antes de la entrega")
+        if trabajo.rotacion.estado == ROT_DESPACHADA:
+            trabajo.rotacion.estado = ROT_AUTORIZADA
+        audit.registrar(db, audit.TRABAJO_CANCELADO, request=request, usuario=usuario,
+                        objeto_tipo="trabajo", objeto_id=trabajo.id,
+                        detalle=f"Agente {agente.nombre} revocado: la rotación vuelve a quedar autorizada")
+    elif not trabajo.detalle_error:
+        _marcar_sin_confirmar(db, trabajo)

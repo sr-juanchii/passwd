@@ -424,9 +424,12 @@ def revocar(
     credencial que dice rotar por un agente que ya no existe es un estado
     fantasma.
     """
+    from app.servicios.rotacion import al_revocar_agente
+
     if agente.revocado:
         raise ErrorAgente("El agente ya está revocado.", codigo=409)
     tipo, activo_id = agente.tipo_activo, agente.activo_id
+    al_revocar_agente(db, agente, usuario, request)
     agente.estado = AGENTE_REVOCADO
     agente.vinculo_vigente = None
     agente.enrolamiento_hash = None
@@ -559,3 +562,14 @@ def _cambiar_via(db: Session, credencial: Credencial, via: str, usuario: Usuario
         detalle=f"{credencial.usuario_acceso}@{credencial.nombre_activo} se rotará {explicacion}",
     )
     return credencial
+
+
+def purgar_telemetria(db: Session) -> int:
+    """Borra la telemetría más antigua que la retención configurada."""
+    from sqlalchemy import delete
+
+    from app.models import TelemetriaAgente
+
+    limite = ahora_utc() - timedelta(days=max(get_settings().agentes_retencion_telemetria_dias, 1))
+    resultado = db.execute(delete(TelemetriaAgente).where(TelemetriaAgente.fecha < limite))
+    return resultado.rowcount or 0

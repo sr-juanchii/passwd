@@ -21,11 +21,16 @@ from sqlalchemy.orm import Session
 
 from app import audit
 from app.models import (
+    AGENTE_REVOCADO,
     ESTADO_ACTIVO,
     MFA_TOTP,
+    ROT_AUTORIZADA,
+    ROT_DESPACHADA,
     ROT_VERIF_NINGUNA,
     TIPO_DISPOSITIVO_SWITCH,
+    VIA_ROTACION_AGENTE,
     VIA_ROTACION_MANUAL,
+    Agente,
     CodigoRecuperacionMFA,
     Configuracion,
     Credencial,
@@ -37,6 +42,8 @@ from app.models import (
     RotacionCredencial,
     ServidorFisico,
     SesionWeb,
+    TelemetriaAgente,
+    TrabajoRotacion,
     Usuario,
     ahora_utc,
 )
@@ -45,6 +52,11 @@ from app.security.crypto import cifrar, descifrar
 FORMATO = "respaldo-passwd"
 VERSION = 3
 LARGO_MINIMO_FRASE = 16
+
+_NOTA_DESPACHADA_RESTAURADA = (
+    "Restaurada desde un respaldo tomado con un trabajo de agente en curso, que no se "
+    "respalda: compruebe qué contraseña tiene el activo y registre la rotación a mano."
+)
 
 # Parámetros del KDF (scrypt). Los vigentes se escriben en el archivo (v2) y
 # se leen de vuelta al restaurar, con topes de cordura para que un archivo
@@ -180,8 +192,23 @@ def exportar(db: Session, frase: str) -> bytes:
              "ejecutado_en": _fecha(r.ejecutado_en), "confirmado_en": _fecha(r.confirmado_en),
              "dias_al_rotar": r.dias_al_rotar, "desvio_dias": r.desvio_dias,
              "resultado": r.resultado, "via": r.via, "verificacion": r.verificacion,
-             "detalle_error": r.detalle_error}
+             "detalle_error": r.detalle_error, "agente_id": r.agente_id,
+             "agente_nombre": r.agente_nombre, "clave_agente_huella": r.clave_agente_huella}
             for r in db.scalars(select(RotacionCredencial).order_by(RotacionCredencial.id)).all()
+        ],
+        # Agentes (v1.4.0): solo su historia. Ni tokens, ni enrolamiento, ni
+        # clave: se reponen REVOCADOS, porque una identidad de agente restaurada
+        # sería un acceso que nadie ha vuelto a conceder. Los trabajos y la
+        # telemetría no se respaldan nunca (§8.0.4): un restore no resucita un
+        # trabajo con secretos y ventana vencida.
+        "agentes": [
+            {"id": a.id, "nombre": a.nombre, "servidor_fisico_id": a.servidor_fisico_id,
+             "hipervisor_id": a.hipervisor_id, "maquina_virtual_id": a.maquina_virtual_id,
+             "nombre_host": a.nombre_host, "version_agente": a.version_agente,
+             "clave_huella": a.clave_huella, "creado_por_id": a.creado_por_id,
+             "creado_en": _fecha(a.creado_en), "enrolado_en": _fecha(a.enrolado_en),
+             "revocado_en": _fecha(a.revocado_en)}
+            for a in db.scalars(select(Agente).order_by(Agente.id)).all()
         ],
         # Vaults personales: privados por usuario, pero SÍ se respaldan (dato del
         # sistema). La contraseña se guarda en claro dentro del JSON cifrado, como
@@ -267,6 +294,7 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
 
     # Limpieza total en orden inverso de dependencias
     for modelo in (Configuracion, SesionWeb, CodigoRecuperacionMFA, RegistroAuditoria,
+                   TrabajoRotacion, TelemetriaAgente, Agente,
                    RotacionCredencial, EntradaVault, Credencial,
                    MaquinaVirtual, Hipervisor, DispositivoRed, ServidorFisico, Usuario):
         for fila in db.scalars(select(modelo)).all():
@@ -356,7 +384,10 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             creado_por_id=c["creado_por_id"],
             creado_en=_parse_fecha(c["creado_en"]) or ahora_utc(),
             password_rotada_en=_parse_fecha(c.get("password_rotada_en")) or ahora_utc(),
-            via_rotacion=c.get("via_rotacion") or VIA_ROTACION_MANUAL,
+            # Los agentes vuelven revocados: una credencial que rotaba por agente
+            # vuelve al flujo manual hasta que se enrole uno nuevo.
+            via_rotacion=VIA_ROTACION_MANUAL if c.get("via_rotacion") == VIA_ROTACION_AGENTE
+            else (c.get("via_rotacion") or VIA_ROTACION_MANUAL),
             usada_por=c.get("usada_por", ""),
         ))
     for e in carga.get("vaults", []):
@@ -372,7 +403,26 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
     # Si una credencial ya no existe, el asiento queda con credencial_id nulo y
     # sigue siendo legible por sus campos desnormalizados.
     ids_credencial = {c["id"] for c in carga["credenciales"]}
+    for a in carga.get("agentes", []):  # ausente en respaldos anteriores a la 1.4.0
+        db.add(Agente(
+            id=a["id"], nombre=a["nombre"], servidor_fisico_id=a.get("servidor_fisico_id"),
+            hipervisor_id=a.get("hipervisor_id"), maquina_virtual_id=a.get("maquina_virtual_id"),
+            vinculo_vigente=None, estado=AGENTE_REVOCADO,
+            nombre_host=a.get("nombre_host", ""), version_agente=a.get("version_agente", ""),
+            clave_huella=a.get("clave_huella", ""), creado_por_id=a.get("creado_por_id"),
+            creado_en=_parse_fecha(a.get("creado_en")) or ahora_utc(),
+            enrolado_en=_parse_fecha(a.get("enrolado_en")),
+            revocado_en=_parse_fecha(a.get("revocado_en")) or ahora_utc(),
+        ))
+    db.flush()
+    despachadas_reabiertas = 0
     for r in carga.get("rotaciones", []):
+        # Un respaldo tomado con un trabajo en curso trae el asiento DESPACHADO,
+        # pero el trabajo no viaja: el asiento quedaría abierto para siempre y
+        # bloquearía la credencial. Vuelve a AUTORIZADA con una nota, para que
+        # alguien compruebe el activo y registre lo que de verdad quedó.
+        despachada = r["estado"] == ROT_DESPACHADA
+        despachadas_reabiertas += int(despachada)
         db.add(RotacionCredencial(
             id=r["id"],
             credencial_id=r["credencial_id"] if r["credencial_id"] in ids_credencial else None,
@@ -402,8 +452,13 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
             dias_al_rotar=r.get("dias_al_rotar"), desvio_dias=r.get("desvio_dias"),
             resultado=r.get("resultado", ""), via=r.get("via") or VIA_ROTACION_MANUAL,
             verificacion=r.get("verificacion") or ROT_VERIF_NINGUNA,
-            detalle_error=r.get("detalle_error", ""),
+            detalle_error=_NOTA_DESPACHADA_RESTAURADA if despachada else r.get("detalle_error", ""),
+            agente_id=r.get("agente_id"), agente_nombre=r.get("agente_nombre", ""),
+            clave_agente_huella=r.get("clave_agente_huella", ""),
         ))
+        if despachada:
+            db.flush()
+            db.get(RotacionCredencial, r["id"]).estado = ROT_AUTORIZADA
     for r in carga.get("auditoria", []):
         db.add(RegistroAuditoria(
             fecha=_parse_fecha(r["fecha"]) or ahora_utc(), usuario_id=r["usuario_id"],
@@ -422,6 +477,8 @@ def restaurar(db: Session, datos: bytes, frase: str, sobrescribir: bool = False)
         "credenciales": len(carga["credenciales"]),
         "vaults": len(carga.get("vaults", [])),
         "rotaciones": len(carga.get("rotaciones", [])),
+        "agentes_repuestos_revocados": len(carga.get("agentes", [])),
+        "rotaciones_despachadas_reabiertas": despachadas_reabiertas,
         "auditoria": len(carga.get("auditoria", [])),
     }
     audit.registrar(db, audit.RESPALDO_RESTAURADO, username="cli",

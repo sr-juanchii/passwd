@@ -159,6 +159,11 @@ class Settings:
     # Interruptor general. Apagado, ningún agente se enrola ni recibe trabajos
     # y toda rotación sigue el flujo manual de la 1.3.0.
     agentes_enabled: bool = field(default_factory=lambda: _env_bool("AGENTES_ENABLED", False))
+    # Validez de un trabajo despachado: el agente no lo aplica pasado este plazo.
+    rotacion_ventana_job_min: int = field(default_factory=lambda: _env_int("ROTACION_VENTANA_JOB_MIN", 15))
+    # Una credencial rotada hace menos de esto no se vuelve a despachar a un
+    # agente (anti-bucle). Solo la vía de emergencia lo salta, y queda registrado.
+    rotacion_anti_thrash_horas: int = field(default_factory=lambda: _env_int("ROTACION_ANTI_THRASH_HORAS", 24))
     # Vida de la identidad de un agente. Se renueva en cada latido, de modo que
     # un token robado del disco de un servidor caduca en horas, no en años.
     agentes_token_vida_horas: int = field(default_factory=lambda: _env_int("AGENTES_TOKEN_VIDA_HORAS", 24))
@@ -349,6 +354,8 @@ OVERRIDABLES: dict[str, tuple[str, str, object]] = {
     "rotacion_emergencia_max_por_mes": ("ROTACION_EMERGENCIA_MAX_POR_MES", "entero", 3),
     "rotacion_patrones_modo_observacion": ("ROTACION_PATRONES_MODO_OBSERVACION", "booleano", True),
     "agentes_enabled": ("AGENTES_ENABLED", "booleano", False),
+    "rotacion_ventana_job_min": ("ROTACION_VENTANA_JOB_MIN", "entero", 15),
+    "rotacion_anti_thrash_horas": ("ROTACION_ANTI_THRASH_HORAS", "entero", 24),
     "agentes_token_vida_horas": ("AGENTES_TOKEN_VIDA_HORAS", "entero", 24),
     "agentes_umbral_sin_contacto_horas": ("AGENTES_UMBRAL_SIN_CONTACTO_HORAS", "entero", 24),
     "agentes_telemetria_intervalo_min": ("AGENTES_TELEMETRIA_INTERVALO_MIN", "entero", 15),

@@ -257,6 +257,14 @@ REGISTRO: tuple[Ajuste, ...] = (
     Ajuste("agentes_enabled", GRUPO_AGENTES, "Agentes de rotación activos",
            "Permite enrolar agentes y despacharles rotaciones autorizadas. Apagado, toda "
            "rotación sigue el flujo manual: una persona cambia la contraseña y la registra.",),
+    Ajuste("rotacion_ventana_job_min", GRUPO_AGENTES, "Validez de un trabajo despachado",
+           "Minutos que tiene un agente para recoger y empezar una rotación autorizada. Pasado "
+           "el plazo sin recogerla, vuelve a quedar autorizada y pendiente de ejecutar.",
+           minimo=1, maximo=1440, unidad="min"),
+    Ajuste("rotacion_anti_thrash_horas", GRUPO_AGENTES, "Intervalo mínimo entre rotaciones por agente",
+           "Una credencial rotada hace menos de estas horas no se vuelve a despachar a un agente, "
+           "para cortar un bucle de rotaciones. Solo la vía de emergencia lo salta, y queda "
+           "registrado en la bitácora.", minimo=0, maximo=720, unidad="h"),
     Ajuste("agentes_token_vida_horas", GRUPO_AGENTES, "Vida de la identidad de un agente",
            "Horas que vale el token de un agente. Se renueva solo en cada latido; un agente "
            "apagado más tiempo que esto debe volver a enrolarse desde el panel.",

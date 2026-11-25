@@ -223,6 +223,14 @@ def ejecutar_mantenimiento() -> None:
         audit.purgar_antiguos(db, settings.audit_retention_days)
         purgar_sesiones_expiradas(db)
         otp_correo.purgar_expirados(db)
+        # Agentes (v1.4.0). Barrido de respaldo: la expiración de los trabajos
+        # también se aplica al entregarlos y al consultarlos, porque con ventanas
+        # de minutos un barrido cada 6 h llegaría tarde.
+        from app.servicios.agentes import purgar_telemetria
+        from app.servicios.rotacion import expirar_trabajos
+
+        expirar_trabajos(db)
+        purgar_telemetria(db)
         _avisar_si_falta_el_segundo_par(db)
         db.commit()
     finally:

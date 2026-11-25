@@ -513,14 +513,20 @@ def test_no_se_puede_degradar_la_firma_a_sha256(client):
 # ---------------------------------------------------------------------------
 
 
-# Módulos que exponen credenciales del INVENTARIO. El vault personal queda
-# fuera a propósito (§10 del plan): es un almacén privado de cada usuario, no
-# inventario, y no entra en el ciclo de gobernanza.
-_MODULOS_CONTROLADOR = (
-    "app/routes/credentials.py",
-    "app/api_web/credentials.py",
-    "app/importacion.py",
-)
+# Se recorre TODO `app/`, no una lista de controladores: una lista fija dejaba
+# fuera cualquier módulo nuevo —los servicios y la API de los agentes de la
+# 1.4.0, sin ir más lejos—, que es justo por donde volvería la puerta de atrás.
+# Excepciones, cada una con su motivo:
+_EXCEPCIONES_ESCRITURA = {
+    # El punto único.
+    "app/servicios/rotacion.py": "es el punto único de escritura",
+    # La restauración vuelve a dar de ALTA las credenciales de un respaldo: no
+    # rota ninguna contraseña viva, y exige --sobrescribir y la frase del archivo.
+    "app/backup.py": "restaurar un respaldo da de alta, no rota",
+    # El vault personal es `EntradaVault`, no inventario (§10 del plan).
+    "app/api_web/vault.py": "vault personal, fuera del inventario",
+    "app/routes/vault.py": "vault personal, fuera del inventario",
+}
 _ESCRITURA = re.compile(r"password_cifrada\s*=")
 
 
@@ -531,9 +537,14 @@ def test_ningun_controlador_escribe_la_contrasena_de_una_credencial():
     inventario sin pasar por ``app/servicios/rotacion.py``. No se arregla
     borrando la prueba: se arregla haciendo pasar esa vía por el servicio.
     """
+    for ruta in _EXCEPCIONES_ESCRITURA:
+        assert (RAIZ / ruta).exists(), f"Excepción obsoleta: {ruta} ya no existe"
     infractores = []
-    for ruta in _MODULOS_CONTROLADOR:
-        texto = (RAIZ / ruta).read_text(encoding="utf-8")
+    for archivo in sorted((RAIZ / "app").rglob("*.py")):
+        ruta = archivo.relative_to(RAIZ).as_posix()
+        if ruta in _EXCEPCIONES_ESCRITURA:
+            continue
+        texto = archivo.read_text(encoding="utf-8")
         for numero, linea in enumerate(texto.splitlines(), start=1):
             if linea.lstrip().startswith("#"):
                 continue  # comentario que nombra el campo

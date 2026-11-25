@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import secrets
+import string
 from functools import lru_cache
 from pathlib import Path
 
@@ -73,3 +75,33 @@ def validar_politica(password: str, username: str = "") -> list[str]:
     if len(set(password)) < 4:
         errores.append("Debe usar al menos 4 caracteres distintos.")
     return errores
+
+
+# Alfabeto de las contraseñas que genera el sistema para una rotación por agente.
+# Sin espacios, comillas, barras invertidas ni dos puntos: la contraseña viaja
+# por la entrada estándar de un helper y acabará copiada a mano alguna vez, y
+# cualquiera de esos caracteres es una ocasión de romperla por el camino.
+_SIMBOLOS_GENERADOS = "-_.!@#%^*+=?"
+_ALFABETO_GENERADO = string.ascii_letters + string.digits + _SIMBOLOS_GENERADOS
+LARGO_GENERADO = 20
+
+
+def generar_password(usuario: str = "", largo: int = LARGO_GENERADO) -> str:
+    """Contraseña aleatoria (CSPRNG) que cumple la política vigente.
+
+    Lleva al menos una minúscula, una mayúscula, un dígito y un símbolo, y nunca
+    es más corta que el mínimo configurado. Se reintenta hasta que pasa
+    ``validar_politica`` (en la práctica, a la primera).
+    """
+    largo = max(largo, get_settings().password_min_length, 8)
+    clases = (string.ascii_lowercase, string.ascii_uppercase, string.digits, _SIMBOLOS_GENERADOS)
+    while True:
+        caracteres = [secrets.choice(clase) for clase in clases]
+        caracteres += [secrets.choice(_ALFABETO_GENERADO) for _ in range(largo - len(clases))]
+        # Barajado con el CSPRNG: que la mayúscula no vaya siempre en segundo lugar.
+        for i in range(len(caracteres) - 1, 0, -1):
+            j = secrets.randbelow(i + 1)
+            caracteres[i], caracteres[j] = caracteres[j], caracteres[i]
+        candidata = "".join(caracteres)
+        if not validar_politica(candidata, usuario):
+            return candidata
