@@ -12,6 +12,7 @@ from fastapi import APIRouter
 
 from app.api_web import (
     accesos,
+    agentes,
     audit,
     auth,
     configuracion,
@@ -39,6 +40,7 @@ for _modulo in (
     accesos,
     notes,
     rotacion,
+    agentes,
     users,
     tokens,
     configuracion,

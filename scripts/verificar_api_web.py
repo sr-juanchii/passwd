@@ -27,6 +27,8 @@ os.environ["PASSWD_ADMIN_USERNAME"] = "admin"
 os.environ["PASSWD_ADMIN_EMAIL"] = "admin@example.com"
 os.environ["PASSWD_ADMIN_PASSWORD"] = "ClaveInicialRobusta!9"
 os.environ["PASSWD_COOKIE_SECURE"] = "false"
+# Agentes de rotación (v1.4.0): apagados por defecto; aquí se recorre su ciclo.
+os.environ["PASSWD_AGENTES_ENABLED"] = "true"
 
 import pyotp
 from starlette.testclient import TestClient
@@ -179,6 +181,75 @@ check("historial tras rotación", len(hist) == 1)
 if hist:
     r = admin.post(f"/api/web/credenciales/{cred_vm}/historial/{hist[0]['id']}/revelar", headers=H)
     check("revelar historial", r.status_code == 200 and r.json()["password"] == "PwdVm!2026xyz")
+
+# === 4 bis. Rotación por agente (v1.4.0) ===
+# El mismo ciclo, ejecutado por un agente: alta con reautenticación, enrolamiento
+# con un par X25519, despacho al autorizar, entrega sellada, resultado y escritura
+# por el punto único. Es la única verificación de la API del agente sobre MySQL.
+import base64
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from app.servicios import cifrado_agente
+
+r = admin.post("/api/web/credenciales", headers=H, json={"activo":"fisico","activo_id":host_id,"usuario_acceso":"svc-backup","password":"PwdSrv!2026xyz","servicio":"SSH","puerto":22,"descripcion":"cuenta de respaldo"})
+cred_srv = r.json()["id"]; check("credencial en servidor dedicado", r.status_code == 200)
+
+r = admin.post("/api/web/agentes", headers=H, json={"tipo_activo":"fisico","activo_id":host_id,"nombre":"agente-srv-dedicado"})
+check("alta de agente SIN reautenticación -> rechazo", r.status_code >= 400)
+r = admin.post("/api/web/agentes", headers=H, json={"tipo_activo":"fisico","activo_id":host_id,"nombre":"agente-srv-dedicado",
+                                                   "password":"Cl4veMaestra!Segura26","codigo":codigo_totp("admin")})
+check("alta de agente con reautenticación", r.status_code == 200, "" if r.status_code == 200 else r.text)  # sin imprimir el token
+enrol_token = r.json().get("token_enrolamiento", "")
+agente_id = r.json().get("agente", {}).get("id")
+
+privada_agente = X25519PrivateKey.generate()
+publica_agente = base64.b64encode(privada_agente.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode()
+agente_c = TestClient(app)
+r = agente_c.post("/api/agent/enrolar", json={"token_enrolamiento": enrol_token, "clave_publica": publica_agente,
+                                              "nombre_host": "srv-dedicado", "version": "1.4.0"})
+check("enrolar el agente", r.status_code == 200, "" if r.status_code == 200 else r.text)  # sin imprimir la identidad
+HA = {"Authorization": f"Bearer {r.json().get('token', '')}"}
+r = agente_c.post("/api/agent/enrolar", json={"token_enrolamiento": enrol_token, "clave_publica": publica_agente})
+check("el token de instalación no sirve dos veces", r.status_code == 401)
+r = agente_c.post("/api/agent/saludo", headers=HA, json={"version": "1.4.0"})
+check("latido del agente", r.status_code == 200 and r.json()["version_admitida"] is True,
+      "" if r.status_code == 200 else r.text)  # una renovación traería un token
+r = agente_c.post("/api/agent/telemetria", headers=HA, json={"cpu_pct": 12, "ram_pct": 40, "discos": [{"montaje": "/", "usado_pct": 61}]})
+check("telemetría del agente", r.status_code == 204, r.text)
+
+r = admin.post(f"/api/web/agentes/credenciales/{cred_srv}/via", headers=H, json={"via": "agente"})
+check("la credencial pasa a rotar por agente", r.status_code == 200 and r.json()["via_rotacion"] == "agente", r.text)
+
+# La credencial es nueva: el anti-thrash frena una rotación normal por agente y
+# solo la emergencia lo salta (queda en la bitácora). Se usa esa vía a propósito.
+r = admin.post("/api/web/rotacion/solicitudes", headers=H, json={"credencial_id": cred_srv, "tipo": "emergencia",
+                                                                 "motivo": "Verificación del ciclo del agente sobre MySQL (emergencia)."})
+check("solicitar rotación por agente", r.status_code == 200, r.text)
+rot_agente = r.json()["id"]
+r = admin2.post(f"/api/web/rotacion/solicitudes/{rot_agente}/autorizar", headers=H2,
+                json={"password": "S3gundoPar!Custodia26", "codigo": codigo_totp("admin2")})
+check("autorizar despacha al agente", r.status_code == 200 and r.json()["estado"] == "despachada", r.text)
+
+r = agente_c.get("/api/agent/trabajos/pendiente", headers=HA)
+check("el agente recoge el trabajo", r.status_code == 200, "" if r.status_code == 200 else r.text)
+contenido = cifrado_agente.abrir(privada_agente, r.json()["sobre"]) if r.status_code == 200 else {}
+check("el sobre se abre con la clave del agente", contenido.get("usuario") == "svc-backup" and contenido.get("actual") == "PwdSrv!2026xyz")
+r = agente_c.post(f"/api/agent/trabajos/{contenido.get('trabajo_id')}/resultado", headers=HA,
+                  json={"estado": "aplicado", "verificacion": "local"})
+check("el agente confirma «aplicado»", r.status_code == 200, r.text)
+r = agente_c.post(f"/api/agent/trabajos/{contenido.get('trabajo_id')}/resultado", headers=HA, json={"estado": "aplicado"})
+check("un segundo resultado -> 409", r.status_code == 409)
+r = admin.post(f"/api/web/credenciales/{cred_srv}/revelar", headers=H)
+check("la credencial tiene la contraseña que aplicó el agente", r.status_code == 200 and r.json()["password"] == contenido.get("nueva"))
+r = admin.get(f"/api/web/rotacion/credenciales/{cred_srv}")
+ultimo = r.json()["historial"][0] if r.status_code == 200 and r.json()["historial"] else {}
+check("el libro mayor registra agente y verificación local",
+      ultimo.get("resultado") == "aplicada" and ultimo.get("verificacion") == "local" and ultimo.get("agente_nombre") == "agente-srv-dedicado")
+
+r = admin.post(f"/api/web/agentes/{agente_id}/revocar", headers=H)
+check("revocar el agente", r.status_code == 200 and r.json()["agente"]["estado"] == "revocado")
+r = agente_c.post("/api/agent/saludo", headers=HA, json={})
+check("un agente revocado ya no entra (401)", r.status_code == 401)
 
 # === 5. Notas seguras ===
 r = admin.put(f"/api/web/activos/vm/{vm_id}/notas", headers=H, json={"contenido":"clave maestra de respaldo: XYZ"})

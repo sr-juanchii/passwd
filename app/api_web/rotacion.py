@@ -16,6 +16,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import access, audit, avisos
@@ -23,8 +24,10 @@ from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.database import get_db
 from app.models import (
     ROT_TIPO_MANUAL,
+    TRABAJO_ENTREGADO,
     Credencial,
     RotacionCredencial,
+    TrabajoRotacion,
     Usuario,
 )
 from app.servicios import patrones
@@ -68,6 +71,10 @@ class AplicarManual(BaseModel):
     password: str = ""
 
 
+class ResolverTrabajo(Reautenticacion):
+    aplicada: bool = False
+
+
 def _error(exc: ErrorRotacion | ErrorReautenticacion) -> HTTPException:
     return HTTPException(status_code=exc.codigo, detail=exc.mensaje)
 
@@ -105,6 +112,25 @@ def _serializar(rotacion: RotacionCredencial) -> dict:
         "via": rotacion.via,
         "verificacion": rotacion.verificacion,
         "detalle_error": rotacion.detalle_error,
+        "agente_nombre": rotacion.agente_nombre,
+    }
+
+
+def _serializar_trabajo(trabajo: TrabajoRotacion | None) -> dict | None:
+    """Estado del trabajo de un agente. Jamás sus secretos."""
+    if trabajo is None:
+        return None
+    return {
+        "id": trabajo.id,
+        "rotacion_id": trabajo.rotacion_id,
+        "estado": trabajo.estado,
+        "agente": trabajo.agente.nombre,
+        "activo_nombre": trabajo.credencial.nombre_activo,
+        "usuario_acceso": trabajo.credencial.usuario_acceso,
+        "ventana_expira_en": trabajo.ventana_expira_en.isoformat(),
+        "entregado_en": trabajo.entregado_en.isoformat() if trabajo.entregado_en else None,
+        "intentos": trabajo.intentos,
+        "sin_confirmar": servicio.sin_confirmar(trabajo),
     }
 
 
@@ -153,7 +179,18 @@ def panel(
     usuario: Annotated[Usuario, VER],
 ):
     """Lo que hay sobre la mesa: por autorizar, por ejecutar y por revisar."""
+    # Expiración perezosa: con ventanas de minutos, el barrido periódico llega tarde.
+    servicio.expirar_trabajos(db)
+    sin_confirmar = [
+        t for t in db.scalars(select(TrabajoRotacion)
+                              .where(TrabajoRotacion.estado == TRABAJO_ENTREGADO)).all()
+        if servicio.sin_confirmar(t) or t.agente.revocado
+    ]
     return {
+        "sin_confirmar": [
+            _serializar_trabajo(t) for t in sin_confirmar
+            if access.puede_ver_credencial(db, usuario, t.credencial)
+        ],
         "pendientes_de_autorizar": [
             _serializar(r) for r in _filtrar_visibles(db, usuario, servicio.pendientes_de_autorizar(db))
         ],
@@ -188,6 +225,7 @@ def historial_de_credencial(
 ):
     """Línea de tiempo de gobernanza de una credencial."""
     credencial = _credencial_visible(db, usuario, credencial_id)
+    servicio.expirar_trabajos(db)
     abierta = servicio.solicitud_abierta(db, credencial.id)
     return {
         "credencial_id": credencial.id,
@@ -199,6 +237,8 @@ def historial_de_credencial(
         "fecha_programada": servicio.fecha_programada(credencial).isoformat(),
         "temprana_si_se_rota_ahora": servicio.es_temprana(credencial),
         "solicitud_abierta": _serializar(abierta) if abierta is not None else None,
+        "trabajo_en_curso": (_serializar_trabajo(servicio.trabajo_de(db, abierta))
+                             if abierta is not None else None),
         "historial": [_serializar(r) for r in servicio.linea_de_tiempo(db, credencial.id)],
     }
 
@@ -385,3 +425,62 @@ def revisar_emergencia(
     except ErrorRotacion as exc:
         raise _error(exc) from exc
     return _serializar(rotacion)
+
+
+# ---------------------------------------------------------------------------
+# Ejecución por agente (v1.4.0)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/rotacion/solicitudes/{rotacion_id}/despachar", dependencies=[CSRF])
+def despachar_solicitud(
+    request: Request,
+    rotacion_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, SOLICITAR],
+):
+    """Vuelve a despachar al agente una rotación ya autorizada.
+
+    No añade autoridad: dos personas ya decidieron. Sirve cuando el despacho
+    automático no salió (agente sin contacto, trabajo vencido sin recoger).
+    """
+    rotacion = _rotacion_visible(db, usuario, rotacion_id)
+    try:
+        servicio.despachar(db, rotacion=rotacion, usuario=usuario, request=request)
+    except ErrorRotacion as exc:
+        raise _error(exc) from exc
+    return _serializar(rotacion)
+
+
+@router.post("/rotacion/trabajos/{trabajo_id}/resolver", dependencies=[CSRF])
+def resolver_trabajo(
+    request: Request,
+    trabajo_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    usuario: Annotated[Usuario, AUTORIZAR],
+    cuerpo: ResolverTrabajo,
+):
+    """Una persona dice qué contraseña quedó en el activo tras un «sin confirmar».
+
+    Puede escribir una contraseña en el inventario, así que pide lo mismo que
+    autorizar una rotación: contraseña y código de aplicación autenticadora.
+    """
+    trabajo = db.get(TrabajoRotacion, trabajo_id)
+    if trabajo is None or not access.puede_ver_credencial(db, usuario, trabajo.credencial):
+        raise HTTPException(status_code=404, detail="El trabajo no existe.")
+    try:
+        reautenticar(db, usuario, cuerpo.password, cuerpo.codigo)
+    except ErrorReautenticacion as exc:
+        audit.registrar(
+            db, audit.ACCESO_DENEGADO, request=request, usuario=usuario,
+            objeto_tipo="trabajo", objeto_id=trabajo_id,
+            detalle="Reautenticación fallida al resolver una rotación sin confirmar", exito=False,
+        )
+        db.commit()
+        raise _error(exc) from exc
+    try:
+        servicio.resolver_sin_confirmar(db, trabajo=trabajo, aplicada=cuerpo.aplicada,
+                                        usuario=usuario, request=request)
+    except ErrorRotacion as exc:
+        raise _error(exc) from exc
+    return _serializar(trabajo.rotacion)

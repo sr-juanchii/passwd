@@ -63,6 +63,10 @@ PERMISOS: dict[str, frozenset[str]] = {
     "rotacion.solicitar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
     "rotacion.autorizar": frozenset({ROL_ADMIN}),
     "rotacion.revisar": frozenset({ROL_ADMIN}),
+    # Agentes de rotación (v1.4.0). Verlos sirve a quien opera y a quien
+    # supervisa; gestionarlos crea o retira identidades de máquina: solo admin.
+    "agentes.ver": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR}),
+    "agentes.gestionar": frozenset({ROL_ADMIN}),
     "inventario.exportar": frozenset({ROL_ADMIN, ROL_OPERADOR}),
     "vault.usar": frozenset({ROL_ADMIN, ROL_OPERADOR, ROL_AUDITOR, ROL_ANALISTA}),
     "usuarios.gestionar": frozenset({ROL_ADMIN}),
