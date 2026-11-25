@@ -313,3 +313,45 @@ def test_version_minima_sin_gracia_si_se_fija_por_entorno(bd, admin, monkeypatch
     assert agentes.version_admitida(bd, agente) == (False, False)
     agente.version_agente = "1.5.2"
     assert agentes.version_admitida(bd, agente) == (True, False)
+
+
+# ---------------------------------------------------------------------------
+# Telemetría
+# ---------------------------------------------------------------------------
+
+
+def test_la_telemetria_se_acota_y_refresca_el_contacto(bd, admin):
+    import json
+
+    from app.models import ahora_utc
+    from app.servicios import agentes
+
+    agente, _token = _enrolado(bd, admin)
+    agente.ultimo_contacto_en = ahora_utc() - timedelta(days=3)
+    discos = [{"montaje": f"/datos{i}", "total_bytes": 10, "usado_pct": 150} for i in range(40)]
+
+    fila = agentes.registrar_telemetria(
+        bd, agente=agente, ip="10.0.0.5", cpu_pct=-7, ram_pct=55, disco_pct=250, uptime_s=-1,
+        sistema_operativo="Debian " + "x" * 500, kernel="6.18", discos=discos,
+    )
+    assert (fila.cpu_pct, fila.ram_pct, fila.disco_pct, fila.uptime_s) == (0, 55, 100, 0)
+    assert len(fila.sistema_operativo) == 120
+    guardados = json.loads(fila.discos_json)
+    assert len(guardados) == agentes.MAX_DISCOS and guardados[0]["usado_pct"] == 100
+    assert fila.recortada is True                      # lo dice, en vez de ocultarlo
+    assert agentes.cobertura(agente) == agentes.COBERTURA_CONECTADO
+    bd.flush()
+    assert agentes.ultima_telemetria(bd, agente).id == fila.id
+
+
+def test_la_telemetria_antigua_se_purga(bd, admin):
+    from app.models import TelemetriaAgente, ahora_utc
+    from app.servicios import agentes
+
+    agente, _token = _enrolado(bd, admin)
+    vieja = agentes.registrar_telemetria(bd, agente=agente, ip="10.0.0.5", cpu_pct=1)
+    vieja.fecha = ahora_utc() - timedelta(days=31)
+    agentes.registrar_telemetria(bd, agente=agente, ip="10.0.0.5", cpu_pct=2)
+    bd.flush()
+    assert agentes.purgar_telemetria(bd) == 1
+    assert [f.cpu_pct for f in bd.query(TelemetriaAgente).all()] == [2]

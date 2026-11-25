@@ -573,3 +573,105 @@ def purgar_telemetria(db: Session) -> int:
     limite = ahora_utc() - timedelta(days=max(get_settings().agentes_retencion_telemetria_dias, 1))
     resultado = db.execute(delete(TelemetriaAgente).where(TelemetriaAgente.fecha < limite))
     return resultado.rowcount or 0
+
+
+# ---------------------------------------------------------------------------
+# Telemetría (§4.4)
+# ---------------------------------------------------------------------------
+
+# Topes del contenido. El agente recorta antes de enviar; el servidor vuelve a
+# acotar por si acaso, y si tuvo que hacerlo lo deja dicho en `recortada`.
+MAX_DISCOS = 32
+_LARGO_TEXTO_TELEMETRIA = 120
+_CLAVES_DISCO = ("montaje", "sistema_archivos", "total_bytes", "usado_pct")
+
+
+def _porcentaje(valor) -> int | None:
+    if valor is None:
+        return None
+    try:
+        return min(max(int(valor), 0), 100)
+    except (TypeError, ValueError):
+        return None
+
+
+def _no_negativo(valor) -> int | None:
+    if valor is None:
+        return None
+    try:
+        return max(int(valor), 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def _texto(valor) -> str:
+    return str(valor or "").strip()[:_LARGO_TEXTO_TELEMETRIA]
+
+
+def registrar_telemetria(
+    db: Session,
+    *,
+    agente: Agente,
+    ip: str,
+    cpu_pct=None,
+    ram_pct=None,
+    disco_pct=None,
+    uptime_s=None,
+    sistema_operativo: str = "",
+    kernel: str = "",
+    cpu_modelo: str = "",
+    ram_total=None,
+    discos: list | None = None,
+    recortada: bool = False,
+):
+    """Guarda un latido con métricas agregadas del host y refresca el contacto.
+
+    Solo agregados y hardware del propio host (§4.1, prohibición 9): nada de
+    procesos, usuarios ni rutas más allá del punto de montaje de cada disco.
+    Lo que no encaja en los topes se recorta y se marca, no se rechaza: una
+    métrica incompleta es mejor que un agente que deja de informar.
+    """
+    import json
+
+    from app.models import TelemetriaAgente
+
+    limpios: list[dict] = []
+    for disco in (discos or [])[:MAX_DISCOS]:
+        if not isinstance(disco, dict):
+            recortada = True
+            continue
+        limpios.append({
+            "montaje": _texto(disco.get("montaje")),
+            "sistema_archivos": _texto(disco.get("sistema_archivos")),
+            "total_bytes": _no_negativo(disco.get("total_bytes")),
+            "usado_pct": _porcentaje(disco.get("usado_pct")),
+        })
+    if discos and len(discos) > MAX_DISCOS:
+        recortada = True
+
+    fila = TelemetriaAgente(
+        agente_id=agente.id,
+        fecha=ahora_utc(),
+        cpu_pct=_porcentaje(cpu_pct),
+        ram_pct=_porcentaje(ram_pct),
+        disco_pct=_porcentaje(disco_pct),
+        uptime_s=_no_negativo(uptime_s),
+        sistema_operativo=_texto(sistema_operativo),
+        kernel=_texto(kernel),
+        cpu_modelo=_texto(cpu_modelo),
+        ram_total=_no_negativo(ram_total),
+        discos_json=json.dumps(limpios, ensure_ascii=False),
+        recortada=bool(recortada),
+    )
+    db.add(fila)
+    agente.ultimo_contacto_en = fila.fecha
+    agente.ip_ultimo_contacto = (ip or "")[:45]
+    return fila
+
+
+def ultima_telemetria(db: Session, agente: Agente):
+    """La instantánea más reciente del agente, si la hay."""
+    from app.models import TelemetriaAgente
+
+    return db.scalar(select(TelemetriaAgente).where(TelemetriaAgente.agente_id == agente.id)
+                     .order_by(TelemetriaAgente.fecha.desc(), TelemetriaAgente.id.desc()).limit(1))
