@@ -23,6 +23,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -1060,6 +1061,19 @@ class RotacionCredencial(Base):
     )
     detalle_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
+    # --- Ejecución por agente (v1.4.0) ---------------------------------------
+    # Qué agente ejecutó la rotación y con qué par de claves se le cifró el
+    # trabajo. SIN clave foránea a propósito: el reconciliador de esquema añade
+    # columnas con ADD COLUMN y no crea FKs, así que una base que viene de la
+    # 1.3.0 tendría la columna sin FK y una nueva con ella. Además el libro mayor
+    # nunca se purga y el agente puede desaparecer con su activo: `agente_nombre`
+    # mantiene el asiento legible, igual que `activo_nombre` con la credencial.
+    agente_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    agente_nombre: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    clave_agente_huella: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="", server_default=""
+    )
+
     credencial: Mapped[Credencial | None] = relationship()
     solicitado_por: Mapped[Usuario | None] = relationship(foreign_keys=[solicitado_por_id])
     autorizado_por: Mapped[Usuario | None] = relationship(foreign_keys=[autorizado_por_id])
@@ -1075,3 +1089,251 @@ class RotacionCredencial(Base):
     def revision_pendiente(self) -> bool:
         """Emergencia ejecutada sin segundo par y aún sin revisar por otro admin."""
         return self.emergencia_sin_segundo_par and self.revisada_en is None
+
+
+# ---------------------------------------------------------------------------
+# Agentes de rotación (v1.4.0) — docs/plan-rotacion-agentes.md §3.1
+# ---------------------------------------------------------------------------
+
+# Ciclo de vida del agente. Lo que se GUARDA es solo lo que decide una persona
+# o el propio enrolamiento; «conectado» y «sin contacto» se DERIVAN de
+# `ultimo_contacto_en` y del umbral configurado. Guardarlos exigiría un proceso
+# que los mantuviera al día, y una insignia que miente porque ese proceso no
+# corrió es justo el «estado fantasma» que el plan prohíbe (§8.2).
+AGENTE_PENDIENTE = "pendiente"   # dado de alta en el panel, aún sin enrolar
+AGENTE_ACTIVO = "activo"         # enrolado: tiene identidad y puede recibir trabajos
+AGENTE_REVOCADO = "revocado"     # sin identidad válida; se conserva como historia
+ESTADOS_AGENTE = (AGENTE_PENDIENTE, AGENTE_ACTIVO, AGENTE_REVOCADO)
+
+# Estados de un trabajo despachado a un agente (§3.2). El camino normal es
+# PENDIENTE → ENTREGADO → APLICADO; el resto son cierres.
+TRABAJO_PENDIENTE = "pendiente"
+TRABAJO_ENTREGADO = "entregado"
+TRABAJO_APLICADO = "aplicado"
+TRABAJO_REVERTIDO = "revertido"
+TRABAJO_FALLADO = "fallado"
+TRABAJO_EXPIRADO = "expirado"
+TRABAJO_CANCELADO = "cancelado"
+ESTADOS_TRABAJO = (
+    TRABAJO_PENDIENTE, TRABAJO_ENTREGADO, TRABAJO_APLICADO, TRABAJO_REVERTIDO,
+    TRABAJO_FALLADO, TRABAJO_EXPIRADO, TRABAJO_CANCELADO,
+)
+# Estados en los que el trabajo ocupa el único turno de su agente.
+ESTADOS_TRABAJO_ACTIVOS = (TRABAJO_PENDIENTE, TRABAJO_ENTREGADO)
+
+
+def vinculo_activo(tipo: str, activo_id: int) -> str:
+    """Valor de `Agente.vinculo_vigente` para un activo (p. ej. ``"fisico:12"``)."""
+    return f"{tipo}:{activo_id}"
+
+
+class Agente(Base):
+    """Agente de rotación instalado en un activo Linux (servidor, hipervisor o VM).
+
+    Un agente pertenece a **un** activo y solo ve los trabajos de ese activo. Su
+    identidad es un token de vida corta, del que solo se guarda el hash, que se
+    renueva en cada latido; el anterior sigue valiendo durante un solapamiento
+    corto para no dejar fuera a un agente que no pudo recoger el nuevo (§2.1).
+
+    Los dispositivos de red no llevan agente: los cubrirán los conectores de la
+    2.3.0 (§6). De ahí que el vínculo sea uno-de entre TRES activos, no cuatro.
+    """
+
+    __tablename__ = "agentes"
+    __table_args__ = (
+        CheckConstraint(
+            "(CASE WHEN servidor_fisico_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN hipervisor_id IS NULL THEN 0 ELSE 1 END"
+            " + CASE WHEN maquina_virtual_id IS NULL THEN 0 ELSE 1 END) = 1",
+            name="ck_agentes_un_activo",
+        ),
+        CheckConstraint(
+            "estado IN ('pendiente', 'activo', 'revocado')", name="ck_agentes_estado"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+
+    servidor_fisico_id: Mapped[int | None] = mapped_column(
+        ForeignKey("servidores_fisicos.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    hipervisor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("hipervisores.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    maquina_virtual_id: Mapped[int | None] = mapped_column(
+        ForeignKey("maquinas_virtuales.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # Un solo agente VIGENTE por activo, garantizado por la base de datos: vale
+    # "tipo:id" mientras el agente no está revocado y NULL después. Ni SQLite ni
+    # MySQL cuentan los NULL como repetidos en un UNIQUE, y MySQL no admite
+    # índices parciales: es la forma portable de que los revocados se conserven
+    # como historia sin bloquear al siguiente agente del mismo activo.
+    vinculo_vigente: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
+
+    estado: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=AGENTE_PENDIENTE, server_default=AGENTE_PENDIENTE, index=True
+    )
+
+    # --- Enrolamiento de un solo uso ----------------------------------------
+    # Se anula al consumirse: un segundo uso no encuentra nada que validar.
+    enrolamiento_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    enrolamiento_expira_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    enrolado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # --- Identidad de vida corta (§2.1) -------------------------------------
+    token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    token_expira_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    token_anterior_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    token_anterior_expira_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    token_renovado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Dos renovaciones desde IPs distintas en la misma ventana son anomalía (§3.8).
+    ip_ultima_renovacion: Mapped[str] = mapped_column(String(45), nullable=False, default="", server_default="")
+
+    # Par X25519 del agente: el trabajo se le cifra a esta clave pública.
+    clave_publica: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+    clave_huella: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+
+    # --- Lo que informa el propio agente ------------------------------------
+    nombre_host: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    version_agente: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
+    ultimo_contacto_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ip_ultimo_contacto: Mapped[str] = mapped_column(String(45), nullable=False, default="", server_default="")
+
+    rotacion_habilitada: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("1")
+    )
+
+    creado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    revocado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    revocado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    servidor_fisico: Mapped[ServidorFisico | None] = relationship()
+    hipervisor: Mapped[Hipervisor | None] = relationship()
+    maquina_virtual: Mapped[MaquinaVirtual | None] = relationship()
+    creado_por: Mapped[Usuario | None] = relationship(foreign_keys=[creado_por_id])
+    revocado_por: Mapped[Usuario | None] = relationship(foreign_keys=[revocado_por_id])
+
+    @property
+    def tipo_activo(self) -> str:
+        if self.servidor_fisico_id is not None:
+            return ACTIVO_FISICO
+        if self.hipervisor_id is not None:
+            return ACTIVO_HIPERVISOR
+        return ACTIVO_VM
+
+    @property
+    def activo_id(self) -> int:
+        return self.servidor_fisico_id or self.hipervisor_id or self.maquina_virtual_id  # type: ignore[return-value]
+
+    @property
+    def revocado(self) -> bool:
+        return self.estado == AGENTE_REVOCADO
+
+
+class TrabajoRotacion(Base):
+    """Trabajo de rotación despachado a un agente (§2.2, §3.1).
+
+    Lleva la contraseña nueva y la actual (ambas hacen falta para revertir de
+    forma determinista), cifradas al par X25519 del agente. **Se purgan al
+    cerrar**: el registro sobrevive como traza, los secretos no. Lo permanente
+    es el asiento del libro mayor (`rotacion_id`).
+    """
+
+    __tablename__ = "trabajos_rotacion"
+    __table_args__ = (
+        CheckConstraint(
+            "estado IN ('pendiente', 'entregado', 'aplicado', 'revertido',"
+            " 'fallado', 'expirado', 'cancelado')",
+            name="ck_trabajos_estado",
+        ),
+        CheckConstraint(
+            "verificacion IN ('ninguna', 'local', 'remota')",
+            name="ck_trabajos_verificacion",
+        ),
+        Index("ix_trabajos_agente_estado", "agente_id", "estado"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agente_id: Mapped[int] = mapped_column(
+        ForeignKey("agentes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    credencial_id: Mapped[int] = mapped_column(
+        ForeignKey("credenciales.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    rotacion_id: Mapped[int] = mapped_column(
+        ForeignKey("rotaciones_credencial.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Un solo trabajo ACTIVO por agente, garantizado por la base de datos: vale
+    # el id del agente mientras el trabajo está pendiente o entregado, y NULL al
+    # cerrarse. Mismo mecanismo portable que `Agente.vinculo_vigente`.
+    activo_agente_id: Mapped[int | None] = mapped_column(Integer, unique=True, nullable=True)
+
+    estado: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=TRABAJO_PENDIENTE, server_default=TRABAJO_PENDIENTE
+    )
+
+    # Secretos del trabajo, cifrados al agente. Nulos y SIN default: se purgan
+    # al cerrar, y MySQL no admite DEFAULT en columnas BLOB.
+    nueva_cifrada: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    actual_cifrada: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    clave_huella: Mapped[str] = mapped_column(String(64), nullable=False, default="", server_default="")
+
+    ventana_expira_en: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    intentos: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    disparado_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    creado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+    entregado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    confirmado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verificacion: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ROT_VERIF_NINGUNA, server_default=ROT_VERIF_NINGUNA
+    )
+    detalle_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    agente: Mapped[Agente] = relationship()
+    credencial: Mapped[Credencial] = relationship()
+    rotacion: Mapped[RotacionCredencial] = relationship()
+    disparado_por: Mapped[Usuario | None] = relationship()
+
+    @property
+    def activo(self) -> bool:
+        return self.estado in ESTADOS_TRABAJO_ACTIVOS
+
+
+class TelemetriaAgente(Base):
+    """Latido con métricas agregadas y datos de hardware del host del agente (§4.4).
+
+    Solo agregados del propio host: sin procesos, usuarios ni rutas. El tamaño
+    está acotado por contrato; si el agente tuvo que recortar para no pasarse,
+    lo dice en `recortada` en vez de que el servidor amplíe su límite.
+    """
+
+    __tablename__ = "telemetria_agente"
+    __table_args__ = (Index("ix_telemetria_agente_fecha", "agente_id", "fecha"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agente_id: Mapped[int] = mapped_column(
+        ForeignKey("agentes.id", ondelete="CASCADE"), nullable=False
+    )
+    fecha: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
+
+    cpu_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ram_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    disco_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uptime_s: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    sistema_operativo: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    kernel: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    cpu_modelo: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
+    ram_total: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    discos_json: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    recortada: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+
+    agente: Mapped[Agente] = relationship()
