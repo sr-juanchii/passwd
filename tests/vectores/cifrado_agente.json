@@ -1,0 +1,26 @@
+{
+  "descripcion": "Vector de interoperabilidad del sobre de trabajos (app/servicios/cifrado_agente.py). Clave privada de PRUEBA, publicada a propósito. El agente Go debe abrir el sobre con esa clave y obtener exactamente el contenido. El token Fernet lleva su fecha de creación: quien lo abra NO debe aplicarle caducidad (la validez del trabajo la da expira_en, dentro del contenido).",
+  "esquema": {
+    "kex": "X25519",
+    "kdf": "HKDF-SHA256",
+    "salt": "efimera_pub || agente_pub",
+    "info": "passwd-agente/trabajo/v1",
+    "cifrado": "Fernet (clave = urlsafe_b64(HKDF 32 bytes))"
+  },
+  "clave_privada_agente": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+  "clave_publica_agente": "B6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9/AsrhtHHw=",
+  "huella_clave_publica": "aaa8fff703b50b2297f4f6e13508f72420d96fd01ebb84cb074449caaef64041",
+  "sobre": {
+    "v": 1,
+    "efimera": "kxHRjHsxYIyrciAuigTVo6vpjsqDO7FP4k15LsXJkDo=",
+    "token": "gAAAAABrByXq_sGVkx0MCIWJle_Hjwe0P6AK5h5NX4dP5tvq_AKjKxkm06zGaCgWFlmFycXIWVr__K5YAqPknLZ7aSj_3M34anjRmmf7ByTwKFwTVpk49XSySC3JMztdZaXolwMo454W9eFPW5xwU1IC_U_efEcEl3mrDYDAdZHokJLC_2SlQ2o6U3NP1vc7Jb-yeZTBD0t5IFpoYDsxZRut5PP2IwuvfG8oJsSV15hAso-p9fi-ImXYjm86-MBN6my5-94ZXL7z2lJ-6w3BrmVbXzAR90LrLWOFcQJqmABKd7nXb_GnM5U="
+  },
+  "contenido": {
+    "trabajo_id": 42,
+    "tipo": "rotar_cuenta",
+    "usuario": "deploy",
+    "nueva": "Nueva-De-Prueba-ñ-2026!",
+    "actual": "Actual-De-Prueba-2026!",
+    "expira_en": "2026-11-25T16:15:00"
+  }
+}

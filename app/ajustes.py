@@ -56,6 +56,7 @@ GRUPO_AVISOS = "Notificaciones"
 GRUPO_TASA = "Límites anti-abuso"
 GRUPO_INVENTARIO = "Inventario y auditoría"
 GRUPO_ROTACION = "Gobernanza de rotación"
+GRUPO_AGENTES = "Agentes de rotación"
 
 _DESCRIPCION_GRUPO = {
     GRUPO_SESION: "Cuánto dura una sesión abierta y cuándo se cierra sola.",
@@ -67,6 +68,8 @@ _DESCRIPCION_GRUPO = {
     GRUPO_TASA: "Topes que frenan los intentos automatizados y la extracción masiva.",
     GRUPO_INVENTARIO: "Rotación e historial de credenciales y conservación de la bitácora.",
     GRUPO_ROTACION: "Cómo se autoriza y se vigila cada rotación de contraseña del inventario.",
+    GRUPO_AGENTES: "Agentes que rotan contraseñas desde el propio servidor, siempre tras una "
+                   "rotación autorizada.",
 }
 
 _RE_HOST = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$|^\[[0-9A-Fa-f:.]+\]$")
@@ -98,6 +101,15 @@ def _validar_emisor(valor: str) -> str | None:
         return "no puede quedar vacío"
     if len(valor) > 64 or any(c in valor for c in "[]:\r\n"):
         return "admite hasta 64 caracteres, sin corchetes, dos puntos ni saltos de línea"
+    return None
+
+
+_RE_VERSION = re.compile(r"^\d{1,4}\.\d{1,4}\.\d{1,4}$")
+
+
+def _validar_version(valor: str) -> str | None:
+    if valor and not _RE_VERSION.match(valor):
+        return "debe ser una versión X.Y.Z (p. ej. 1.4.0), o quedar vacío para admitir cualquiera"
     return None
 
 
@@ -241,6 +253,33 @@ REGISTRO: tuple[Ajuste, ...] = (
            "Las reglas de patrón se evalúan y se ven en métricas, pero no envían avisos. Déjelo "
            "activo hasta calibrar los umbrales con los datos reales de esta instalación: una "
            "regla que avisa de más acaba ignorándose.",),
+    # --- Agentes de rotación (v1.4.0) ---
+    Ajuste("agentes_enabled", GRUPO_AGENTES, "Agentes de rotación activos",
+           "Permite enrolar agentes y despacharles rotaciones autorizadas. Apagado, toda "
+           "rotación sigue el flujo manual: una persona cambia la contraseña y la registra.",),
+    Ajuste("agentes_token_vida_horas", GRUPO_AGENTES, "Vida de la identidad de un agente",
+           "Horas que vale el token de un agente. Se renueva solo en cada latido; un agente "
+           "apagado más tiempo que esto debe volver a enrolarse desde el panel.",
+           minimo=1, maximo=720, unidad="h"),
+    Ajuste("agentes_umbral_sin_contacto_horas", GRUPO_AGENTES, "Umbral de «sin contacto»",
+           "Horas sin latido tras las cuales un agente se muestra sin contacto.",
+           minimo=1, maximo=720, unidad="h"),
+    Ajuste("agentes_telemetria_intervalo_min", GRUPO_AGENTES, "Cadencia del latido",
+           "Cada cuántos minutos envían los agentes su latido y su telemetría.",
+           minimo=1, maximo=1440, unidad="min"),
+    Ajuste("agentes_retencion_telemetria_dias", GRUPO_AGENTES, "Conservación de la telemetría",
+           "Días que se conserva la telemetría de los agentes antes de purgarla.",
+           minimo=1, maximo=3650, unidad="días"),
+    Ajuste("agentes_version_minima", GRUPO_AGENTES, "Versión mínima del agente",
+           "Los agentes por debajo de esta versión dejan de recibir trabajos al acabar la "
+           "gracia. Vacío: se admite cualquier versión.", validador=_validar_version),
+    Ajuste("agentes_gracia_version_dias", GRUPO_AGENTES, "Gracia para actualizar agentes",
+           "Días, desde que se fija la versión mínima en este panel, durante los que un "
+           "agente anterior sigue recibiendo trabajos.", minimo=0, maximo=365, unidad="días"),
+    Ajuste("agentes_alertar_ip_distinta", GRUPO_AGENTES, "Avisar de renovaciones desde IP distinta",
+           "Avisa cuando un agente renueva su identidad desde dos direcciones distintas en la "
+           "misma ventana: puede ser un token robado. Detrás de un NAT con varias salidas "
+           "puede dar falsos positivos.",),
     Ajuste("rotation_max_days", GRUPO_INVENTARIO, "Vigencia de las contraseñas",
            "Días tras los cuales una credencial sin rotar se marca como vencida.",
            1, 3650, unidad="días"),
@@ -254,7 +293,7 @@ REGISTRO: tuple[Ajuste, ...] = (
 _POR_CLAVE: dict[str, Ajuste] = {a.clave: a for a in REGISTRO}
 
 _GRUPOS_ORDEN = (GRUPO_SESION, GRUPO_CUENTAS, GRUPO_MFA, GRUPO_SMTP, GRUPO_AVISOS,
-                 GRUPO_TASA, GRUPO_INVENTARIO, GRUPO_ROTACION)
+                 GRUPO_TASA, GRUPO_INVENTARIO, GRUPO_ROTACION, GRUPO_AGENTES)
 
 # Refresco del singleton desde la BD: como máximo una lectura por este intervalo
 # y por proceso. Además, solo se RE-APLICA cuando la configuración en BD cambió

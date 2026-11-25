@@ -154,6 +154,32 @@ class Settings:
     # calibrados con datos reales de la instalación.
     rotacion_patrones_modo_observacion: bool = field(
         default_factory=lambda: _env_bool("ROTACION_PATRONES_MODO_OBSERVACION", True))
+
+    # --- Agentes de rotación (v1.4.0) ------------------------------------
+    # Interruptor general. Apagado, ningún agente se enrola ni recibe trabajos
+    # y toda rotación sigue el flujo manual de la 1.3.0.
+    agentes_enabled: bool = field(default_factory=lambda: _env_bool("AGENTES_ENABLED", False))
+    # Vida de la identidad de un agente. Se renueva en cada latido, de modo que
+    # un token robado del disco de un servidor caduca en horas, no en años.
+    agentes_token_vida_horas: int = field(default_factory=lambda: _env_int("AGENTES_TOKEN_VIDA_HORAS", 24))
+    # Sin latido durante este tiempo, el agente se muestra «sin contacto».
+    agentes_umbral_sin_contacto_horas: int = field(
+        default_factory=lambda: _env_int("AGENTES_UMBRAL_SIN_CONTACTO_HORAS", 24))
+    # Cadencia de latido y telemetría que se indica a los agentes.
+    agentes_telemetria_intervalo_min: int = field(
+        default_factory=lambda: _env_int("AGENTES_TELEMETRIA_INTERVALO_MIN", 15))
+    # Días que se conserva la telemetría.
+    agentes_retencion_telemetria_dias: int = field(
+        default_factory=lambda: _env_int("AGENTES_RETENCION_TELEMETRIA_DIAS", 30))
+    # Versión mínima de agente que recibe trabajos (vacío = cualquiera) y días
+    # de gracia desde que se fija en el panel.
+    agentes_version_minima: str = field(default_factory=lambda: _env("AGENTES_VERSION_MINIMA", ""))
+    agentes_gracia_version_dias: int = field(
+        default_factory=lambda: _env_int("AGENTES_GRACIA_VERSION_DIAS", 14))
+    # Avisar cuando un agente renueva su identidad desde dos IPs distintas en la
+    # misma ventana. Detrás de NAT con varias salidas puede dar falsos positivos.
+    agentes_alertar_ip_distinta: bool = field(
+        default_factory=lambda: _env_bool("AGENTES_ALERTAR_IP_DISTINTA", True))
     # Historial de contraseñas anteriores conservadas por credencial
     password_history_max: int = field(default_factory=lambda: _env_int("PASSWORD_HISTORY_MAX", 5))
 
@@ -322,6 +348,14 @@ OVERRIDABLES: dict[str, tuple[str, str, object]] = {
     "rotacion_emergencia_ventana_min": ("ROTACION_EMERGENCIA_VENTANA_MIN", "entero", 60),
     "rotacion_emergencia_max_por_mes": ("ROTACION_EMERGENCIA_MAX_POR_MES", "entero", 3),
     "rotacion_patrones_modo_observacion": ("ROTACION_PATRONES_MODO_OBSERVACION", "booleano", True),
+    "agentes_enabled": ("AGENTES_ENABLED", "booleano", False),
+    "agentes_token_vida_horas": ("AGENTES_TOKEN_VIDA_HORAS", "entero", 24),
+    "agentes_umbral_sin_contacto_horas": ("AGENTES_UMBRAL_SIN_CONTACTO_HORAS", "entero", 24),
+    "agentes_telemetria_intervalo_min": ("AGENTES_TELEMETRIA_INTERVALO_MIN", "entero", 15),
+    "agentes_retencion_telemetria_dias": ("AGENTES_RETENCION_TELEMETRIA_DIAS", "entero", 30),
+    "agentes_version_minima": ("AGENTES_VERSION_MINIMA", "texto", ""),
+    "agentes_gracia_version_dias": ("AGENTES_GRACIA_VERSION_DIAS", "entero", 14),
+    "agentes_alertar_ip_distinta": ("AGENTES_ALERTAR_IP_DISTINTA", "booleano", True),
 }
 
 

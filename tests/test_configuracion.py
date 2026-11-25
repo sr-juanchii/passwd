@@ -31,7 +31,8 @@ def test_ver_configuracion_agrupada_y_origen(client):
     grupos = {g["grupo"] for g in datos["grupos"]}
     assert grupos == {"Sesión", "Cuentas y contraseñas", "Verificación en dos pasos",
                       "Servidor de correo (SMTP)", "Notificaciones", "Límites anti-abuso",
-                      "Inventario y auditoría", "Gobernanza de rotación"}
+                      "Inventario y auditoría", "Gobernanza de rotación",
+                      "Agentes de rotación"}
     assert all(g["descripcion"] for g in datos["grupos"])
     assert datos["info_sistema"]  # información de solo lectura presente
     # Todos los ajustes parten del valor base (por defecto) al inicio.

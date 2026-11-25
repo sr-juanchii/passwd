@@ -160,6 +160,7 @@ Trazabilidad de la revisión: qué asumía el plan, qué dice el código de la v
 | H11 | La telemetría cabe sin más | `max_request_bytes` por defecto es 64 KB (`app/config.py:123`) | §3.3 y §4.4 acotan el tamaño por contrato |
 | H12 | El respaldo «incluye las tablas nuevas» | `app/backup.py:154-164, 328-336` repone `password_rotada_en` | §8.0 precisa: se repone el libro mayor y los agentes, **nunca** trabajos pendientes |
 | H13 | El alcance es el inventario | `EntradaVault` también tiene `password_rotada_en` (`app/models.py:792`) | §10 lo declara fuera de alcance explícitamente |
+| H14 | El trabajo se guarda «cifrado al par del agente» como defensa en reposo (§3.1) | Al confirmar `aplicado`, el backend escribe la contraseña nueva en la credencial (`app/servicios/rotacion.py`), y no tiene la clave privada del agente | En reposo, Fernet del backend como cualquier credencial; el **sellado** al par del agente se hace al **entregar** el trabajo (`app/servicios/cifrado_agente.py`). Hallado al diseñar los servicios de la v1.4.0 |
 
 ---
 
@@ -337,13 +338,17 @@ puerta de atrás dentro de seis meses, cuando nadie recuerde por qué estaba pro
 | `SolicitudesProgramadas` (índice) | único `(credencial_id, fecha_programada)` | **corrección H9**: idempotencia del planificador aunque corra en varios procesos |
 | `Agentes.min_version_requerida` (ajuste del backend) | versión mínima aceptada | el agente viejo deja de recibir jobs al vencer la gracia |
 
-**Sobre el cifrado del job hacia el agente.** Se mantiene, con su justificación explícita: protege
-la contraseña **en vuelo hacia su aplicación** frente a una fuga de la base de datos que no incluya
-la clave Fernet del backend (copia de seguridad extraviada, réplica de lectura, acceso de DBA). No
-protege frente al compromiso del backend completo, que ya tiene todas las contraseñas (§4.1). Se
-implementa con primitivas de `cryptography` ya presentes —**X25519 + HKDF-SHA256 + Fernet**— y
-**nunca** con un esquema propio. La clave pública del agente se registra en el enrolamiento y se
-renueva junto con el token; el libro mayor registra qué par de claves se usó.
+**Sobre el cifrado del job hacia el agente (corregido por H14).** En reposo, `nueva_cifrada` y
+`actual_cifrada` llevan el **Fernet del backend**, la misma protección que cualquier credencial:
+no pueden ser legibles solo por el agente, porque al confirmar `aplicado` el backend tiene que
+escribir esa contraseña. El trabajo se **sella al par X25519 del agente al entregarlo**: protege la
+contraseña en vuelo además de TLS y la ata a la clave del agente, de modo que un token robado sin
+la clave privada no basta para leer un trabajo. No protege frente al compromiso del backend
+completo, que ya tiene todas las contraseñas (§4.1). Se implementa con primitivas de
+`cryptography` —**X25519 + HKDF-SHA256 + Fernet**— y **nunca** con un esquema propio
+(`app/servicios/cifrado_agente.py`; vectores compartidos con el agente en
+`tests/vectores/cifrado_agente.json`). La clave pública del agente se registra en el enrolamiento;
+el libro mayor registra qué par de claves se usó.
 
 ### 3.2 Máquina de estados y quiénes pueden
 
@@ -1183,7 +1188,8 @@ versión se cierra con lo que entregó y con lo que no.
 | Fecha | Versión | Capa | Commit | Verificación ejecutada | Notas |
 |---|---|---|---|---|---|
 | 2026-11-25 | v1.4.0 | Arranque | `d66521a` | enlaces de `docs/` resueltos, `pytest tests/test_version.py` | Rama `feature/1.4.0-agente-linux`; hoja de ruta; nginx en una sola versión en todo el repositorio |
-| 2026-11-25 | v1.4.0 | Modelos + migración aditiva `0011` | (este) | `pytest tests/test_schema.py tests/test_migraciones_alembic.py tests/test_agentes_modelo.py`, suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; paridad de índices, `UNIQUE`, `CHECK` y FK entre modelo y migración | `agentes`, `trabajos_rotacion`, `telemetria_agente`; `agente_id` en el libro mayor **sin FK** (el reconciliador no las crea). Un agente vigente por activo y un trabajo activo por agente, garantizados por `UNIQUE` sobre columnas que se anulan al cerrar. Estado del agente reducido a `pendiente`/`activo`/`revocado`: conexión y falta de contacto se derivan. Las claves `agentes_*` pasan al commit de servicios, que es quien las lee |
+| 2026-11-25 | v1.4.0 | Modelos + migración aditiva `0011` | `1e08fe7` | `pytest tests/test_schema.py tests/test_migraciones_alembic.py tests/test_agentes_modelo.py`, suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; paridad de índices, `UNIQUE`, `CHECK` y FK entre modelo y migración | `agentes`, `trabajos_rotacion`, `telemetria_agente`; `agente_id` en el libro mayor **sin FK** (el reconciliador no las crea). Un agente vigente por activo y un trabajo activo por agente, garantizados por `UNIQUE` sobre columnas que se anulan al cerrar. Estado del agente reducido a `pendiente`/`activo`/`revocado`: conexión y falta de contacto se derivan. Las claves `agentes_*` pasan al commit de servicios, que es quien las lee |
+| 2026-11-25 | v1.4.0 | Servicios (2a): identidad del agente y cifrado | (este) | `pytest tests/test_servicio_agentes.py` (20), suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`, `gitleaks` sobre el vector; tres garantías quitadas a mano y su prueba falla | Alta, enrolamiento de un solo uso, identidad de vida corta con solapamiento, anomalía de IP, revocación, cobertura derivada, versión mínima. **H14**: el sellado al agente es en la entrega, no en reposo. Ajustes `agentes_*` |
 
 Al arrancar cada versión se añaden sus filas según el desglose de §8. Una versión cerrada no deja
 filas pendientes.

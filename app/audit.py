@@ -112,6 +112,17 @@ ROTACION_EMERGENCIA_SIN_PAR = "rotacion_emergencia_sin_par"
 ROTACION_EMERGENCIA_REVISADA = "rotacion_emergencia_revisada"
 ROTACION_ESCRITURA_DENEGADA = "rotacion_escritura_denegada"
 
+# Agentes de rotación (v1.4.0). El sujeto de lo que hace un agente es
+# «agente:<nombre>», nunca una persona.
+AGENTE_ALTA = "agente_alta"
+AGENTE_ENROLAMIENTO_EMITIDO = "agente_enrolamiento_emitido"
+AGENTE_ENROLADO = "agente_enrolado"
+AGENTE_ENROLAMIENTO_RECHAZADO = "agente_enrolamiento_rechazado"
+AGENTE_TOKEN_RENOVADO = "agente_token_renovado"  # noqa: S105 — nombre de acción, no es un secreto
+AGENTE_ANOMALIA_IP = "agente_anomalia_ip"
+AGENTE_REVOCADO = "agente_revocado"
+CREDENCIAL_VIA_CAMBIADA = "credencial_via_rotacion_cambiada"
+
 CONFIGURACION_CAMBIADA = "configuracion_cambiada"
 CONFIGURACION_RESTABLECIDA = "configuracion_restablecida"
 CORREO_PRUEBA = "correo_prueba_enviado"
