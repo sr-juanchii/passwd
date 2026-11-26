@@ -185,6 +185,52 @@ jobs:
             frontend/playwright-report/
           retention-days: 7
 
+  agente:
+    name: Agente Go (formato, vet, pruebas, vulnerabilidades y compilación)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agente
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+
+      # La versión sale de agente/go.mod: una sola fuente de verdad, la misma
+      # que usa quien compila en local.
+      - name: Configurar Go (versión de agente/go.mod)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: agente/go.mod
+          cache-dependency-path: agente/go.sum
+
+      - name: Formato (gofmt)
+        run: |
+          sin_formato=$(gofmt -l .)
+          if [ -n "$sin_formato" ]; then echo "Sin gofmt:"; echo "$sin_formato"; exit 1; fi
+
+      - name: Análisis estático (go vet)
+        run: go vet ./...
+
+      # Incluye la interoperabilidad con el backend: internal/sobre abre el
+      # mismo vector (tests/vectores/cifrado_agente.json) que abre Python.
+      - name: Pruebas (con detector de carreras)
+        run: go test -race ./...
+
+      - name: Vulnerabilidades en dependencias y biblioteca estándar (govulncheck, OWASP A06)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+
+      # Binario estático (sin cgo) para las dos arquitecturas, con la versión
+      # del backend: agente y servidor declaran la misma.
+      - name: Compilación linux/amd64 y linux/arm64
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' ../app/__init__.py)
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=$version" \
+              -o "bin/passwd-agente-linux-$arch" ./cmd/passwd-agente
+          done
+          ./bin/passwd-agente-linux-amd64 version
+
   cadena-de-suministro:
     name: Escaneo de secretos e imagen (OWASP A05/A06/A08)
     runs-on: ubuntu-latest

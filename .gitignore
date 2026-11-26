@@ -39,3 +39,6 @@ htmlcov/
 # Banco de pruebas de navegador (Playwright): base de datos efímera, buzón
 # SMTP simulado y los datos del administrador que las pruebas comparten.
 .e2e/
+
+# Agente Go: binarios compilados
+/agente/bin/
