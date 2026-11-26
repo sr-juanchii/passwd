@@ -653,6 +653,35 @@ def trabajo_de(db: Session, rotacion: RotacionCredencial) -> TrabajoRotacion | N
     )
 
 
+PREFIJO_NO_DESPACHADA = "Autorizada pero no despachada: "
+
+
+def motivo_no_despacho(db: Session, rotacion: RotacionCredencial) -> str:
+    """Por qué una rotación autorizada por agente no está en manos del agente.
+
+    Lo más reciente manda: si después del último intento de despacho fallido
+    hubo un trabajo y venció sin recogerse, es eso; si no, el motivo que quedó
+    en la bitácora al intentar despacharla (anti-thrash, agente caducado…).
+    Vacío si no se sabe.
+    """
+    from app.models import RegistroAuditoria
+
+    evento = db.scalars(
+        select(RegistroAuditoria)
+        .where(RegistroAuditoria.accion == audit.ROTACION_NO_DESPACHADA,
+               RegistroAuditoria.objeto_tipo == "rotacion",
+               RegistroAuditoria.objeto_id == str(rotacion.id))
+        .order_by(RegistroAuditoria.id.desc())
+    ).first()
+    trabajo = trabajo_de(db, rotacion)
+    if trabajo is not None and trabajo.estado == TRABAJO_EXPIRADO and (
+            evento is None or trabajo.creado_en >= evento.fecha):
+        return "El trabajo venció sin que el agente lo recogiera (¿estaba parado o sin red?)."
+    if evento is not None:
+        return evento.detalle.removeprefix(PREFIJO_NO_DESPACHADA)
+    return ""
+
+
 def _cerrar_trabajo(trabajo: TrabajoRotacion, estado: str, detalle: str = "") -> None:
     """Cierra un trabajo: libera el turno del agente y **purga sus secretos**."""
     trabajo.estado = estado
@@ -710,8 +739,9 @@ def despachar(
         raise ErrorRotacion(f"El agente {agente.nombre} tiene otro trabajo en curso.", codigo=409)
 
     horas = max(get_settings().rotacion_anti_thrash_horas, 0)
-    desde_ultima = ahora_utc() - credencial.password_rotada_en
-    if desde_ultima < timedelta(hours=horas):
+    ultima = ultima_rotacion_efectiva(db, credencial)
+    desde_ultima = ahora_utc() - ultima if ultima is not None else None
+    if desde_ultima is not None and desde_ultima < timedelta(hours=horas):
         if rotacion.tipo != ROT_TIPO_EMERGENCIA:
             raise ErrorRotacion(
                 f"Esta credencial se rotó hace menos de {horas} h. Para volver a rotarla tan "
@@ -757,6 +787,23 @@ def despachar(
     return trabajo
 
 
+def ultima_rotacion_efectiva(db: Session, credencial: Credencial) -> datetime | None:
+    """Cuándo cambió por última vez de verdad la contraseña, según el libro mayor.
+
+    Es lo que mide el anti-thrash: cortar un bucle de ROTACIONES. No vale
+    ``password_rotada_en``, que también se fija al dar de alta la credencial o
+    al importarla: con ella, una credencial recién creada no se podía rotar por
+    agente en 24 h sin una emergencia (hallado en calidad con la 1.4.0-rc.2).
+    Cuenta toda rotación cerrada que cambió la contraseña, por agente
+    (aplicada) o a mano (registrada), sea cual sea la vía.
+    """
+    return db.scalar(
+        select(func.max(func.coalesce(RotacionCredencial.confirmado_en, RotacionCredencial.ejecutado_en)))
+        .where(RotacionCredencial.credencial_id == credencial.id,
+               RotacionCredencial.estado == ROT_CERRADA,
+               RotacionCredencial.resultado.in_((ROT_RES_APLICADA, ROT_RES_MANUAL))))
+
+
 def _intentar_despacho(db: Session, rotacion: RotacionCredencial, usuario: Usuario,
                        request: Request | None) -> None:
     """Despacha tras autorizar; si no se puede, la autorización **se mantiene**.
@@ -771,7 +818,7 @@ def _intentar_despacho(db: Session, rotacion: RotacionCredencial, usuario: Usuar
         audit.registrar(
             db, audit.ROTACION_NO_DESPACHADA, request=request, usuario=usuario,
             objeto_tipo="rotacion", objeto_id=rotacion.id, exito=False,
-            detalle=f"Autorizada pero no despachada: {exc.mensaje}",
+            detalle=f"{PREFIJO_NO_DESPACHADA}{exc.mensaje}",
         )
 
 

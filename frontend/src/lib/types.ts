@@ -501,6 +501,8 @@ export interface RotacionDeCredencial {
   solicitud_abierta: RotacionAsiento | null;
   /** Si la solicitud abierta está en manos de un agente, su trabajo. */
   trabajo_en_curso: TrabajoAgente | null;
+  /** Si está autorizada por agente y el agente no la tiene: el porqué real (vacío si no se sabe). */
+  motivo_no_despacho?: string;
   historial: RotacionAsiento[];
 }
 

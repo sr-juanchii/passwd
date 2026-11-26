@@ -298,9 +298,9 @@ export function PanelRotacionCredencial({ credencialId }: { credencialId: number
             {abierta.estado === "autorizada" && porAgente && puede("rotacion.solicitar") && (
               <div className="space-y-2 rounded-md bg-muted/50 p-3">
                 <p className="text-xs text-muted-foreground">
-                  Autorizada, pero el agente aún no la tiene (estaba sin contacto o el trabajo
-                  venció sin recogerse). Puede volver a enviársela, o cambiarla a mano y
-                  registrarla abajo.
+                  Autorizada, pero el agente aún no la tiene
+                  {data.motivo_no_despacho ? <>: <strong className="text-foreground">{data.motivo_no_despacho}</strong></> : "."}{" "}
+                  Puede volver a enviársela cuando se resuelva, o cambiarla a mano y registrarla abajo.
                 </p>
                 <Button
                   size="sm"

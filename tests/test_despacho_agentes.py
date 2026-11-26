@@ -165,10 +165,14 @@ def test_un_agente_revocado_no_recibe_trabajos(esc):
 
 def test_el_anti_thrash_frena_salvo_en_emergencia(esc):
     from app import audit
-    from app.models import ROT_AUTORIZADA, ROT_DESPACHADA, ROT_TIPO_EMERGENCIA, ahora_utc
+    from app.models import ROT_AUTORIZADA, ROT_DESPACHADA, ROT_TIPO_EMERGENCIA
     from app.servicios import rotacion
 
-    esc.credencial.password_rotada_en = ahora_utc() - timedelta(hours=2)
+    # Una rotación real, cerrada «aplicada» por el agente...
+    esc.autorizada()
+    trabajo, _ = esc.entregar()
+    rotacion.registrar_resultado(esc.bd, agente=esc.agente, trabajo_id=trabajo.id, estado="aplicado")
+    # ...y otra enseguida: el anti-thrash la frena.
     normal = esc.autorizada()
     assert normal.estado == ROT_AUTORIZADA          # frenada, sin trabajo
     rotacion.cancelar(esc.bd, rotacion=normal, usuario=esc.pide)
@@ -176,6 +180,29 @@ def test_el_anti_thrash_frena_salvo_en_emergencia(esc):
     urgente = esc.autorizada(tipo=ROT_TIPO_EMERGENCIA)
     assert urgente.estado == ROT_DESPACHADA
     assert _acciones(esc.bd, audit.ROTACION_ANTI_THRASH_SALTADO)
+
+
+def test_una_credencial_recien_creada_se_puede_rotar_por_agente(esc):
+    """Dar de alta una credencial no es rotarla (hallado en calidad con la 1.4.0-rc.2).
+
+    El alta fija ``password_rotada_en`` a ahora; si el anti-thrash midiera desde
+    ahí, la primera rotación de una credencial nueva exigiría una emergencia.
+    """
+    from app.models import ROT_DESPACHADA, ahora_utc
+
+    esc.credencial.password_rotada_en = ahora_utc()
+    assert esc.autorizada().estado == ROT_DESPACHADA
+
+
+def test_una_rotacion_registrada_a_mano_tambien_cuenta_para_el_anti_thrash(esc):
+    from app.models import ROT_AUTORIZADA, VIA_ROTACION_MANUAL
+    from app.servicios import agentes, rotacion
+
+    esc.credencial.via_rotacion = VIA_ROTACION_MANUAL
+    manual = esc.autorizada()
+    rotacion.registrar_rotacion_manual(esc.bd, rotacion=manual, usuario=esc.pide, password="Puesta-A-Mano-2026!")
+    agentes.usar_agente(esc.bd, credencial=esc.credencial, usuario=esc.pide)
+    assert esc.autorizada().estado == ROT_AUTORIZADA       # frenada: se rotó hace nada
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +305,26 @@ def test_un_pendiente_vencido_vuelve_a_quedar_autorizado(esc):
     assert trabajo.estado == TRABAJO_EXPIRADO and trabajo.nueva_cifrada is None
     assert solicitud.estado == ROT_AUTORIZADA
     rotacion.despachar(esc.bd, rotacion=solicitud)   # y se puede volver a despachar
+
+
+def test_la_ficha_dice_por_que_el_agente_no_tiene_la_rotacion(esc):
+    """El motivo real, no un genérico «estaba sin contacto» (hallado en calidad)."""
+    from app.models import ahora_utc
+    from app.servicios import rotacion
+
+    # Despachada y vencida sin recoger: eso es lo que se cuenta.
+    solicitud = esc.autorizada()
+    assert rotacion.motivo_no_despacho(esc.bd, solicitud) == ""
+    rotacion.trabajo_activo_de(esc.bd, esc.agente).ventana_expira_en = ahora_utc() - timedelta(seconds=1)
+    esc.entregar()
+    assert "venció sin que el agente lo recogiera" in rotacion.motivo_no_despacho(esc.bd, solicitud)
+    rotacion.cancelar(esc.bd, rotacion=solicitud, usuario=esc.pide)
+
+    # No se pudo despachar: el motivo que dio el servicio, sin el prefijo de la bitácora.
+    esc.agente.token_expira_en = ahora_utc() - timedelta(seconds=1)
+    otra = esc.autorizada()
+    motivo = rotacion.motivo_no_despacho(esc.bd, otra)
+    assert "caducó" in motivo and not motivo.startswith(rotacion.PREFIJO_NO_DESPACHADA)
 
 
 def test_un_entregado_sin_respuesta_queda_sin_confirmar_con_sus_secretos(esc):

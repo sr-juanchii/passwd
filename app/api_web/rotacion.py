@@ -22,6 +22,7 @@ from app import access, audit, avisos
 from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.database import get_db
 from app.models import (
+    ROT_AUTORIZADA,
     ROT_TIPO_MANUAL,
     Credencial,
     RotacionCredencial,
@@ -234,6 +235,9 @@ def historial_de_credencial(
         "solicitud_abierta": _serializar(abierta) if abierta is not None else None,
         "trabajo_en_curso": (_serializar_trabajo(servicio.trabajo_de(db, abierta))
                              if abierta is not None else None),
+        # Si está autorizada por agente pero el agente no la tiene, el porqué real.
+        "motivo_no_despacho": (servicio.motivo_no_despacho(db, abierta)
+                               if abierta is not None and abierta.estado == ROT_AUTORIZADA else ""),
         "historial": [_serializar(r) for r in servicio.linea_de_tiempo(db, credencial.id)],
     }
 
