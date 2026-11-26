@@ -233,7 +233,11 @@ else
 fi
 
 paso "Arranque"
-hacer systemctl enable --now passwd-agente.service
+hacer systemctl enable passwd-agente.service
+# restart y no «enable --now»: en una reinstalación el agente ya corre con la
+# identidad anterior en memoria, y «--now» no reinicia un servicio activo. Se
+# quedaría usando una identidad revocada mientras la nueva espera en disco.
+hacer systemctl restart passwd-agente.service
 if [[ $SIMULAR -eq 0 ]]; then
 	sleep 3
 	systemctl is-active --quiet passwd-agente.service ||

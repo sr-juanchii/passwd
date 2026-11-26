@@ -207,6 +207,12 @@ que el certificado o el pin cuadren— se descubre en el paso de enrolamiento (�
 
 ### 5.3 Instalación
 
+> **Agente en el mismo servidor que passwd.** En el despliegue con frontend
+> (`docker-compose.frontend.yml`) el backend **no** publica el puerto 8000 en la máquina: solo nginx
+> lo alcanza. Un agente instalado en ese mismo servidor debe usar `--backend https://127.0.0.1` con
+> `--ca-file` apuntando al certificado de nginx (`infrastructure/nginx/certs/fullchain.pem`, que
+> incluye `127.0.0.1`). `http://127.0.0.1:8000` solo funciona en el despliegue sin frontend.
+
 En el servidor:
 
 ```bash
@@ -409,7 +415,19 @@ cuenta dos veces en menos de una hora, ni siquiera en emergencia.
 2. En la ficha del activo, **«Reinstalar»** → diálogo «Emitir un token de instalación nuevo» → su
    contraseña y código → **«Emitir token»**. La insignia vuelve a «Pendiente de instalar».
 3. En el servidor, vuelva a ejecutar `instalar.sh` con el token nuevo. Es idempotente: sustituye
-   binarios, configuración y unidades, y enrola con `--forzar`.
+   binarios, configuración y unidades, enrola con `--forzar` y **reinicia** el agente para que
+   cargue la identidad nueva. Compruebe en `journalctl -u passwd-agente.service` que la última
+   línea «agente en marcha» lleva el nombre del agente nuevo.
+
+> Hasta la `1.4.0-rc.2` el instalador no reiniciaba un agente que ya estaba en marcha: tras
+> reinstalar, el proceso seguía con la identidad anterior y el backend la rechazaba («el backend no
+> reconoce la identidad del agente»). En esas versiones, reinícielo a mano:
+> `sudo systemctl restart passwd-agente.service`.
+
+> **Compruebe que el token sale de la ficha del activo correcto.** El token de instalación enrola
+> el agente como el agente **de ese activo del inventario**: si lo copia de otra ficha, el agente
+> quedará vinculado al activo equivocado. Si le pasa, revóquelo en esa ficha, dé de alta el agente
+> en la correcta y reinstale con el token nuevo.
 
 ### 9.2 Cambiar la lista de cuentas
 
