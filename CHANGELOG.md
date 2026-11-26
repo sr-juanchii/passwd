@@ -12,15 +12,78 @@ La versión en curso vive en `app/__init__.py` (`__version__`) y se refleja en `
 
 ## [Sin publicar]
 
-Comienza la **v1.4.0** (agente Linux y protocolo `/api/agent`): alcance en
+**Agentes de rotación para Linux.** Versión 1.4.0, MENOR: la rotación que dos personas autorizan
+en la 1.3.0 la puede aplicar ahora un agente instalado en el servidor, que cambia la contraseña de
+la cuenta local, comprueba que la nueva funciona y, si no, deja la anterior. Todo está **apagado
+por omisión**: hasta que se activa, el sistema se comporta como la 1.3.0. Alcance en
 [`docs/plan-rotacion-agentes.md`](docs/plan-rotacion-agentes.md) §8.2.
+
+**Al actualizar desde la 1.3.x** (detalle en [`docs/notas-version-1.4.0.md`](docs/notas-version-1.4.0.md)):
+
+- Aplique la migración `0011` (aditiva); en contenedor las tablas se crean solas al arrancar.
+- Nada cambia hasta activar `PASSWD_AGENTES_ENABLED`, y activarlo tampoco cambia ninguna
+  credencial: cada una sigue «a mano» hasta que alguien elige que la rote su agente.
+- Para instalar un agente, siga [`docs/guia-instalacion-agente-linux.md`](docs/guia-instalacion-agente-linux.md)
+  con el paquete de su arquitectura publicado en la Release.
+
+### Añadido
+
+- **Agente de rotación para Linux** (`agente/`, Go): binario estático que corre como un usuario
+  **sin privilegios** y solo ejecuta rotaciones que ya autorizaron dos administradores. Aplica en
+  **dos fases** con un journal cifrado: apunta lo que va a hacer antes de tocar la cuenta, aplica,
+  **verifica la nueva con PAM** y, si no autentica, **restaura la anterior**. Tras un reinicio a
+  mitad, el journal le dice qué pasó y lo informa.
+- **Helper root de acción única**, sin sudo ni setuid: systemd lo arranca por cada conexión a un
+  socket que solo el usuario del agente puede abrir, **sin red**, y solo toca las cuentas de una
+  lista que es de root y que existan: **nunca crea una cuenta**. Antes de aplicar comprueba que la
+  contraseña del inventario sigue valiendo en el servidor.
+- **Instalador** `instalar.sh` que no toca nada hasta que pasan todas sus comprobaciones (SHA-256
+  de los binarios incluido), con unidades systemd endurecidas y la salida de red del agente
+  limitada al backend. **Paquetes del agente** para amd64 y arm64 en cada Release.
+- **API `/api/agent`** con identidad de máquina: enrolamiento de un solo uso, identidad de vida
+  corta renovada en cada latido, trabajo cifrado en reposo y **sellado a la clave X25519 del
+  agente** al entregarlo, un resultado por trabajo, límites de tasa y topes de tamaño. Apagada,
+  todo el prefijo responde 404.
+- **Vía de rotación por credencial** («Rotar con el agente» / «Rotar a mano»). Con la del agente,
+  **autorizar despacha**; si no se puede, la autorización se mantiene y se puede registrar a mano.
+- **Rotación «sin confirmar»**: si el agente recoge el trabajo y calla, la credencial queda
+  bloqueada hasta que un administrador, reautenticándose, diga qué pasó.
+- **Panel**: cobertura del agente en la ficha de cada servidor, hipervisor y VM (alta y
+  reinstalación con reautenticación, token de instalación visible una sola vez), página
+  `/agentes`, métricas de agentes en `/metricas` y alerta de agente sin contacto.
+- Permisos `agentes.ver` y `agentes.gestionar`, y diez ajustes en el grupo «Agentes de rotación».
+- Migración `0011`: tablas `agentes`, `trabajos_rotacion` y `telemetria_agente`, con un único agente
+  vigente por activo y un único trabajo activo por agente **impuestos por la base de datos**.
+- Documentación: contrato normativo del agente, referencia de `/api/agent`, arquitectura de
+  agentes y guía de instalación.
 
 ### Cambiado
 
+- El respaldo cifrado incluye los agentes (revocados, sin identidad válida) y **nunca** los
+  trabajos: un restore no resucita un trabajo con secretos y ventana vencida.
+- Los flujos de publicación **completan** una Release creada desde la interfaz de GitHub en vez
+  de apartarse (la de `v1.3.0-rc.1` quedó sin notas por eso) y adjuntan los paquetes del agente.
 - La imagen de nginx sube de `1.27-alpine` a **`1.31.10-alpine`** en los dos despliegues con
   proxy (`docker-compose.nginx.yml` y `docker-compose.frontend.yml`). La subida llegó primero solo
   al primero; ahora ambos usan la misma versión. Las plantillas de `infrastructure/nginx/` no
   cambian.
+
+### Corregido
+
+- **Las fechas del panel salían con el desfase de la zona horaria**: el backend envía UTC sin zona y
+  el navegador lo leía como hora local (cuatro horas de más en Caracas). Una prueba impide que
+  vuelva.
+- El diálogo de autorizar ya no se cierra cuando la petición falla.
+- Una prueba de TOTP fallaba de forma intermitente si un límite de 30 s caía en mitad de ella.
+
+### Seguridad
+
+- **Pruebas de aceptación** con la trazabilidad de cada criterio a su prueba: `/api/v1` congelada
+  en rutas y claves, y un volcado entero de la base tras una rotación por agente sin ninguna
+  contraseña en claro.
+- **Prueba de sistema en cada push**: la CI instala el agente con systemd en el runner y comprueba
+  que una rotación autorizada cambia la contraseña de una **cuenta Linux real**; y una prueba de
+  integración como root con PAM y `chpasswd` de verdad.
 
 ## [1.3.0] - 2026-11-20
 
