@@ -99,6 +99,12 @@ def rotar(args) -> int:
     if agentes.cobertura(agente) != agentes.COBERTURA_CONECTADO:
         print("FALLO: el agente instalado no está conectado")
         return 1
+    from app import __version__
+
+    if agente.version_agente != __version__:
+        print(f"FALLO: el agente instalado declara la versión «{agente.version_agente}» y el "
+              f"backend es la {__version__}: el binario no se compiló con su versión")
+        return 1
 
     credencial = db.query(Credencial).filter(Credencial.usuario_acceso == args.cuenta).one()
     pide = db.query(Usuario).filter(Usuario.username == "pide-sistema").one()

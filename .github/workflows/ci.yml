@@ -292,8 +292,13 @@ jobs:
         working-directory: agente
         run: |
           mkdir -p "$RUNNER_TEMP/dist"
-          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/dist/passwd-agente" ./cmd/passwd-agente
-          CGO_ENABLED=1 go build -trimpath -o "$RUNNER_TEMP/dist/passwd-agente-helper" ./cmd/passwd-agente-helper
+          # Con la versión del backend, como se publicarán: la prueba exige que
+          # el agente instalado la declare.
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' ../app/__init__.py)
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$version" \
+            -o "$RUNNER_TEMP/dist/passwd-agente" ./cmd/passwd-agente
+          CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.version=$version" \
+            -o "$RUNNER_TEMP/dist/passwd-agente-helper" ./cmd/passwd-agente-helper
           (cd "$RUNNER_TEMP/dist" && sha256sum passwd-agente passwd-agente-helper > SHA256SUMS)
 
       - name: Cuenta Linux real que el agente rotará
