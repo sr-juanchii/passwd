@@ -94,7 +94,16 @@ a las escritas a mano), la marca de *pre-release* y los paquetes con su `SHA256S
 1.4.0 se apartaba al encontrarla, y por eso la de `v1.3.0-rc.1` quedó sin notas. Si algo falla, se
 repite desde *Actions → Publicar pre-release → Run workflow* con la etiqueta, sin borrarla. Las
 versiones finales reciben los mismos paquetes desde `publicar.yml`. Los
-siguientes son `-rc.2`, `-rc.3`… Al liberar la versión final se sigue el procedimiento de arriba:
+siguientes son `-rc.2`, `-rc.3`…
+
+Dos reglas más, aprendidas en la 1.4.0:
+
+- **Cree la Release solo cuando el commit de versión esté en la rama y su CI en verde**, y compruebe
+  antes que el último commit de la rama es ese. Una etiqueta creada un minuto antes apunta al commit
+  anterior: su `__version__` no coincide y el flujo la rechaza. Así le pasó a `v1.4.0-rc.1`.
+- **Una etiqueta publicada no se reutiliza.** Si apunta al commit equivocado, no se borra y se
+  vuelve a crear: se publica el siguiente `-rc.N`. Así, lo que alguien ya descargó con ese nombre
+  no cambia por debajo. Al liberar la versión final se sigue el procedimiento de arriba:
 `__version__` pasa a `X.Y.Z` y el bloque «Sin publicar» se convierte en su sección.
 
 ## Relación con la hoja de ruta
