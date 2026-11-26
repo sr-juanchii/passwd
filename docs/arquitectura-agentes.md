@@ -487,7 +487,5 @@ conserva `agentes_retencion_telemetria_dias` y la purga el mantenimiento.
   puede leer el journal de la anterior.
 - El **nombre** de un agente es único también entre los revocados: para volver a dar de alta un
   activo, use otro nombre.
-- La CI compila el **helper** solo para x86_64. En aarch64 hay que compilarlo en una máquina de esa
-  arquitectura (lleva cgo y libpam).
 - Con el interruptor apagado, un método no admitido en `/api/agent` responde 405 en vez de 404, y el
   422 de validación y el 413 del límite global de la aplicación no se auditan.

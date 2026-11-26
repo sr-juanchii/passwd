@@ -288,18 +288,15 @@ jobs:
           pip install -r requirements.txt
           sudo apt-get update -qq && sudo apt-get install -y -qq libpam0g-dev
 
-      - name: Compilar los binarios y publicar sus sumas
-        working-directory: agente
+      # El mismo paquete que se publica en cada Release (agente/empaquetar.sh),
+      # con la versión del backend: la prueba instala lo que recibe un usuario y
+      # exige que el agente instalado declare esa versión.
+      - name: Empaquetar el agente como se publica
         run: |
-          mkdir -p "$RUNNER_TEMP/dist"
-          # Con la versión del backend, como se publicarán: la prueba exige que
-          # el agente instalado la declare.
-          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' ../app/__init__.py)
-          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$version" \
-            -o "$RUNNER_TEMP/dist/passwd-agente" ./cmd/passwd-agente
-          CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.version=$version" \
-            -o "$RUNNER_TEMP/dist/passwd-agente-helper" ./cmd/passwd-agente-helper
-          (cd "$RUNNER_TEMP/dist" && sha256sum passwd-agente passwd-agente-helper > SHA256SUMS)
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' app/__init__.py)
+          paquete=$(agente/empaquetar.sh "$version" amd64 "$RUNNER_TEMP/dist")
+          tar -C "$RUNNER_TEMP" -xzf "$paquete"
+          echo "PAQUETE=$RUNNER_TEMP/passwd-agente-$version-linux-amd64" >> "$GITHUB_ENV"
 
       - name: Cuenta Linux real que el agente rotará
         run: |
@@ -317,11 +314,11 @@ jobs:
           python scripts/prueba_agente_sistema.py preparar --cuenta "$CUENTA" \
             --password "$PASSWORD_INICIAL" --token-archivo "$RUNNER_TEMP/token"
 
-      - name: Instalar con instalar.sh (systemd, unidades endurecidas)
+      - name: Instalar desde el paquete con su instalar.sh (systemd, unidades endurecidas)
         run: |
-          sudo agente/instalacion/instalar.sh --backend http://127.0.0.1:8000 --cuentas "$CUENTA" \
-            --binarios "$RUNNER_TEMP/dist" --sumas "$RUNNER_TEMP/dist/SHA256SUMS" \
-            --token - < "$RUNNER_TEMP/token"
+          cd "$PAQUETE"
+          sudo ./instalar.sh --backend http://127.0.0.1:8000 --cuentas "$CUENTA" \
+            --sumas ./SHA256SUMS --token - < "$RUNNER_TEMP/token"
           systemd-analyze security passwd-agente.service | tail -1
 
       - name: Rotación autorizada, ejecutada por el agente instalado

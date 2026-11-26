@@ -16,13 +16,13 @@ una credencial y saber qué hacer cuando algo falla.
 
 ## 0. Resumen
 
-1. Compilar `passwd-agente` y `passwd-agente-helper` con su versión y generar `SHA256SUMS` (§2).
+1. Descargar de la Release el paquete de su arquitectura y comprobarlo con su `SHA256SUMS` (§2).
 2. En la ficha del activo, «Dar de alta un agente» y copiar el token de instalación (§3).
-3. Copiar binarios, sumas e instalador al servidor (§4).
+3. Copiar el directorio del paquete al servidor (§4).
 4. `sudo ./instalar.sh … --token -` y pegar el token (§5).
 5. Comprobar la insignia «Conectado» (§7) y pasar las credenciales a «Rotar con el agente» (§8).
 
-El token de instalación **caduca en una hora**: compile y copie los archivos antes de darlo de alta.
+El token de instalación **caduca en una hora**: descargue y copie el paquete antes de darlo de alta.
 
 ---
 
@@ -68,68 +68,66 @@ backend.
 
 ---
 
-## 2. Compilar los binarios y sus sumas
+## 2. Obtener el paquete del agente
 
-Así lo hace la CI (`.github/workflows/ci.yml`, jobs `agente` y `agente-sistema`). Desde la raíz del
-repositorio, en la etiqueta de la versión que va a instalar.
+Cada Release de passwd (también los pre-releases) publica un paquete por arquitectura y un
+`SHA256SUMS` que los cubre:
 
-Tome la versión del backend, que es la que deben declarar los binarios:
+| Archivo de la Release | Para |
+|---|---|
+| `passwd-agente-<versión>-linux-amd64.tar.gz` | x86_64 |
+| `passwd-agente-<versión>-linux-arm64.tar.gz` | aarch64 |
+| `SHA256SUMS` | Las sumas de los dos paquetes |
+
+Cada paquete es un directorio `passwd-agente-<versión>-linux-<arquitectura>/` con los dos
+binarios compilados con su versión, **su propio `SHA256SUMS`** (el de los binarios, que comprueba
+el instalador), `instalar.sh`, las tres unidades de systemd y el servicio PAM. Lo genera
+[`agente/empaquetar.sh`](../agente/empaquetar.sh) en un runner de cada arquitectura, y la prueba
+de sistema de la CI instala desde ese mismo paquete.
+
+### 2.1 Descargar y comprobar
+
+Descargue de la Release el paquete de su arquitectura y el `SHA256SUMS` (por ejemplo, desde la
+página de la Release o con `curl -LO`), y compruebe el paquete **antes** de extraerlo:
+
+```bash
+sha256sum -c --ignore-missing SHA256SUMS
+```
+
+Debe responder `passwd-agente-<versión>-linux-<arquitectura>.tar.gz: OK`. Después:
+
+```bash
+tar -xzf passwd-agente-<versión>-linux-amd64.tar.gz
+```
+
+> La suma de la Release y el paquete vienen del mismo sitio: detectan un archivo dañado, no uno
+> sustituido junto con su suma por quien controle la Release. Si su organización lo exige, contraste
+> las sumas por un segundo canal (las notas internas de cambio, por ejemplo). La firma de los
+> binarios llega en la 2.3.0.
+
+### 2.2 Compilarlo usted
+
+Desde la raíz del repositorio, en la etiqueta de la versión, **en una máquina de la arquitectura de
+destino** (el helper enlaza `libpam` con cgo y no se compila cruzado), con Go y `libpam0g-dev`:
 
 ```bash
 version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' app/__init__.py)
 ```
 
 ```bash
-echo "$version"
+agente/empaquetar.sh "$version" amd64 ./dist
 ```
 
-Compile el **agente**, estático y sin cgo (cambie `amd64` por `arm64` para aarch64):
+Cambie `amd64` por `arm64` en una máquina aarch64; si la arquitectura no coincide, el script se
+niega. Deja `dist/passwd-agente-<versión>-linux-<arquitectura>.tar.gz`, igual que el publicado, y
+comprueba que los dos binarios declaran la versión: sin ella dirían `dev`, el panel no podría
+compararla con la versión mínima y, si hay una fijada, ese agente no recibiría trabajos.
 
-```bash
-cd agente && mkdir -p dist
-```
-
-```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=$version" -o dist/passwd-agente ./cmd/passwd-agente
-```
-
-Compile el **helper**, con cgo y `libpam`:
-
-```bash
-CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.version=$version" -o dist/passwd-agente-helper ./cmd/passwd-agente-helper
-```
-
-> **El helper se compila en la arquitectura de destino y con una glibc igual o anterior a la del
-> servidor.** Enlaza dinámicamente `libc` y `libpam`: compilado en una distribución más nueva que la
-> del servidor, falla al arrancar por versiones de glibc que no existen allí. La CI solo compila el
-> helper para amd64; para aarch64, compílelo en una máquina aarch64 (o con una cadena cruzada y la
-> `libpam` de esa arquitectura). El agente, estático, se compila para cualquiera de las dos desde
-> donde sea.
-
-Compruebe que los dos declaran la versión (en otra arquitectura, el agente no se podrá ejecutar
-aquí: compruébelo en el destino):
-
-```bash
-./dist/passwd-agente version
-```
-
-```bash
-./dist/passwd-agente-helper --version
-```
-
-Sin `-ldflags "-X main.version=…"` declaran `dev`: el panel no podrá compararla con la versión
-mínima y, si hay una fijada, ese agente no recibirá trabajos.
-
-Genere las sumas. El instalador busca exactamente los nombres `passwd-agente` y
-`passwd-agente-helper`:
-
-```bash
-(cd dist && sha256sum passwd-agente passwd-agente-helper > SHA256SUMS)
-```
-
-Publique `SHA256SUMS` por un canal distinto del de los binarios (las notas de la versión, el
-gestor de cambios): si viajan juntos, la comprobación del instalador detecta un archivo dañado,
-pero no uno sustituido junto con su suma. La firma de los binarios llega en la 2.3.0.
+> **El helper se compila con una glibc igual o anterior a la del servidor.** Enlaza dinámicamente
+> `libc` y `libpam`: compilado en una distribución más nueva que la del servidor, falla al arrancar
+> por versiones de glibc que no existen allí. Los paquetes publicados se compilan en los runners
+> `ubuntu-latest` (amd64) y `ubuntu-24.04-arm` (arm64) de GitHub; para servidores con una glibc más
+> antigua, compílelo en una máquina como la de destino.
 
 ---
 
@@ -160,23 +158,13 @@ otro con **«Reinstalar»** (§9.1).
 
 ---
 
-## 4. Copiar los archivos al servidor
+## 4. Copiar el paquete al servidor
 
-El instalador busca las unidades de systemd y el archivo PAM **en su propio directorio**, y los
-binarios en el que indique `--binarios`. Lo más sencillo es un directorio con todo junto, que
-puede preparar desde la raíz del repositorio:
-
-| Archivo | Origen |
-|---|---|
-| `instalar.sh`, `passwd-agente.service`, `passwd-agente-helper.socket`, `passwd-agente-helper@.service`, `passwd-agente-helper.pam` | `agente/instalacion/` |
-| `passwd-agente`, `passwd-agente-helper`, `SHA256SUMS` | `agente/dist/` (§2) |
+El instalador busca los binarios, las unidades de systemd y el archivo PAM **en su propio
+directorio**: copie el directorio extraído entero (o el `.tar.gz` y extráigalo allí).
 
 ```bash
-mkdir -p paquete && cp agente/instalacion/* agente/dist/* paquete/
-```
-
-```bash
-scp -r paquete usuario@servidor:/tmp/passwd-agente
+scp -r passwd-agente-<versión>-linux-amd64 usuario@servidor:/tmp/passwd-agente
 ```
 
 ---
@@ -226,7 +214,7 @@ cd /tmp/passwd-agente
 ```
 
 ```bash
-sudo ./instalar.sh --backend https://passwd.ejemplo.org --cuentas deploy,svc-backup --binarios . --sumas ./SHA256SUMS --token -
+sudo ./instalar.sh --backend https://passwd.ejemplo.org --cuentas deploy,svc-backup --sumas ./SHA256SUMS --token -
 ```
 
 Tras «sumas SHA-256 correctas» el instalador pide «Token de instalación (no se mostrará)»: pegue
@@ -236,7 +224,7 @@ Si prefiere no pegarlo, guárdelo en un archivo solo legible por usted y redirij
 hace la CI), y bórrelo después:
 
 ```bash
-sudo ./instalar.sh --backend https://passwd.ejemplo.org --cuentas deploy --binarios . --sumas ./SHA256SUMS --token - < token.txt
+sudo ./instalar.sh --backend https://passwd.ejemplo.org --cuentas deploy --sumas ./SHA256SUMS --token - < token.txt
 ```
 
 Con una CA interna, añada `--ca-file /ruta/ca.crt`. Para obtener el pin del certificado que sirve
@@ -256,7 +244,7 @@ openssl s_client -connect passwd.ejemplo.org:443 -servername passwd.ejemplo.org 
 Para ver qué haría sin hacerlo (cualquier token no vacío sirve: no se envía):
 
 ```bash
-./instalar.sh --simular --backend https://passwd.ejemplo.org --cuentas deploy --binarios . --sumas ./SHA256SUMS --token prueba
+./instalar.sh --simular --backend https://passwd.ejemplo.org --cuentas deploy --sumas ./SHA256SUMS --token prueba
 ```
 
 `--simular` hace todas las comprobaciones salvo root y systemd, y muestra cada orden con `+`.
@@ -521,7 +509,7 @@ retraso.
 | `el backend debe usar https (http solo hacia loopback, para pruebas)` | Corrija `--backend`. |
 | `nombre de cuenta no admitido` | La cuenta no cumple `^[a-z_][a-z0-9_.-]{0,31}$`. |
 | `la cuenta «x» no existe: el agente nunca crea cuentas` | Créela antes, o quítela de `--cuentas`. |
-| `no está DIR/passwd-agente` | `--binarios` no apunta al directorio de los binarios, o tienen otro nombre (los de la CI se llaman `passwd-agente-linux-amd64`: renómbrelos y regenere las sumas). |
+| `no está DIR/passwd-agente` | `--binarios` no apunta al directorio de los binarios. Ejecute `instalar.sh` desde el directorio del paquete (§2) y omita `--binarios`. |
 | `… no tiene la suma de …` / `el SHA-256 de … no coincide con el publicado` | El binario no es el publicado: copia incompleta, binario de otra compilación o manipulado. Vuelva a copiarlo o a compilarlo. **No edite `SHA256SUMS` para que cuadre.** |
 | `falta el token de instalación` | Use `--token -` y pegue el token. |
 | `no se pudo resolver …` | El servidor no resuelve el nombre del backend. |

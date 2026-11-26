@@ -97,6 +97,7 @@ Cada cambio lleva un identificador para poder citarlo en revisiones y auditoría
 | CAL-02 | **Prueba de sistema en cada push**: el runner de GitHub arranca con systemd, así que la CI instala el agente con `instalar.sh` y sus unidades endurecidas, y comprueba que una rotación autorizada por dos administradores cambia la contraseña de una **cuenta Linux real**. | `scripts/prueba_agente_sistema.py` |
 | CAL-03 | **Pruebas de aceptación** con la trazabilidad de cada criterio a su prueba, `/api/v1` congelada y un volcado entero de la base tras una rotación por agente sin ninguna contraseña en claro. | `tests/test_aceptacion_agentes.py` |
 | CAL-04 | Pruebas de navegador de los agentes: alta con reautenticación, token visible una vez, insignia que sigue a un agente real que se enrola, listado y revocación. | `frontend/e2e/agentes.spec.ts` |
+| CAL-05 | **Paquetes del agente en cada Release**: `passwd-agente-<versión>-linux-amd64.tar.gz` y `…-arm64.tar.gz`, compilados en un runner nativo de cada arquitectura, con su `SHA256SUMS`. La prueba de sistema instala desde ese mismo paquete. Los flujos de publicación **completan** la Release si se creó desde la interfaz de GitHub (la de `v1.3.0-rc.1` quedó sin notas por eso). | `agente/empaquetar.sh`, `.github/workflows/binarios-agente.yml`, `prelanzamiento.yml`, `publicar.yml` |
 
 ## 2. Cambios de comportamiento que conviene conocer
 
@@ -176,8 +177,6 @@ ignora la caducidad, despacho de credenciales manuales y contraseña en la bitá
   contraseña de cualquier cuenta que figure en ella. El instalador no impide incluir `root`.
 - **Reinstalar** un agente con un trabajo ya recogido deja esa rotación «sin confirmar», y el
   anti-thrash local (1 h) no conoce la vía de emergencia.
-- La CI compila el helper solo para x86_64; en aarch64 se compila en una máquina de esa
-  arquitectura.
 
 La lista completa, con su porqué, está en
 [`arquitectura-agentes.md`](arquitectura-agentes.md) §12. El resto de limitaciones de la 1.3.0 sigue vigente. Todas están recogidas en la

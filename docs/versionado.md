@@ -71,15 +71,29 @@ Tres reglas que conviene no saltarse:
 3. **No se abre una sección propia en el CHANGELOG.** Un pre-release publica cambios que todavía
    no están cerrados; darles sección propia obligaría a reescribirla al liberar la versión final.
 
-Publicarlo, una vez la rama tiene el commit que sube `__version__`:
+Publicarlo, una vez la rama tiene el commit que sube `__version__`, de una de dos formas:
 
-```bash
-git tag -a v1.3.0-rc.1 -m "Pre-release 1.3.0-rc.1 para pruebas funcionales"
-git push origin v1.3.0-rc.1
-```
+- **Desde la interfaz de GitHub:** *Releases → Draft a new release*, etiqueta nueva `vX.Y.Z-rc.N`
+  sobre la rama de trabajo, marcar *Set as a pre-release* y publicar. Las notas pueden dejarse en
+  blanco: el flujo las escribe.
+- **Desde la línea de órdenes:**
+
+  ```bash
+  git tag -a v1.4.0-rc.1 -m "Pre-release 1.4.0-rc.1 para pruebas funcionales"
+  ```
+
+  ```bash
+  git push origin v1.4.0-rc.1
+  ```
 
 El flujo comprueba que la etiqueta coincide con `__version__` —una etiqueta mal escrita publicaría
-un artefacto que miente sobre su contenido— y crea la Release marcada como *pre-release*. Los
+un artefacto que miente sobre su contenido—, compila los paquetes del agente para amd64 y arm64
+([`binarios-agente.yml`](../.github/workflows/binarios-agente.yml)) y **crea o completa** la
+Release: si ya existe porque se creó desde la interfaz, le pone las notas del CHANGELOG (sustituyen
+a las escritas a mano), la marca de *pre-release* y los paquetes con su `SHA256SUMS`. Hasta la
+1.4.0 se apartaba al encontrarla, y por eso la de `v1.3.0-rc.1` quedó sin notas. Si algo falla, se
+repite desde *Actions → Publicar pre-release → Run workflow* con la etiqueta, sin borrarla. Las
+versiones finales reciben los mismos paquetes desde `publicar.yml`. Los
 siguientes son `-rc.2`, `-rc.3`… Al liberar la versión final se sigue el procedimiento de arriba:
 `__version__` pasa a `X.Y.Z` y el bloque «Sin publicar» se convierte en su sección.
 

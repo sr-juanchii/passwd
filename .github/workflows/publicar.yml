@@ -3,7 +3,8 @@ name: Publicar versión
 # Crea la etiqueta vX.Y.Z y la Release de GitHub cuando llega a `main` un cambio
 # de versión (app/__init__.py es la fuente de verdad; ver docs/versionado.md).
 # Es idempotente: si la etiqueta ya existe no hace nada. También puede lanzarse
-# a mano desde la pestaña Actions.
+# a mano desde la pestaña Actions. Una Release recién creada recibe además los
+# paquetes del agente (binarios-agente.yml) y su SHA256SUMS.
 
 on:
   push:
@@ -23,6 +24,10 @@ jobs:
     name: Etiqueta y Release
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    outputs:
+      creada: ${{ steps.crear.outputs.creada }}
+      version: ${{ steps.version.outputs.version }}
+      etiqueta: ${{ steps.version.outputs.etiqueta }}
     steps:
       - name: Obtener el código
         uses: actions/checkout@v4
@@ -77,6 +82,7 @@ jobs:
           wc -l notas.md
 
       - name: Crear la etiqueta y la Release
+        id: crear
         if: steps.version.outputs.omitir == 'false' && steps.existe.outputs.existe == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,3 +91,36 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Versión ${{ steps.version.outputs.version }}" \
             --notes-file notas.md
+          echo "creada=true" >> "$GITHUB_OUTPUT"
+
+  binarios:
+    name: Binarios del agente
+    needs: publicar
+    if: needs.publicar.outputs.creada == 'true'
+    uses: ./.github/workflows/binarios-agente.yml
+    with:
+      ref: ${{ github.sha }}
+      version: ${{ needs.publicar.outputs.version }}
+
+  adjuntar:
+    name: Adjuntar los paquetes del agente
+    needs: [publicar, binarios]
+    runs-on: ubuntu-latest
+    env:
+      ETIQUETA: ${{ needs.publicar.outputs.etiqueta }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Reunir los paquetes del agente
+        uses: actions/download-artifact@v4
+        with:
+          pattern: agente-*
+          path: dist
+          merge-multiple: true
+
+      - name: Sumas y subida
+        run: |
+          cd dist
+          set -- ./*.tar.gz
+          [ "$#" -eq 2 ] || { echo "::error::Se esperaban los paquetes amd64 y arm64"; exit 1; }
+          sha256sum ./*.tar.gz | sed 's# \./# #' > SHA256SUMS
+          gh release upload "$ETIQUETA" ./*.tar.gz SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"

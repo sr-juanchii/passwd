@@ -1,11 +1,11 @@
 name: Publicar pre-release
 
-# Publica una Release de GitHub marcada como *pre-release* al empujar una
-# etiqueta con sufijo (vX.Y.Z-rc.N). Sirve para entregar un punto fijo e
-# identificable con el que hacer pruebas funcionales ANTES de liberar la
-# versión definitiva.
+# Publica una Release de GitHub marcada como *pre-release* para una etiqueta con
+# sufijo (vX.Y.Z-rc.N), con las notas del CHANGELOG y los paquetes del agente.
+# Sirve para entregar un punto fijo e identificable con el que hacer pruebas
+# funcionales ANTES de liberar la versión definitiva.
 #
-# Dos diferencias con publicar.yml, que es su hermano para versiones finales:
+# Diferencias con publicar.yml, su hermano para versiones finales:
 #
 #   - Se dispara por la etiqueta, no por un push a `main`. Un flujo lanzado por
 #     una etiqueta se ejecuta desde el árbol de ESA etiqueta, así que un
@@ -13,72 +13,132 @@ name: Publicar pre-release
 #   - Las notas salen de «## [Sin publicar]» del CHANGELOG: un pre-release
 #     publica, por definición, cambios que aún no están cerrados.
 #
+# CREA O COMPLETA. La etiqueta se suele crear desde la interfaz de GitHub
+# («Draft a new release»), que crea la Release vacía en el mismo acto: este
+# flujo llega después y la completa (notas, marca de pre-release, paquetes) en
+# vez de apartarse. Así salió vacía la de v1.3.0-rc.1. Las notas escritas a mano
+# en la interfaz se sustituyen: la fuente es el CHANGELOG.
+#
+# Si algo falla, se repite desde Actions («Run workflow») con la etiqueta, sin
+# borrarla ni recrearla.
+#
 # Política y nomenclatura: docs/versionado.md §«Pre-releases».
 
 on:
   push:
     tags: ["v*.*.*-*"]
+  workflow_dispatch:
+    inputs:
+      etiqueta:
+        description: Etiqueta del pre-release ya creada (p. ej. v1.4.0-rc.1)
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: prelanzamiento-${{ github.ref }}
+  group: prelanzamiento-${{ inputs.etiqueta || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  publicar:
-    name: Release de pre-lanzamiento
+  version:
+    name: Etiqueta y versión
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      etiqueta: ${{ steps.version.outputs.etiqueta }}
     steps:
-      - name: Obtener el código
+      - name: Obtener el código de la etiqueta
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: refs/tags/${{ inputs.etiqueta || github.ref_name }}
 
       - name: Comprobar que la etiqueta y la versión dicen lo mismo
         id: version
+        env:
+          ETIQUETA: ${{ inputs.etiqueta || github.ref_name }}
         run: |
-          etiqueta="${GITHUB_REF_NAME}"
           version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' app/__init__.py)
 
           # Una etiqueta que no case con __version__ publicaría un artefacto
           # que miente sobre su propio contenido: GET /healthz respondería una
           # cosa y la Release diría otra.
-          if [ "$etiqueta" != "v$version" ]; then
-            echo "::error::La etiqueta '$etiqueta' no corresponde a __version__ ('$version'); se esperaba 'v$version'."
+          if [ "$ETIQUETA" != "v$version" ]; then
+            echo "::error::La etiqueta '$ETIQUETA' no corresponde a __version__ ('$version'); se esperaba 'v$version'."
+            exit 1
+          fi
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-'; then
+            echo "::error::'$version' no es un pre-release: las versiones finales las publica publicar.yml."
             exit 1
           fi
           if ! grep -q "^version = \"$version\"$" pyproject.toml; then
             echo "::error::pyproject.toml no coincide con __version__ ($version)"; exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "etiqueta=$etiqueta" >> "$GITHUB_OUTPUT"
+          echo "etiqueta=$ETIQUETA" >> "$GITHUB_OUTPUT"
 
-      - name: ¿Ya está publicada?
-        id: existe
-        env:
-          GH_TOKEN: ${{ github.token }}
+  binarios:
+    name: Binarios del agente
+    needs: version
+    uses: ./.github/workflows/binarios-agente.yml
+    with:
+      ref: refs/tags/${{ needs.version.outputs.etiqueta }}
+      version: ${{ needs.version.outputs.version }}
+
+  publicar:
+    name: Release de pre-lanzamiento
+    needs: [version, binarios]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ETIQUETA: ${{ needs.version.outputs.etiqueta }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Obtener el código de la etiqueta
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.version.outputs.etiqueta }}
+
+      - name: Reunir los paquetes del agente
+        uses: actions/download-artifact@v4
+        with:
+          pattern: agente-*
+          path: dist
+          merge-multiple: true
+
+      - name: Sumas de los paquetes
         run: |
-          if gh release view "${{ steps.version.outputs.etiqueta }}" >/dev/null 2>&1; then
-            echo "La Release ${{ steps.version.outputs.etiqueta }} ya existe: nada que publicar."
-            echo "existe=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "existe=false" >> "$GITHUB_OUTPUT"
-          fi
+          cd dist
+          ls -l
+          set -- ./*.tar.gz
+          [ "$#" -eq 2 ] || { echo "::error::Se esperaban los paquetes amd64 y arm64"; exit 1; }
+          sha256sum ./*.tar.gz | sed 's# \./# #' > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Preparar las notas
-        if: steps.existe.outputs.existe == 'false'
         run: |
+          base="${VERSION%%-*}"
           {
             echo "> **Pre-release para pruebas funcionales.** No es la versión definitiva:"
-            echo "> faltan la documentación y las notas de versión. Despliéguelo solo en"
-            echo "> entornos de prueba."
+            echo "> despliéguelo solo en entornos de prueba."
             echo
-            echo "\`GET /healthz\` responde \`${{ steps.version.outputs.version }}\`, de modo que"
-            echo "siempre se puede verificar en caliente qué está corriendo."
+            echo "\`GET /healthz\` responde \`$VERSION\`, de modo que siempre se puede verificar"
+            echo "en caliente qué está corriendo."
+            if [ -f "docs/notas-version-$base.md" ]; then
+              echo
+              echo "Notas de la versión: [\`docs/notas-version-$base.md\`](https://github.com/$GITHUB_REPOSITORY/blob/$ETIQUETA/docs/notas-version-$base.md)."
+            fi
             echo
-            echo "Cambios acumulados desde la última versión publicada:"
+            echo "### Agente de rotación"
+            echo
+            echo "Un paquete por arquitectura (\`passwd-agente-$VERSION-linux-amd64.tar.gz\`,"
+            echo "\`…-linux-arm64.tar.gz\`) con los dos binarios, sus sumas, el instalador, las"
+            echo "unidades systemd y el servicio PAM. Compruebe el paquete con el \`SHA256SUMS\`"
+            echo "de esta Release antes de extraerlo; el instalador comprueba después los binarios"
+            echo "con el \`SHA256SUMS\` de dentro. Guía: \`docs/guia-instalacion-agente-linux.md\`."
+            echo
+            echo "### Cambios acumulados desde la última versión publicada"
             echo
           } > notas.md
 
@@ -86,19 +146,22 @@ jobs:
             index($0, "## [Sin publicar]") == 1 { dentro = 1; next }
             dentro && /^## \[/ { exit }
             dentro { print }
-          ' CHANGELOG.md >> notas.md
+          ' CHANGELOG.md > cambios.md
 
-          if ! grep -q '[^[:space:]]' notas.md; then
+          if ! grep -q '[^[:space:]]' cambios.md; then
             echo "::error::CHANGELOG.md no tiene contenido bajo «## [Sin publicar]»"; exit 1
           fi
+          cat cambios.md >> notas.md
           wc -l notas.md
 
-      - name: Crear la Release
-        if: steps.existe.outputs.existe == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Crear o completar la Release
         run: |
-          gh release create "${{ steps.version.outputs.etiqueta }}" \
-            --prerelease \
-            --title "Pre-release ${{ steps.version.outputs.version }}" \
-            --notes-file notas.md
+          if gh release view "$ETIQUETA" >/dev/null 2>&1; then
+            echo "La Release $ETIQUETA ya existe (creada desde la interfaz): se completa."
+            gh release edit "$ETIQUETA" --prerelease --title "Pre-release $VERSION" --notes-file notas.md
+          else
+            gh release create "$ETIQUETA" --verify-tag --prerelease \
+              --title "Pre-release $VERSION" --notes-file notas.md
+          fi
+          gh release upload "$ETIQUETA" dist/*.tar.gz dist/SHA256SUMS --clobber
+          gh release view "$ETIQUETA" --json assets --jq '.assets[].name'

@@ -1,0 +1,66 @@
+name: Binarios del agente
+
+# Compila y empaqueta el agente de rotación para linux/amd64 y linux/arm64 con
+# agente/empaquetar.sh, y deja cada paquete como artefacto del flujo. No publica
+# nada: lo llaman prelanzamiento.yml y publicar.yml, que adjuntan los paquetes
+# a su Release.
+#
+# Cada arquitectura se compila en un runner NATIVO: el helper enlaza libpam
+# (cgo) y no se compila cruzado. El runner arm64 (ubuntu-24.04-arm) no tiene
+# coste en un repositorio público.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit o etiqueta que se compila
+        required: true
+        type: string
+      version:
+        description: Versión que declaran los binarios (la de app/__init__.py)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  empaquetar:
+    name: Agente linux/${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Configurar Go (versión de agente/go.mod)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: agente/go.mod
+          cache-dependency-path: agente/go.sum
+
+      - name: libpam para el helper
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libpam0g-dev
+
+      - name: Empaquetar
+        env:
+          VERSION: ${{ inputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: agente/empaquetar.sh "$VERSION" "$ARCH" dist
+
+      - name: Guardar el paquete
+        uses: actions/upload-artifact@v4
+        with:
+          name: agente-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
