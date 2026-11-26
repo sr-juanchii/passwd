@@ -2,6 +2,7 @@ package helper
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,3 +152,25 @@ func TestLaConfiguracionDebeSerDeRootYNoEscribiblePorOtros(t *testing.T) {
 		t.Fatal("aceptó una configuración que no es de root")
 	}
 }
+
+func TestLosRechazosDicenQueNoSeTocoNadaYUnFalloAlFijarNo(t *testing.T) {
+	h, _ := nuevo()
+	r := pedir(t, h, Peticion{Accion: AccionAplicar, Cuenta: "fuera", Actual: "x", Nueva: "y"}, agente)
+	if r.OK || !r.SinCambios {
+		t.Fatalf("cuenta fuera de la lista: %+v", r)
+	}
+	r = pedir(t, h, Peticion{Accion: AccionAplicar, Cuenta: "deploy", Actual: "Otra", Nueva: "y"}, agente)
+	if r.OK || !r.SinCambios {
+		t.Fatalf("actual que no coincide: %+v", r)
+	}
+
+	h.Sistema = &sistemaQueFallaAlFijar{sistemaFalso{cuentas: map[string]string{"deploy": "Actual-1"}}}
+	r = pedir(t, h, Peticion{Accion: AccionAplicar, Cuenta: "deploy", Actual: "Actual-1", Nueva: "y"}, agente)
+	if r.OK || r.SinCambios {
+		t.Fatalf("un fallo de chpasswd no puede prometer que no se tocó nada: %+v", r)
+	}
+}
+
+type sistemaQueFallaAlFijar struct{ sistemaFalso }
+
+func (s *sistemaQueFallaAlFijar) Fijar(string, string) error { return errors.New("chpasswd: fallo") }

@@ -65,7 +65,14 @@ type Peticion struct {
 type Respuesta struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
+	// SinCambios: el helper rechazó la petición ANTES de tocar la cuenta. Sin
+	// esta marca, un fallo puede haber ocurrido a mitad de fijar la contraseña,
+	// y quien llama debe comprobar qué quedó.
+	SinCambios bool `json:"sin_cambios,omitempty"`
 }
+
+// ErrSinCambios lo envuelven los errores de un rechazo que no tocó la cuenta.
+var ErrSinCambios = errors.New("el helper no cambió nada")
 
 // Config es la configuración del helper, propiedad de root.
 type Config struct {
@@ -178,7 +185,7 @@ func (h *Helper) Atender(r io.Reader, quien Llamante) Respuesta {
 			return fallo("la contraseña actual del inventario no autentica la cuenta: no se cambia nada")
 		}
 		if err := h.Sistema.Fijar(p.Cuenta, p.Nueva); err != nil {
-			return fallo("no se pudo fijar la contraseña: " + err.Error())
+			return falloAlFijar("no se pudo fijar la contraseña: " + err.Error())
 		}
 		return Respuesta{OK: true}
 	case AccionRestaurar:
@@ -186,7 +193,7 @@ func (h *Helper) Atender(r io.Reader, quien Llamante) Respuesta {
 			return fallo(err.Error())
 		}
 		if err := h.Sistema.Fijar(p.Cuenta, p.Valor); err != nil {
-			return fallo("no se pudo restaurar la contraseña: " + err.Error())
+			return falloAlFijar("no se pudo restaurar la contraseña: " + err.Error())
 		}
 		return Respuesta{OK: true}
 	default:
@@ -194,7 +201,11 @@ func (h *Helper) Atender(r io.Reader, quien Llamante) Respuesta {
 	}
 }
 
-func fallo(motivo string) Respuesta { return Respuesta{Error: motivo} }
+// fallo es un rechazo antes de tocar la cuenta.
+func fallo(motivo string) Respuesta { return Respuesta{Error: motivo, SinCambios: true} }
+
+// falloAlFijar es un error de chpasswd: la cuenta pudo quedar a medias.
+func falloAlFijar(motivo string) Respuesta { return Respuesta{Error: motivo} }
 
 func leer(r io.Reader) (*Peticion, error) {
 	linea, err := bufio.NewReader(io.LimitReader(r, MaxPeticion+1)).ReadBytes('\n')

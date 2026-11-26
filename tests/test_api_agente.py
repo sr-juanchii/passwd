@@ -242,6 +242,37 @@ def test_la_telemetria_tiene_su_propio_tope(http):
     db.close()
 
 
+def test_un_sistema_de_archivos_largo_no_tumba_la_telemetria(http):
+    """El agente recorta a 120 caracteres; la API no puede ser más estricta que él."""
+    from app.models import TelemetriaAgente
+
+    _ids, enrolamiento = _alta()
+    _privada, token = _enrolar(http, enrolamiento)
+    largo = "fuse." + "x" * 110          # 115: cabe en el agente
+    r = http.post("/api/agent/telemetria", headers=_bearer(token),
+                  json={"discos": [{"montaje": "/datos", "sistema_archivos": largo, "usado_pct": 5}]})
+    assert r.status_code == 204, r.text
+    db = _bd()
+    fila = db.scalars(select(TelemetriaAgente)).one()
+    assert json.loads(fila.discos_json)[0]["sistema_archivos"] == largo
+    db.close()
+
+
+def test_pedir_trabajo_tambien_anota_desde_donde(http):
+    from app.models import Agente
+
+    ids, enrolamiento = _alta()
+    _privada, token = _enrolar(http, enrolamiento)
+    db = _bd()
+    db.get(Agente, ids["agente"]).ip_ultimo_contacto = "203.0.113.9"
+    db.commit()
+    db.close()
+    assert http.get("/api/agent/trabajos/pendiente", headers=_bearer(token)).status_code == 204
+    db = _bd()
+    assert db.get(Agente, ids["agente"]).ip_ultimo_contacto == "testclient"
+    db.close()
+
+
 def test_el_limite_de_tasa_del_agente(http, monkeypatch):
     import app.api_agent as api_agente
 

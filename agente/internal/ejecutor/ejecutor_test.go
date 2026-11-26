@@ -13,12 +13,16 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/sr-juanchii/passwd/agente/internal/cliente"
 	"github.com/sr-juanchii/passwd/agente/internal/contrato"
+	"github.com/sr-juanchii/passwd/agente/internal/helper"
 	"github.com/sr-juanchii/passwd/agente/internal/identidad"
 	"github.com/sr-juanchii/passwd/agente/internal/journal"
 	"github.com/sr-juanchii/passwd/agente/internal/sobre"
@@ -61,16 +65,18 @@ type resultado struct {
 }
 
 type apiFalsa struct {
-	pendiente   *cliente.RespTrabajo
-	resultados  []resultado
-	fallosRed   int // los primeros N Resultado fallan por red
-	token       string
-	tokenNuevo  *string
-	telemetrias int
+	pendiente    *cliente.RespTrabajo
+	resultados   []resultado
+	fallosRed    int // los primeros N Resultado fallan por red
+	token        string
+	tokenNuevo   *string
+	telemetrias  int
+	versionVieja bool  // el backend ya no admite esta versión del agente
+	rechazo      error // Resultado responde con este error HTTP
 }
 
 func (a *apiFalsa) Saludo(context.Context, string) (*cliente.RespSaludo, error) {
-	return &cliente.RespSaludo{IntervaloMin: 15, VersionAdmitida: true, TokenNuevo: a.tokenNuevo}, nil
+	return &cliente.RespSaludo{IntervaloMin: 15, VersionAdmitida: !a.versionVieja, TokenNuevo: a.tokenNuevo}, nil
 }
 func (a *apiFalsa) Pendiente(context.Context) (*cliente.RespTrabajo, error) {
 	p := a.pendiente
@@ -81,6 +87,9 @@ func (a *apiFalsa) Resultado(_ context.Context, id int64, estado, verificacion, 
 	if a.fallosRed > 0 {
 		a.fallosRed--
 		return errors.New("conexión rechazada")
+	}
+	if a.rechazo != nil {
+		return a.rechazo
 	}
 	a.resultados = append(a.resultados, resultado{id, estado, verificacion, detalle})
 	return nil
@@ -93,6 +102,8 @@ type rotadorFalso struct {
 	cuentas    map[string]string
 	estropea   bool   // Aplicar deja una contraseña que no es la nueva
 	alAplicar  func() // se llama al entrar en Aplicar, antes de tocar la cuenta
+	rechaza    string // el helper rechaza Aplicar sin tocar la cuenta, con este motivo
+	caido      bool   // el helper no contesta
 	aplicados  int
 	revertidos int
 }
@@ -101,6 +112,12 @@ func (r *rotadorFalso) Aplicar(_ context.Context, u, actual, nueva string) error
 	r.aplicados++
 	if r.alAplicar != nil {
 		r.alAplicar()
+	}
+	if r.caido {
+		return errors.New("no se pudo contactar con el helper")
+	}
+	if r.rechaza != "" {
+		return fmt.Errorf("%s: %w", r.rechaza, helper.ErrSinCambios)
 	}
 	if r.cuentas[u] != actual {
 		return errors.New("la contraseña actual no coincide")
@@ -113,6 +130,9 @@ func (r *rotadorFalso) Aplicar(_ context.Context, u, actual, nueva string) error
 	return nil
 }
 func (r *rotadorFalso) Verificar(_ context.Context, u, p string) (bool, error) {
+	if r.caido {
+		return false, errors.New("no se pudo contactar con el helper")
+	}
 	return r.cuentas[u] == p, nil
 }
 func (r *rotadorFalso) Revertir(_ context.Context, u, _, actual string) error {
@@ -338,5 +358,76 @@ func TestElJournalSeEscribeAntesDeTocarLaCuenta(t *testing.T) {
 	_, _ = s.e.Ciclo(context.Background())
 	if visto == nil || visto.Fase != journal.FaseAplicando || visto.Trabajo.ID != 13 {
 		t.Fatalf("al aplicar, el journal no registraba el trabajo: %+v", visto)
+	}
+}
+
+// --- Defectos hallados al escribir docs/contrato-agente.md. ------------------
+
+func TestSiElHelperRechazaSinTocarNadaSeInformaSuMotivo(t *testing.T) {
+	s := nuevo(t)
+	s.rot.rechaza = "la cuenta no está en la lista de cuentas que este helper puede rotar"
+	s.api.pendiente = s.trabajo(t, 20, nil)
+	if _, err := s.e.Ciclo(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r := s.api.resultados
+	if len(r) != 1 || r[0].estado != Fallado || !strings.Contains(r[0].detalle, "no está en la lista") {
+		t.Fatalf("resultados = %+v", r)
+	}
+	if s.rot.revertidos != 0 || s.rot.cuentas["deploy"] != "Actual-2026!x" {
+		t.Fatalf("restauró sin necesidad: revertidos %d", s.rot.revertidos)
+	}
+	s.journalVacio(t)
+}
+
+func TestSinHelperNoSeConcluyeNadaYSeReintenta(t *testing.T) {
+	s := nuevo(t)
+	s.rot.caido = true
+	s.api.pendiente = s.trabajo(t, 21, nil)
+	_, _ = s.e.Ciclo(context.Background())
+	if len(s.api.resultados) != 0 || s.rot.revertidos != 0 {
+		t.Fatalf("concluyó sin helper: %+v, revertidos %d", s.api.resultados, s.rot.revertidos)
+	}
+	estado, _ := s.e.Journal.Leer()
+	if estado.EnCurso == nil || estado.EnCurso.Fase != journal.FaseAplicando {
+		t.Fatalf("el journal debía seguir «aplicando»: %+v", estado.EnCurso)
+	}
+
+	// El helper vuelve: la recuperación comprueba la cuenta, que nadie tocó.
+	s.rot.caido = false
+	espera, _ := s.e.Ciclo(context.Background())
+	if len(s.api.resultados) != 1 || s.api.resultados[0].estado != Fallado ||
+		!strings.Contains(s.api.resultados[0].detalle, "conserva la anterior") {
+		t.Fatalf("resultados = %+v (espera %s)", s.api.resultados, espera)
+	}
+	s.journalVacio(t)
+}
+
+func TestConLaVersionNoAdmitidaSeEntregaLoPendiente(t *testing.T) {
+	s := nuevo(t)
+	s.api.fallosRed = 1
+	s.api.pendiente = s.trabajo(t, 22, nil)
+	_, _ = s.e.Ciclo(context.Background()) // aplica, pero la entrega falla por red
+
+	// Entre tanto el backend sube la versión mínima.
+	s.api.versionVieja = true
+	s.api.pendiente = s.trabajo(t, 23, nil)
+	_, _ = s.e.Ciclo(context.Background())
+	if len(s.api.resultados) != 1 || s.api.resultados[0] != (resultado{22, Aplicado, VerificacionLocal, ""}) {
+		t.Fatalf("no entregó lo pendiente: %+v", s.api.resultados)
+	}
+	if s.api.pendiente == nil || s.rot.aplicados != 1 {
+		t.Fatal("con la versión no admitida pidió o aplicó un trabajo nuevo")
+	}
+	s.journalVacio(t)
+}
+
+func TestUnResultadoQueElBackendNuncaAdmitiraNoBloqueaAlAgente(t *testing.T) {
+	for _, codigo := range []int{http.StatusBadRequest, http.StatusUnprocessableEntity} {
+		s := nuevo(t)
+		s.api.rechazo = &cliente.ErrorAPI{Codigo: codigo, Detalle: "no admitido"}
+		s.api.pendiente = s.trabajo(t, 24, nil)
+		_, _ = s.e.Ciclo(context.Background())
+		s.journalVacio(t)
 	}
 }

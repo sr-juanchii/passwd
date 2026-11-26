@@ -7,8 +7,8 @@ reconstruirla. Lo que no estaba probado de punta a punta vive en este archivo.
 Contrato del agente (Go, ``agente/internal``)
     Tipo de trabajo desconocido, vencido, concurrente, antes del anti-thrash,
     parámetros fuera de patrón ............ contrato_test.go::TestRechazosDelContrato
-    Segundo trabajo con otro en curso ...... ejecutor_test.go::TestElMismoTrabajoEnCursoNoEsConcurrente,
-                                             TestSinRedElResultadoEsperaEnElJournalYNoSeAceptaOtroTrabajo
+    Segundo trabajo con otro en curso ...... contrato_test.go::TestElMismoTrabajoEnCursoNoEsConcurrente,
+                                             ejecutor_test.go::TestSinRedElResultadoEsperaEnElJournalYNoSeAceptaOtroTrabajo
     Cuenta inexistente: nunca se crea ...... integracion_test.go::TestIntegracionRechazosDelHelper (root, PAM real)
 
 Contrato del backend

@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -59,6 +60,9 @@ func (s *Socket) Aplicar(ctx context.Context, usuario, actual, nueva string) err
 	r, err := s.pedir(ctx, helper.Peticion{Accion: helper.AccionAplicar, Cuenta: usuario, Actual: actual, Nueva: nueva})
 	if err != nil {
 		return err
+	}
+	if !r.OK && r.SinCambios {
+		return fmt.Errorf("%s: %w", r.Error, helper.ErrSinCambios)
 	}
 	if !r.OK {
 		return errors.New(r.Error)

@@ -18,12 +18,14 @@ import (
 	"crypto/ecdh"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/sr-juanchii/passwd/agente/internal/cliente"
 	"github.com/sr-juanchii/passwd/agente/internal/contrato"
+	"github.com/sr-juanchii/passwd/agente/internal/helper"
 	"github.com/sr-juanchii/passwd/agente/internal/journal"
 	"github.com/sr-juanchii/passwd/agente/internal/sobre"
 	"github.com/sr-juanchii/passwd/agente/internal/telemetria"
@@ -143,15 +145,18 @@ func (e *Ejecutor) Ciclo(ctx context.Context) (time.Duration, error) {
 	if e.Rotador == nil {
 		return intervalo, nil
 	}
-	if !saludo.VersionAdmitida {
-		e.log().Warn("versión del agente por debajo de la mínima: no recibirá trabajos",
-			"version", e.Version, "minima", saludo.VersionMinima)
-		return intervalo, nil
-	}
+	// Lo que el journal dejó pendiente se resuelve y se entrega SIEMPRE, también
+	// con una versión ya no admitida: el backend acepta el resultado de un
+	// trabajo que entregó, y callarlo lo dejaría «sin confirmar».
 	pendiente, err := e.Recuperar(ctx)
 	if err != nil || pendiente {
 		// Con un resultado aún sin entregar no se acepta trabajo nuevo.
 		return time.Minute, err
+	}
+	if !saludo.VersionAdmitida {
+		e.log().Warn("versión del agente por debajo de la mínima: no recibirá trabajos",
+			"version", e.Version, "minima", saludo.VersionMinima)
+		return intervalo, nil
 	}
 	trabajo, err := e.API.Pendiente(ctx)
 	if err != nil || trabajo == nil {
@@ -203,15 +208,33 @@ func (e *Ejecutor) Procesar(ctx context.Context, recibido *cliente.RespTrabajo) 
 	}
 	e.log().Info("aplicando rotación", "trabajo", t.ID, "usuario", t.Usuario)
 	if err := e.Rotador.Aplicar(ctx, t.Usuario, t.Actual, t.Nueva); err != nil {
+		if errors.Is(err, helper.ErrSinCambios) {
+			// El helper lo rechazó sin tocar la cuenta (fuera de la lista, la
+			// actual del inventario no autentica…): ese es el motivo que hay que
+			// contar, no un «no autentica» deducido después.
+			e.log().Warn("el helper rechazó el cambio sin tocar la cuenta", "trabajo", t.ID, "error", err)
+			return e.cerrar(ctx, t, Fallado, VerificacionNinguna, "no se cambió nada: "+err.Error())
+		}
 		e.log().Warn("el cambio no se aplicó", "trabajo", t.ID, "error", err)
 	}
 	return e.decidirYCerrar(ctx, t)
 }
 
 // decidirYCerrar comprueba qué contraseña vale y cierra el trabajo en consecuencia.
-// La usan tanto el camino normal como la recuperación tras una caída.
+// La usan tanto el camino normal como la recuperación tras una caída. Si el
+// helper no contesta no se concluye nada: el journal sigue «aplicando» y la
+// recuperación lo reintenta.
 func (e *Ejecutor) decidirYCerrar(ctx context.Context, t contrato.Trabajo) error {
-	resultado, verificacion, detalle := e.decidir(ctx, t)
+	resultado, verificacion, detalle, err := e.decidir(ctx, t)
+	if err != nil {
+		e.log().Warn("no se puede saber qué contraseña quedó; se reintentará", "trabajo", t.ID, "error", err)
+		return err
+	}
+	return e.cerrar(ctx, t, resultado, verificacion, detalle)
+}
+
+// cerrar anota el resultado en el journal y lo entrega.
+func (e *Ejecutor) cerrar(ctx context.Context, t contrato.Trabajo, resultado, verificacion, detalle string) error {
 	estado, err := e.Journal.Leer()
 	if err != nil {
 		return err
@@ -224,24 +247,42 @@ func (e *Ejecutor) decidirYCerrar(ctx context.Context, t contrato.Trabajo) error
 	return e.informar(ctx, estado.EnCurso)
 }
 
-func (e *Ejecutor) decidir(ctx context.Context, t contrato.Trabajo) (string, string, string) {
-	if ok, err := e.Rotador.Verificar(ctx, t.Usuario, t.Nueva); err == nil && ok {
-		return Aplicado, VerificacionLocal, ""
+// decidir dice qué contraseña quedó. Un «no autentica» del helper es una
+// respuesta; un helper que no contesta no lo es, y entonces se devuelve error
+// en vez de deducir nada ni restaurar a ciegas.
+func (e *Ejecutor) decidir(ctx context.Context, t contrato.Trabajo) (string, string, string, error) {
+	vale := func(password string) (bool, error) {
+		ok, err := e.Rotador.Verificar(ctx, t.Usuario, password)
+		if err != nil {
+			return false, fmt.Errorf("el helper no pudo comprobar la cuenta: %w", err)
+		}
+		return ok, nil
+	}
+	ok, err := vale(t.Nueva)
+	if err != nil {
+		return "", "", "", err
+	}
+	if ok {
+		return Aplicado, VerificacionLocal, "", nil
 	}
 	// La nueva no autentica: se deja la cuenta como estaba.
-	if ok, err := e.Rotador.Verificar(ctx, t.Usuario, t.Actual); err == nil && ok {
-		return Fallado, VerificacionNinguna, "la contraseña nueva no se aplicó; la cuenta conserva la anterior"
+	if ok, err = vale(t.Actual); err != nil {
+		return "", "", "", err
+	} else if ok {
+		return Fallado, VerificacionNinguna, "la contraseña nueva no se aplicó; la cuenta conserva la anterior", nil
 	}
 	if err := e.Rotador.Revertir(ctx, t.Usuario, t.Nueva, t.Actual); err != nil {
 		e.log().Error("no se pudo revertir", "trabajo", t.ID, "error", err)
 	}
-	if ok, err := e.Rotador.Verificar(ctx, t.Usuario, t.Actual); err == nil && ok {
-		return Revertido, VerificacionNinguna, "la contraseña nueva no verificó y se restauró la anterior"
+	if ok, err = vale(t.Actual); err != nil {
+		return "", "", "", err
+	} else if ok {
+		return Revertido, VerificacionNinguna, "la contraseña nueva no verificó y se restauró la anterior", nil
 	}
 	e.log().Error("ni la contraseña nueva ni la anterior autentican: requiere intervención manual",
 		"trabajo", t.ID, "usuario", t.Usuario)
 	return Fallado, VerificacionNinguna,
-		"ni la contraseña nueva ni la anterior autentican la cuenta: requiere intervención manual"
+		"ni la contraseña nueva ni la anterior autentican la cuenta: requiere intervención manual", nil
 }
 
 // Recuperar resuelve lo que el journal dejó a medias. Devuelve true si queda un
@@ -276,8 +317,11 @@ func (e *Ejecutor) informar(ctx context.Context, entrada *journal.Entrada) error
 		if err != nil {
 			return err // red: se reintenta en el siguiente ciclo, el journal lo guarda
 		}
-	case http.StatusConflict, http.StatusNotFound, http.StatusForbidden:
-		// Ya cerrado (p. ej. resuelto a mano), inexistente o ajeno: nada que entregar.
+	case http.StatusConflict, http.StatusNotFound, http.StatusForbidden,
+		http.StatusBadRequest, http.StatusUnprocessableEntity:
+		// Ya cerrado (p. ej. resuelto a mano), inexistente, ajeno, o un resultado
+		// que el backend nunca admitirá: reintentarlo bloquearía al agente para
+		// siempre. El backend lo verá «sin confirmar» y lo resolverá una persona.
 		e.log().Warn("el backend no acepta el resultado; se descarta", "trabajo", entrada.Trabajo.ID, "error", err)
 	default:
 		return err

@@ -1240,8 +1240,9 @@ class TrabajoRotacion(Base):
     """Trabajo de rotación despachado a un agente (§2.2, §3.1).
 
     Lleva la contraseña nueva y la actual (ambas hacen falta para revertir de
-    forma determinista), cifradas al par X25519 del agente. **Se purgan al
-    cerrar**: el registro sobrevive como traza, los secretos no. Lo permanente
+    forma determinista), cifradas en reposo con la clave del backend (Fernet);
+    se sellan a la clave X25519 del agente solo al entregarlas (hallazgo H14).
+    **Se purgan al cerrar**: el registro sobrevive como traza, los secretos no. Lo permanente
     es el asiento del libro mayor (`rotacion_id`).
     """
 
@@ -1278,7 +1279,8 @@ class TrabajoRotacion(Base):
         String(20), nullable=False, default=TRABAJO_PENDIENTE, server_default=TRABAJO_PENDIENTE
     )
 
-    # Secretos del trabajo, cifrados al agente. Nulos y SIN default: se purgan
+    # Secretos del trabajo, cifrados con la clave del backend (se sellan al
+    # agente al entregarlos, H14). Nulos y SIN default: se purgan
     # al cerrar, y MySQL no admite DEFAULT en columnas BLOB.
     nueva_cifrada: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     actual_cifrada: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)

@@ -205,6 +205,7 @@ def saludo(request: Request, db: BD, agente: AGENTE, cuerpo: SaludoCuerpo):
 def trabajo_pendiente(request: Request, db: BD, agente: AGENTE):
     """El trabajo del agente, sellado a su clave; 204 si no hay ninguno."""
     agente.ultimo_contacto_en = ahora_utc()
+    agente.ip_ultimo_contacto = _ip(request)
     entrega = servicio_rotacion.entregar(db, agente=agente, request=request)
     if entrega is None:
         return Response(status_code=204)
@@ -237,7 +238,10 @@ def resultado(trabajo_id: int, request: Request, db: BD, agente: AGENTE, cuerpo:
 
 class Disco(BaseModel):
     montaje: str = Field(default="", max_length=255)
-    sistema_archivos: str = Field(default="", max_length=60)
+    # Holgado a propósito: el agente recorta a 120 y el servicio vuelve a acotar.
+    # Un tope más estricto aquí que en el agente rechazaría la telemetría ENTERA
+    # por un nombre de sistema de archivos largo.
+    sistema_archivos: str = Field(default="", max_length=255)
     total_bytes: int | None = None
     usado_pct: int | None = None
 
