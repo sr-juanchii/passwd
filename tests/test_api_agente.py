@@ -251,3 +251,21 @@ def test_el_limite_de_tasa_del_agente(http, monkeypatch):
     codigos = [http.post("/api/agent/saludo", headers=_bearer(token), json={}).status_code
                for _ in range(5)]
     assert codigos[:3] == [200, 200, 200] and codigos[3:] == [429, 429]
+
+
+def test_toda_ruta_del_agente_tiene_tope_de_cuerpo(http):
+    """Ningún cuerpo del protocolo pasa de 4 KiB; antes de autenticar ya se rechaza."""
+    from app import audit
+    from app.api_agent import MAX_BYTES_PETICION
+
+    _ids, enrolamiento = _alta()
+    _privada, token = _enrolar(http, enrolamiento)
+    relleno = {"detalle": "x" * (MAX_BYTES_PETICION + 1)}
+    rutas = ["/api/agent/enrolar", "/api/agent/saludo", "/api/agent/trabajos/1/resultado"]
+    for ruta in rutas:
+        r = http.post(ruta, headers=_bearer(token), json=relleno)
+        assert r.status_code == 413, (ruta, r.status_code, r.text)
+        # Sin identidad también: el tope va antes de autenticar.
+        assert http.post(ruta, json=relleno).status_code == 413
+    rechazos = [r for r in _acciones(audit.AGENTE_ACCESO_RECHAZADO) if r.detalle.startswith("413 ")]
+    assert len(rechazos) == 2 * len(rutas)

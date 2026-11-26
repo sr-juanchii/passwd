@@ -938,6 +938,15 @@ def sin_confirmar(trabajo: TrabajoRotacion) -> bool:
     return trabajo.estado == TRABAJO_ENTREGADO and trabajo.detalle_error == MARCA_SIN_CONFIRMAR
 
 
+def trabajos_sin_confirmar(db: Session) -> list[TrabajoRotacion]:
+    """Entregados sin resultado que ya no cabe esperar: el agente calló o fue revocado."""
+    return [
+        t for t in db.scalars(select(TrabajoRotacion)
+                              .where(TrabajoRotacion.estado == TRABAJO_ENTREGADO)).all()
+        if sin_confirmar(t) or t.agente.revocado
+    ]
+
+
 def _marcar_sin_confirmar(db: Session, trabajo: TrabajoRotacion) -> None:
     trabajo.detalle_error = MARCA_SIN_CONFIRMAR
     credencial = trabajo.credencial

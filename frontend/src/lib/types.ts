@@ -375,6 +375,22 @@ export interface Metricas {
     revisiones_pendientes: number;
   };
   patrones_rotacion?: ResumenPatrones;
+  /** Agentes de rotación (v1.4.0); null con los agentes apagados. */
+  agentes?: MetricasAgentes | null;
+}
+
+export interface MetricasAgentes {
+  por_cobertura: Record<"conectado" | "sin_contacto" | "caducado" | "pendiente", number>;
+  atencion: {
+    id: number;
+    nombre: string;
+    activo: string;
+    tipo_activo: TipoActivoAgente;
+    activo_id: number;
+    cobertura: CoberturaAgente;
+    ultimo_contacto_en: string | null;
+  }[];
+  sin_confirmar: number;
 }
 
 // --- Gobernanza de rotación (v1.3.0) -------------------------------------

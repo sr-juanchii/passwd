@@ -13,18 +13,46 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import access, audit
 from app.api_web.deps import requiere_permiso_json
 from app.api_web.serializers import _iso, serializar_concesion
 from app.config import get_settings
 from app.database import get_db
 from app.models import ConcesionAcceso, Credencial, RegistroAuditoria, Usuario, ahora_utc
+from app.servicios import agentes as servicio_agentes
 from app.servicios import patrones
 from app.servicios import rotacion as servicio_rotacion
 
 router = APIRouter()
 
 VER = Depends(requiere_permiso_json("metricas.ver"))
+
+
+def _agentes(db: Session, usuario: Usuario) -> dict | None:
+    """Parque de agentes: cuántos hay en cada estado y cuáles piden atención.
+
+    Solo con los agentes activados. Los recuentos y la lista respetan el control
+    de acceso por objeto: un activo restringido no existe para quien no lo alcanza.
+    """
+    if not servicio_agentes.habilitados():
+        return None
+    servicio_rotacion.expirar_trabajos(db)
+    visibles = [a for a in servicio_agentes.vigentes(db)
+                if access.puede_ver_activo(db, usuario, a.tipo_activo, a.activo_id)]
+    coberturas = {a.id: servicio_agentes.cobertura(a) for a in visibles}
+    estados = (servicio_agentes.COBERTURA_CONECTADO, servicio_agentes.COBERTURA_SIN_CONTACTO,
+               servicio_agentes.COBERTURA_CADUCADO, servicio_agentes.COBERTURA_PENDIENTE)
+    return {
+        "por_cobertura": {e: sum(1 for c in coberturas.values() if c == e) for e in estados},
+        "atencion": [
+            {"id": a.id, "nombre": a.nombre, "activo": servicio_agentes.nombre_activo(a),
+             "tipo_activo": a.tipo_activo, "activo_id": a.activo_id,
+             "cobertura": coberturas[a.id], "ultimo_contacto_en": _iso(a.ultimo_contacto_en)}
+            for a in visibles if coberturas[a.id] in servicio_agentes.COBERTURAS_CALLADAS
+        ],
+        "sin_confirmar": sum(1 for t in servicio_rotacion.trabajos_sin_confirmar(db)
+                             if access.puede_ver_credencial(db, usuario, t.credencial)),
+    }
 
 
 @router.get("/metricas")
@@ -122,6 +150,8 @@ def metricas(
             "revisiones_pendientes": len(servicio_rotacion.revisiones_pendientes(db)),
         },
         "patrones_rotacion": patrones.resumen(db),
+        # Agentes de rotación (v1.4.0); null con los agentes apagados.
+        "agentes": _agentes(db, usuario),
         "logins_fallidos_24h": logins_fallidos_24h,
         "logins_fallidos_7d": logins_fallidos_7d,
         "bloqueados": bloqueados,

@@ -43,8 +43,11 @@ LIMITE_IP = 300
 LIMITE_ENROLAR = 10
 VENTANA_MIN = 5
 VENTANA_ENROLAR_MIN = 15
-# La telemetría tiene su propio tope, muy por debajo del global de la aplicación:
-# el servidor rechaza lo que excede en vez de ampliar el límite (§4.4).
+# Topes de cuerpo, muy por debajo del global de la aplicación: el servidor
+# rechaza lo que excede en vez de ampliar el límite (§4.4). Ninguna petición del
+# protocolo se acerca a 4 KiB (la mayor, un resultado con su detalle, ronda 2,5);
+# la telemetría lleva la lista de discos y tiene el suyo.
+MAX_BYTES_PETICION = 4 * 1024
 MAX_BYTES_TELEMETRIA = 16 * 1024
 
 
@@ -53,11 +56,27 @@ def _interruptor() -> None:
         raise HTTPException(status_code=404, detail="Not Found")
 
 
-router = APIRouter(prefix="/api/agent", tags=["agente"], dependencies=[Depends(_interruptor)])
-
-
 def _ip(request: Request) -> str:
     return (request.client.host if request.client else "")[:45]
+
+
+async def _tope_de_cuerpo(request: Request, db: Annotated[Session, Depends(get_db)]) -> None:
+    """Rechaza con 413 el cuerpo que excede el tope de su ruta, antes de autenticar.
+
+    El rechazo cuenta para el límite por dirección: si no, mandar cuerpos
+    enormes sería otra forma de llenar la bitácora.
+    """
+    telemetria = request.url.path.endswith("/telemetria")
+    tope = MAX_BYTES_TELEMETRIA if telemetria else MAX_BYTES_PETICION
+    if len(await request.body()) > tope:
+        _limite_ip(db, request)
+        que = "La telemetría" if telemetria else "La petición"
+        raise _rechazar(db, request, 413, f"{que} excede {tope} bytes"
+                        + (": recórtela en el agente." if telemetria else "."))
+
+
+router = APIRouter(prefix="/api/agent", tags=["agente"],
+                   dependencies=[Depends(_interruptor), Depends(_tope_de_cuerpo)])
 
 
 def _rechazar(db: Session, request: Request, codigo: int, mensaje: str, *,
@@ -216,12 +235,6 @@ def resultado(trabajo_id: int, request: Request, db: BD, agente: AGENTE, cuerpo:
 # ---------------------------------------------------------------------------
 
 
-async def _tope_telemetria(request: Request, db: BD) -> None:
-    if len(await request.body()) > MAX_BYTES_TELEMETRIA:
-        raise _rechazar(db, request, 413,
-                        f"La telemetría excede {MAX_BYTES_TELEMETRIA} bytes: recórtela en el agente.")
-
-
 class Disco(BaseModel):
     montaje: str = Field(default="", max_length=255)
     sistema_archivos: str = Field(default="", max_length=60)
@@ -242,7 +255,7 @@ class TelemetriaCuerpo(BaseModel):
     recortada: bool = False
 
 
-@router.post("/telemetria", status_code=204, dependencies=[Depends(_tope_telemetria)])
+@router.post("/telemetria", status_code=204)
 def telemetria(request: Request, db: BD, agente: AGENTE, cuerpo: TelemetriaCuerpo):
     agentes.registrar_telemetria(
         db, agente=agente, ip=_ip(request), cpu_pct=cuerpo.cpu_pct, ram_pct=cuerpo.ram_pct,

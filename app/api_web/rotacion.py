@@ -16,7 +16,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import access, audit, avisos
@@ -24,7 +23,6 @@ from app.api_web.deps import requiere_permiso_json, verificar_csrf_json
 from app.database import get_db
 from app.models import (
     ROT_TIPO_MANUAL,
-    TRABAJO_ENTREGADO,
     Credencial,
     RotacionCredencial,
     TrabajoRotacion,
@@ -182,11 +180,7 @@ def panel(
     """Lo que hay sobre la mesa: por autorizar, por ejecutar y por revisar."""
     # Expiración perezosa: con ventanas de minutos, el barrido periódico llega tarde.
     servicio.expirar_trabajos(db)
-    sin_confirmar = [
-        t for t in db.scalars(select(TrabajoRotacion)
-                              .where(TrabajoRotacion.estado == TRABAJO_ENTREGADO)).all()
-        if servicio.sin_confirmar(t) or t.agente.revocado
-    ]
+    sin_confirmar = servicio.trabajos_sin_confirmar(db)
     return {
         "sin_confirmar": [
             _serializar_trabajo(t) for t in sin_confirmar

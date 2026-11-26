@@ -355,3 +355,64 @@ def test_la_telemetria_antigua_se_purga(bd, admin):
     bd.flush()
     assert agentes.purgar_telemetria(bd) == 1
     assert [f.cpu_pct for f in bd.query(TelemetriaAgente).all()] == [2]
+
+
+# ---------------------------------------------------------------------------
+# Alerta de agente sin contacto (§8.2)
+# ---------------------------------------------------------------------------
+
+
+def test_un_agente_callado_se_avisa_una_vez_por_silencio(bd, admin, monkeypatch):
+    from app import notifications
+    from app.models import ahora_utc
+    from app.servicios import agentes
+
+    enviadas = []
+    monkeypatch.setattr(notifications, "enviar_alerta",
+                        lambda asunto, cuerpo: enviadas.append((asunto, cuerpo)) or True)
+    agente, _token = _enrolado(bd, admin)
+    assert agentes.avisar_sin_contacto(bd) == 0          # conectado: nada que decir
+
+    agente.ultimo_contacto_en = ahora_utc() - timedelta(hours=25)
+    bd.flush()
+    assert agentes.avisar_sin_contacto(bd) == 1
+    assert "agente-1" in enviadas[0][0]
+    # El siguiente mantenimiento no repite el aviso del mismo silencio…
+    assert agentes.avisar_sin_contacto(bd) == 0
+    # …ni cuando ese silencio acaba también en identidad caducada.
+    agente.token_expira_en = ahora_utc() - timedelta(minutes=1)
+    bd.flush()
+    assert agentes.avisar_sin_contacto(bd) == 0
+
+    # Vuelve, late, y se calla de nuevo: es otro silencio y se avisa otra vez.
+    agente.token_expira_en = ahora_utc() + timedelta(hours=20)
+    agente.ultimo_contacto_en = ahora_utc() + timedelta(seconds=1)
+    bd.flush()
+    assert agentes.avisar_sin_contacto(bd) == 0
+    assert agentes.avisar_sin_contacto(bd, ahora=ahora_utc() + timedelta(hours=26)) == 1
+    assert len(enviadas) == 2
+
+
+def test_la_alerta_sin_contacto_no_cuenta_pendientes_ni_revocados(bd, admin, monkeypatch):
+    from app import notifications
+    from app.models import ahora_utc
+    from app.servicios import agentes
+
+    monkeypatch.setattr(notifications, "enviar_alerta", lambda *_: True)
+    _pendiente, _ = _alta(bd, admin, _servidor(bd, "srv-pendiente"), nombre="pendiente")
+    revocado, _token = _enrolado(bd, admin)
+    revocado.ultimo_contacto_en = ahora_utc() - timedelta(hours=48)
+    agentes.revocar(bd, agente=revocado, usuario=admin)
+    bd.flush()
+    assert agentes.avisar_sin_contacto(bd, ahora=ahora_utc() + timedelta(days=3)) == 0
+
+
+def test_con_los_agentes_apagados_no_hay_alertas(bd, admin, monkeypatch):
+    from app.config import get_settings
+    from app.models import ahora_utc
+    from app.servicios import agentes
+
+    agente, _token = _enrolado(bd, admin)
+    agente.ultimo_contacto_en = ahora_utc() - timedelta(hours=48)
+    monkeypatch.setattr(get_settings(), "agentes_enabled", False)
+    assert agentes.avisar_sin_contacto(bd) == 0

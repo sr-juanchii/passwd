@@ -226,11 +226,12 @@ def ejecutar_mantenimiento() -> None:
         # Agentes (v1.4.0). Barrido de respaldo: la expiración de los trabajos
         # también se aplica al entregarlos y al consultarlos, porque con ventanas
         # de minutos un barrido cada 6 h llegaría tarde.
-        from app.servicios.agentes import purgar_telemetria
+        from app.servicios.agentes import avisar_sin_contacto, purgar_telemetria
         from app.servicios.rotacion import expirar_trabajos
 
         expirar_trabajos(db)
         purgar_telemetria(db)
+        avisar_sin_contacto(db)
         _avisar_si_falta_el_segundo_par(db)
         db.commit()
     finally:

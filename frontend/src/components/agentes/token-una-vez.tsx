@@ -6,6 +6,7 @@ import type { TokenInstalacion } from "@/lib/types";
 import { comandoInstalacion } from "@/lib/agentes";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { fechaHora } from "@/lib/fechas";
 
 /**
  * El token de instalación, visible una sola vez.
@@ -40,7 +41,7 @@ export function TokenUnaVez({ datos, cuentas, onCerrar }: {
       <p className="text-xs text-muted-foreground">
         Se muestra <strong>una sola vez</strong>: el servidor solo guarda su huella. Sirve para un
         único enrolamiento y caduca {datos.token_expira_en
-          ? `el ${new Date(datos.token_expira_en).toLocaleString()}`
+          ? `el ${fechaHora(datos.token_expira_en)}`
           : "en una hora"}.
       </p>
       <div className="flex items-center gap-2">

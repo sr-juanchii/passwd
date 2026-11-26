@@ -122,6 +122,7 @@ AGENTE_TOKEN_RENOVADO = "agente_token_renovado"  # noqa: S105 — nombre de acci
 AGENTE_ANOMALIA_IP = "agente_anomalia_ip"
 AGENTE_REVOCADO = "agente_revocado"
 AGENTE_ACCESO_RECHAZADO = "agente_acceso_rechazado"
+AGENTE_SIN_CONTACTO = "agente_sin_contacto"  # aviso enviado: el agente dejó de latir
 CREDENCIAL_VIA_CAMBIADA = "credencial_via_rotacion_cambiada"
 ROTACION_DESPACHADA = "rotacion_despachada"
 ROTACION_NO_DESPACHADA = "rotacion_no_despachada"

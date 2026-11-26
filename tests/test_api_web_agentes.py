@@ -230,3 +230,46 @@ def test_resolver_un_sin_confirmar_exige_reautenticacion(http):
     db = sesion_bd()
     assert descifrar(db.get(Credencial, credencial_id).password_cifrada) == contenido["nueva"]
     db.close()
+
+
+# ---------------------------------------------------------------------------
+# Métricas del parque (§8.2)
+# ---------------------------------------------------------------------------
+
+
+def test_las_metricas_cuentan_el_parque_y_senalan_a_los_callados(http):
+    from app.models import Agente, ahora_utc
+
+    conectado, _ = _servidor("srv-conectado")
+    callado, _ = _servidor("srv-callado")
+    pendiente, _ = _servidor("srv-pendiente")
+    restringido, _ = _servidor("srv-secreto", restringido=True)
+    _enrolar(http, _alta(http, conectado, "ag-conectado").json()["token_enrolamiento"])
+    id_callado = _alta(http, callado, "ag-callado").json()
+    _enrolar(http, id_callado["token_enrolamiento"])
+    _alta(http, pendiente, "ag-pendiente")
+    _enrolar(http, _alta(http, restringido, "ag-secreto").json()["token_enrolamiento"])
+
+    db = sesion_bd()
+    db.get(Agente, id_callado["agente"]["id"]).ultimo_contacto_en = ahora_utc() - timedelta(hours=30)
+    db.commit()
+    db.close()
+
+    agentes = http.get("/api/web/metricas").json()["agentes"]
+    assert agentes["por_cobertura"] == {"conectado": 2, "sin_contacto": 1, "caducado": 0, "pendiente": 1}
+    assert [a["nombre"] for a in agentes["atencion"]] == ["ag-callado"]
+    assert agentes["sin_confirmar"] == 0
+
+    # El auditor ve el parque entero, restringidos incluidos, como el resto de
+    # activos (access.puede_ver_activo); sigue sin poder gestionarlo.
+    temporal = crear_usuario(http, "auditor-agentes", "auditor")
+    auditor = TestClient(http.app, follow_redirects=False)
+    autenticar_usuario_nuevo(auditor, "auditor-agentes", temporal)
+    assert auditor.get("/api/web/metricas").json()["agentes"] == agentes
+
+
+def test_con_los_agentes_apagados_las_metricas_no_los_mencionan(client):
+    from tests.conftest import autenticar_admin
+
+    autenticar_admin(client)
+    assert client.get("/api/web/metricas").json()["agentes"] is None

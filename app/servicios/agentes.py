@@ -517,6 +517,71 @@ def cobertura(agente: Agente | None, ahora: datetime | None = None) -> str:
     return COBERTURA_CONECTADO
 
 
+COBERTURAS_CALLADAS = (COBERTURA_SIN_CONTACTO, COBERTURA_CADUCADO)
+
+
+def vigentes(db: Session) -> list[Agente]:
+    """Agentes no revocados, por nombre."""
+    from sqlalchemy import select
+
+    from app.models import AGENTE_REVOCADO
+
+    return list(db.scalars(select(Agente).where(Agente.estado != AGENTE_REVOCADO)
+                           .order_by(Agente.nombre)).all())
+
+
+def avisar_sin_contacto(db: Session, ahora: datetime | None = None) -> int:
+    """Avisa al equipo de seguridad de cada agente que dejó de latir. Una vez por silencio.
+
+    Un agente callado no rota: las credenciales que dependen de él se quedan sin
+    vía hasta que alguien mire. Sin columna nueva (las migraciones de la 1.x son
+    aditivas y esto no la necesita): el aviso deja un asiento en la bitácora, y
+    se vuelve a avisar solo si el agente latió después de ese asiento y se ha
+    vuelto a callar. Lo llama el mantenimiento periódico, así que el aviso llega
+    con hasta un intervalo de mantenimiento de retraso.
+    """
+    from sqlalchemy import select
+
+    from app.models import AGENTE_ACTIVO, RegistroAuditoria
+
+    if not habilitados():
+        return 0
+    ahora = ahora or ahora_utc()
+    avisados = 0
+    for agente in vigentes(db):
+        estado = cobertura(agente, ahora)
+        if agente.estado != AGENTE_ACTIVO or estado not in COBERTURAS_CALLADAS:
+            continue
+        desde = agente.ultimo_contacto_en or agente.enrolado_en or agente.creado_en
+        ya_avisado = db.scalar(
+            select(RegistroAuditoria.id).where(
+                RegistroAuditoria.accion == audit.AGENTE_SIN_CONTACTO,
+                RegistroAuditoria.objeto_tipo == "agente",
+                RegistroAuditoria.objeto_id == str(agente.id),
+                RegistroAuditoria.fecha >= desde,
+            ).limit(1))
+        if ya_avisado is not None:
+            continue
+        ultimo = agente.ultimo_contacto_en.isoformat(timespec="minutes") if agente.ultimo_contacto_en \
+            else "nunca"
+        que = "su identidad ha caducado" if estado == COBERTURA_CADUCADO else "no da señales"
+        audit.registrar(
+            db, audit.AGENTE_SIN_CONTACTO, username="sistema", objeto_tipo="agente",
+            objeto_id=agente.id, exito=False,
+            detalle=f"{agente.nombre} ({nombre_activo(agente)}): {estado}; último contacto {ultimo}",
+        )
+        notifications.enviar_alerta(
+            f"[passwd] Agente {agente.nombre} sin contacto",
+            f"El agente «{agente.nombre}» de {nombre_activo(agente)} {que}: último contacto "
+            f"{ultimo} (UTC).\n\n"
+            "Mientras siga así, las credenciales de ese activo que se rotan por el agente no "
+            "pueden rotarse. Compruebe el servicio passwd-agente en el servidor; si la identidad "
+            "caducó, reinstálelo desde su ficha.",
+        )
+        avisados += 1
+    return avisados
+
+
 # ---------------------------------------------------------------------------
 # Vía de rotación de una credencial
 # ---------------------------------------------------------------------------

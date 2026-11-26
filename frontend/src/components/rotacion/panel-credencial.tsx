@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { DialogoAutorizar } from "./dialogo-autorizar";
 import { toast } from "sonner";
+import { instante } from "@/lib/fechas";
 
 function Asiento({ a }: { a: RotacionAsiento }) {
   return (
@@ -316,7 +317,7 @@ export function PanelRotacionCredencial({ credencialId }: { credencialId: number
                 <Loader2 className="size-4 animate-spin" />
                 En manos del agente {trabajo.agente}
                 {trabajo.estado === "pendiente"
-                  ? ` · debe recogerla antes de las ${new Date(trabajo.ventana_expira_en).toLocaleTimeString()}`
+                  ? ` · debe recogerla antes de las ${instante(trabajo.ventana_expira_en).toLocaleTimeString()}`
                   : " · recogida, esperando su resultado"}
               </p>
             )}

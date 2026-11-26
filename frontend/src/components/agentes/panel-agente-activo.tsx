@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Bot, Loader2, RefreshCw, ShieldOff } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { CoberturaActivo, TipoActivoAgente, TokenInstalacion } from "@/lib/types";
-import { AYUDA_COBERTURA, haceCuanto } from "@/lib/agentes";
+import { AYUDA_COBERTURA, haceCuanto, instalacionCaducada } from "@/lib/agentes";
+import { fechaHora } from "@/lib/fechas";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -88,6 +89,13 @@ export function PanelAgenteActivo({ tipo, activoId, nombreActivo, cuentas }: {
       <CardContent className="space-y-4">
         {token && <TokenUnaVez datos={token} cuentas={cuentas} onCerrar={() => setToken(null)} />}
 
+        {!token && agente && instalacionCaducada(agente) && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+            El token de instalación caducó sin que el agente llegara a instalarse.
+            {gestiona ? " Emita uno nuevo con «Reinstalar»." : " Un administrador debe emitir uno nuevo."}
+          </p>
+        )}
+
         {agente && (
           <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
             <div><dt className="inline text-muted-foreground">Nombre: </dt><dd className="inline">{agente.nombre}</dd></div>
@@ -102,7 +110,7 @@ export function PanelAgenteActivo({ tipo, activoId, nombreActivo, cuentas }: {
             </div>
             <div><dt className="inline text-muted-foreground">Último latido: </dt><dd className="inline">{haceCuanto(agente.ultimo_contacto_en)}</dd></div>
             {agente.token_expira_en && (
-              <div><dt className="inline text-muted-foreground">Identidad válida hasta: </dt><dd className="inline">{new Date(agente.token_expira_en).toLocaleString()}</dd></div>
+              <div><dt className="inline text-muted-foreground">Identidad válida hasta: </dt><dd className="inline">{fechaHora(agente.token_expira_en)}</dd></div>
             )}
             {agente.clave_huella && (
               <div><dt className="inline text-muted-foreground">Huella de la clave: </dt><dd className="inline font-mono text-xs">{agente.clave_huella.slice(0, 16)}…</dd></div>

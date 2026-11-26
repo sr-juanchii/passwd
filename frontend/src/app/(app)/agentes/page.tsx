@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, Bot } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { ListaAgentes } from "@/lib/types";
-import { haceCuanto, rutaActivo } from "@/lib/agentes";
+import { haceCuanto, instalacionCaducada, rutaActivo } from "@/lib/agentes";
 import { PageHeader } from "@/components/page-header";
 import { CoberturaBadge } from "@/components/agentes/cobertura-badge";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +107,9 @@ export default function AgentesPage() {
                     </TableCell>
                     <TableCell>
                       {a.estado === "revocado" ? <Badge variant="secondary">Revocado</Badge> : <CoberturaBadge cobertura={a.cobertura} />}
+                      {instalacionCaducada(a) && (
+                        <span className="block text-xs text-amber-600">Token de instalación caducado: reinstálelo</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {a.version_agente || "—"}

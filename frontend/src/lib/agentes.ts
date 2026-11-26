@@ -4,7 +4,8 @@
 // caducidad de la identidad): aquí solo se le pone nombre y color, para que una
 // insignia nunca diga algo distinto de lo que dice el backend.
 
-import type { CoberturaAgente, TipoActivoAgente } from "./types";
+import { instante } from "./fechas";
+import type { Agente, CoberturaAgente, TipoActivoAgente } from "./types";
 
 export const ETIQUETA_COBERTURA: Record<CoberturaAgente, string> = {
   sin_agente: "Sin agente",
@@ -44,13 +45,25 @@ export function rutaActivo(tipo: TipoActivoAgente, id: number): string {
 /** «hace 3 min», «hace 2 h», «hace 5 días»: lo que hace falta para leer un latido. */
 export function haceCuanto(valor: string | null, ahora: Date = new Date()): string {
   if (!valor) return "nunca";
-  const segundos = Math.max(0, Math.round((ahora.getTime() - new Date(valor).getTime()) / 1000));
+  const segundos = Math.max(0, Math.round((ahora.getTime() - instante(valor).getTime()) / 1000));
   if (segundos < 60) return "hace un momento";
   const minutos = Math.round(segundos / 60);
   if (minutos < 60) return `hace ${minutos} min`;
   const horas = Math.round(minutos / 60);
   if (horas < 48) return `hace ${horas} h`;
   return `hace ${Math.round(horas / 24)} días`;
+}
+
+/**
+ * Un agente pendiente cuyo token de instalación ya caducó: sigue «pendiente»,
+ * pero así no se puede instalar. Hay que reemitir el token («Reinstalar»).
+ */
+export function instalacionCaducada(
+  agente: Pick<Agente, "estado" | "enrolamiento_expira_en">,
+  ahora: Date = new Date(),
+): boolean {
+  if (agente.estado !== "pendiente" || !agente.enrolamiento_expira_en) return false;
+  return instante(agente.enrolamiento_expira_en).getTime() <= ahora.getTime();
 }
 
 /**

@@ -96,6 +96,11 @@ test("la página de agentes lista el parque con su estado", async () => {
   const fila = page.getByRole("row").filter({ hasText: SERVIDOR });
   await expect(fila).toBeVisible({ timeout: 15_000 });
   await expect(fila.locator('[data-slot="badge"]').filter({ hasText: "Conectado" })).toBeVisible();
+
+  // Y las métricas lo cuentan.
+  await page.goto("/metricas");
+  await expect(page.getByText("Agentes de rotación")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Conectados:")).toBeVisible();
 });
 
 test("revocar devuelve el activo a «sin agente»", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comandoInstalacion, ETIQUETA_COBERTURA, haceCuanto, rutaActivo } from "./agentes";
+import { comandoInstalacion, ETIQUETA_COBERTURA, haceCuanto, instalacionCaducada, rutaActivo } from "./agentes";
 
 describe("agentes", () => {
   it("nombra todas las coberturas", () => {
@@ -21,6 +21,18 @@ describe("agentes", () => {
     expect(haceCuanto("2026-11-26T09:45:00Z", ahora)).toBe("hace 15 min");
     expect(haceCuanto("2026-11-26T07:00:00Z", ahora)).toBe("hace 3 h");
     expect(haceCuanto("2026-11-20T10:00:00Z", ahora)).toBe("hace 6 días");
+  });
+
+  it("lee la hora del servidor como UTC aunque llegue sin zona", () => {
+    const ahora = new Date("2026-11-26T10:00:00Z");
+    expect(haceCuanto("2026-11-26T05:00:00", ahora)).toBe("hace 5 h");
+  });
+
+  it("distingue el pendiente que aún se puede instalar del que caducó", () => {
+    const ahora = new Date("2026-11-26T10:00:00Z");
+    expect(instalacionCaducada({ estado: "pendiente", enrolamiento_expira_en: "2026-11-26T10:30:00" }, ahora)).toBe(false);
+    expect(instalacionCaducada({ estado: "pendiente", enrolamiento_expira_en: "2026-11-26T09:59:00" }, ahora)).toBe(true);
+    expect(instalacionCaducada({ estado: "activo", enrolamiento_expira_en: "2026-11-26T09:59:00" }, ahora)).toBe(false);
   });
 
   it("la orden de instalación nunca lleva el token", () => {

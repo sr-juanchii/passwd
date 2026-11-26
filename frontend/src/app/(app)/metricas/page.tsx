@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
+  Bot,
   Clock,
   KeyRound,
   Lock,
@@ -14,6 +15,8 @@ import {
 import { api, ApiError } from "@/lib/api";
 import type { Metricas } from "@/lib/types";
 import { rutaActivo } from "@/lib/constants";
+import { haceCuanto, rutaActivo as rutaActivoAgente } from "@/lib/agentes";
+import { CoberturaBadge } from "@/components/agentes/cobertura-badge";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -264,6 +267,57 @@ export default function MetricasPage() {
               </div>
             )}
           </CardPanel>
+
+          {datos.agentes && (
+            <CardPanel
+              icono={Bot}
+              titulo="Agentes de rotación"
+              className="lg:col-span-2"
+              accion={
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/agentes">Ver todos</Link>
+                </Button>
+              }
+            >
+              <div className="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                <span>Conectados: <strong className="tabular-nums">{datos.agentes.por_cobertura.conectado}</strong></span>
+                <span>Sin contacto: <strong className="tabular-nums">{datos.agentes.por_cobertura.sin_contacto}</strong></span>
+                <span>Identidad caducada: <strong className="tabular-nums">{datos.agentes.por_cobertura.caducado}</strong></span>
+                <span>Pendientes de instalar: <strong className="tabular-nums">{datos.agentes.por_cobertura.pendiente}</strong></span>
+                <span className={datos.agentes.sin_confirmar > 0 ? "text-destructive" : ""}>
+                  Rotaciones sin confirmar: <strong className="tabular-nums">{datos.agentes.sin_confirmar}</strong>
+                </span>
+              </div>
+              {datos.agentes.atencion.length === 0 ? (
+                vacio("Todos los agentes instalados laten con normalidad.")
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Agente</TableHead>
+                      <TableHead>Activo</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Último latido</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {datos.agentes.atencion.map((a) => (
+                      <TableRow key={a.id}>
+                        <TableCell><Mono className="font-medium">{a.nombre}</Mono></TableCell>
+                        <TableCell>
+                          <Link href={rutaActivoAgente(a.tipo_activo, a.activo_id)} className="hover:underline">
+                            <Mono>{a.activo}</Mono>
+                          </Link>
+                        </TableCell>
+                        <TableCell><CoberturaBadge cobertura={a.cobertura} /></TableCell>
+                        <TableCell className="text-muted-foreground">{haceCuanto(a.ultimo_contacto_en)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardPanel>
+          )}
 
           <CardPanel icono={Clock} titulo="Concesiones por caducar" className="lg:col-span-2">
             {datos.concesiones_por_caducar.length === 0 ? (
