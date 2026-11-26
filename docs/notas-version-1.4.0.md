@@ -140,7 +140,7 @@ contraseña quedó en el servidor.
 
 ## 4. Verificación de la versión
 
-Estado en la rama de la versión, antes del pre-release; se completa al publicar.
+Estado del pre-release `v1.4.0-rc.1`; se completa al publicar la versión final.
 
 | Comprobación | Resultado |
 |---|---|
@@ -152,6 +152,7 @@ Estado en la rama de la versión, antes del pre-release; se completa al publicar
 | Frontend: tipos, compilación y pruebas unitarias | correctos (31 pruebas, también en las zonas de Caracas y Tokio) |
 | Frontend: linter | sin errores; 18 avisos de un tipo que ya existía |
 | Recorrido en navegador (backend + frontend + SMTP simulado) | 34 de 34, también con el navegador en hora de Caracas |
+| Versión en caliente (`GET /healthz`) | `1.4.0-rc.1` |
 
 Garantías quitadas a mano para comprobar que sus pruebas fallan: lista de cuentas del helper,
 comprobación de la contraseña actual antes de aplicar, UID de quien llama, cuenta inexistente,
