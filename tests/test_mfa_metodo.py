@@ -14,6 +14,8 @@ Cubre la API JSON (lo que usa el frontend):
 
 from __future__ import annotations
 
+import datetime
+
 import pyotp
 from sqlalchemy import select
 
@@ -255,19 +257,30 @@ def test_fallos_en_el_alta_cuentan_para_el_bloqueo(client, crear_cliente):
 
 def test_totp_de_un_paso_anterior_al_usado_se_rechaza(client, crear_cliente):
     """Tras aceptar el código del paso t+1, el del paso t (aún dentro de la
-    ventana de tolerancia) ya no vale."""
+    ventana de tolerancia) ya no vale.
+
+    Todos los códigos se calculan desde UN instante fijado al empezar. Si cada
+    uno tomara la hora al pedirlo, un límite de 30 s entre el primer cliente y
+    el segundo convertiría el «+30 s» del segundo en el paso siguiente, nuevo y
+    válido: la prueba fallaría sin que el servidor hiciera nada mal.
+    """
     secreto = autenticar_admin(client)  # el alta consumió el paso t
+    momento = datetime.datetime.now()
+    totp = pyotp.TOTP(secreto)
+
+    def codigo(desplazamiento: int) -> str:
+        return totp.at(momento + datetime.timedelta(seconds=desplazamiento))
 
     uno = crear_cliente()
     _login(uno, "admin", ADMIN_PASS)
-    r = uno.post("/api/web/mfa/verificar", headers=_csrf(uno), json={"codigo": codigo_totp(secreto, 30)})
+    r = uno.post("/api/web/mfa/verificar", headers=_csrf(uno), json={"codigo": codigo(30)})
     assert r.status_code == 200  # paso t+1
 
     dos = crear_cliente()
     _login(dos, "admin", ADMIN_PASS)
     for desplazamiento in (0, -30, 30):  # pasos t, t-1 y el propio t+1
         r = dos.post("/api/web/mfa/verificar", headers=_csrf(dos),
-                     json={"codigo": codigo_totp(secreto, desplazamiento)})
+                     json={"codigo": codigo(desplazamiento)})
         assert r.status_code == 401, f"Se aceptó un TOTP ya superado (desplazamiento {desplazamiento})"
 
 
