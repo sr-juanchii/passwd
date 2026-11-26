@@ -137,6 +137,8 @@ control por objeto en [`app/access.py`](../app/access.py).
 | Ver métricas y bitácora de auditoría | ✔ | ✘ | ✔ | ✘ |
 | Gestionar tokens de API | ✔ | ✘ | ✘ | ✘ |
 | Cambiar la configuración en caliente | ✔ | ✘ | ✘ | ✘ |
+| Ver los agentes de rotación y su cobertura (1.4.0) | ✔ | ✔ † | ✔ | ✘ |
+| Dar de alta, reinstalar y revocar agentes; elegir la vía de rotación (1.4.0) | ✔ | ✘ | ✘ | ✘ |
 
 † Los activos marcados como **restringidos** quedan fuera del alcance del operador, que los trata
 como inexistentes (error 404) en toda operación. El auditor sí los ve —su función es supervisar el
@@ -515,6 +517,17 @@ adelantó 88 días sin explicación.
 > **Antes de rotar, mire «usada por».** El fallo más frecuente de una rotación no es técnico: es
 > dejar sin servicio a un automatismo que usaba esa cuenta, o bloquearla por intentos fallidos.
 
+#### Rotación ejecutada por un agente (desde la 1.4.0)
+
+Si la credencial se rota **con el agente** de su activo, el paso 3 lo hace el agente: autorizada la
+solicitud, recibe un trabajo cifrado, cambia la contraseña en el servidor, comprueba que la nueva
+autentica y confirma; solo entonces el inventario la guarda. Si la nueva no funciona, el agente
+**restaura la anterior** («revertida») y el inventario no cambia. Los pasos 1 y 2 son los mismos:
+el agente nunca aplica nada que no hayan autorizado dos personas. El procedimiento completo
+—alta del agente, elección de la vía, «Enviar al agente» y resolución de una rotación «sin
+confirmar»— está en [`manual-administrador.md`](manual-administrador.md) §4 ter, y la instalación
+en [`guia-instalacion-agente-linux.md`](guia-instalacion-agente-linux.md).
+
 #### Vía de emergencia
 
 Ante un incidente puede no haber un segundo administrador. Una solicitud de tipo **emergencia** la
@@ -760,6 +773,8 @@ Sección **Métricas** (roles `admin` y `auditor`). Es el panel de apoyo a la re
 | Usuarios bloqueados | Cuentas bloqueadas por intentos fallidos | Contactar al usuario; verificar si es un ataque |
 | Top accesos a credenciales | Quién consulta más contraseñas | Comparar con la operación esperada de cada persona |
 | Concesiones por caducar | Accesos temporales próximos a expirar | Renovar de forma consciente o dejar caducar |
+| Agentes de rotación (1.4.0, solo con los agentes activos) | Conectados, sin contacto, con identidad caducada y pendientes de instalar; lista de los que piden atención | Un agente callado no rota: sección 21.8 |
+| Rotaciones sin confirmar (1.4.0) | Trabajos que un agente recogió y no confirmó | Comprobar el servidor y resolverlas (sección 21.8); hasta entonces la credencial no admite otra rotación |
 
 **Cadencia recomendada:** revisión semanal por el operador y revisión mensual documentada por el
 auditor.
@@ -796,6 +811,26 @@ Los filtros por **usuario** y por **acción** acotan la consulta:
 | Vault personal | `vault_entrada_creada`, `vault_entrada_actualizada`, `vault_entrada_eliminada`, `vault_entrada_revelada`, `vault_entrada_copiada` |
 | Integración y datos | `token_api_creado`, `token_api_revocado`, `auditoria_exportada`, `importacion_realizada`, `inventario_exportado`, `respaldo_creado`, `respaldo_restaurado` |
 | Configuración | `configuracion_cambiada`, `configuracion_restablecida`, `correo_prueba_enviado` |
+| Agentes de rotación (1.4.0) | `agente_alta`, `agente_enrolamiento_emitido`, `agente_enrolado`, `agente_enrolamiento_rechazado`, `agente_token_renovado`, `agente_anomalia_ip`, `agente_revocado`, `agente_acceso_rechazado`, `agente_sin_contacto` |
+| Trabajos de rotación por agente (1.4.0) | `credencial_via_rotacion_cambiada`, `rotacion_despachada`, `rotacion_no_despachada`, `rotacion_anti_thrash_saltado`, `trabajo_rotacion_entregado`, `trabajo_rotacion_resultado`, `trabajo_rotacion_resultado_rechazado`, `trabajo_rotacion_expirado`, `trabajo_rotacion_sin_confirmar`, `trabajo_rotacion_resuelto_a_mano`, `trabajo_rotacion_cancelado` |
+
+**Qué mirar con agentes de rotación.** Lo que hace un agente figura con el usuario
+`agente:<nombre>` (o `agente:desconocido` si no se identificó), nunca con una persona; lo que hace el
+mantenimiento periódico, con `sistema`. El latido rutinario y la consulta sin trabajo **no** dejan
+asiento (quedan como «último contacto» del agente): se audita cada cambio de estado y **cada
+rechazo**.
+
+| Acción | Por qué importa | Qué hacer |
+|---|---|---|
+| `agente_anomalia_ip` | El agente renovó su identidad desde una IP distinta de la renovación anterior: puede ser un token copiado de ese servidor. Se registra aunque el aviso por correo esté apagado | Si no hay un cambio de red que lo explique, revocar el agente y reinstalarlo (21.8) |
+| `agente_acceso_rechazado` | Petición a `/api/agent` sin identidad válida, revocada o caducada, fuera de límite de tasa (429) o con un cuerpo excesivo (413). Un 429 repetido se registra una vez por ventana y dirección | Ráfagas desde una IP ajena a sus servidores: barrido de tokens. Un agente legítimo que insiste con 401: identidad caducada, reinstalarlo |
+| `agente_enrolamiento_rechazado` | Token de instalación inexistente, ya usado o caducado | Fuera de una instalación en curso, alguien está probando tokens |
+| `trabajo_rotacion_resultado_rechazado` | Un agente informó el resultado de un trabajo ajeno o repetido (anti-replay) | No ocurre en operación normal: investigar el agente |
+| `rotacion_no_despachada` | Una rotación autorizada no salió hacia el agente; el detalle dice por qué | Corregir la causa y «Enviar al agente», o registrarla a mano |
+| `rotacion_anti_thrash_saltado` | Una emergencia rotó por agente una credencial rotada hace menos del intervalo mínimo | Revisar junto con la emergencia |
+| `trabajo_rotacion_sin_confirmar` | El agente recogió la rotación y no informó del resultado | Resolverla (21.8) |
+| `trabajo_rotacion_resultado` con resultado `revertido` o `fallado` | El agente no pudo dejar la contraseña nueva; la registrada no cambió | Revisar el detalle del agente y abrir otra solicitud |
+| `agente_sin_contacto` | Aviso enviado: el agente dejó de latir o su identidad caducó | Comprobar el servicio en el servidor (21.8) |
 
 **Exportar CSV** descarga la consulta filtrada (la exportación misma queda auditada, y el archivo se
 genera con mitigación de inyección de fórmulas para abrirlo con seguridad en una hoja de cálculo).
@@ -912,6 +947,23 @@ Cada campo indica su procedencia: **por defecto** (valor de fábrica), **por ent
 | Avisos dinámicos a usuarios | activado | **activado** | |
 | Aviso previo de rotación (días) | 14 | **14** | |
 
+**Agentes de rotación** (desde la 1.4.0; grupo «Agentes de rotación»)
+
+| Ajuste | Por defecto | Recomendado | Notas |
+|---|---|---|---|
+| Agentes de rotación activos | desactivado | **activado** solo cuando vaya a instalar agentes | Apagado, la API del agente no existe (404) y toda rotación es manual |
+| Validez de un trabajo despachado (min) | 15 | **15** | Pasado el plazo sin recogerse, la rotación vuelve a quedar autorizada |
+| Intervalo mínimo entre rotaciones por agente (h) | 24 | **24** | Corta un bucle de rotaciones; solo una emergencia lo salta, y queda registrado |
+| Vida de la identidad de un agente (h) | 24 | **24** | Un agente apagado más tiempo debe reinstalarse con un token nuevo |
+| Umbral de «sin contacto» (h) | 1 | **1** (más si sus servidores se apagan a menudo) | Dispara el aviso de agente sin contacto; debe ser menor que la vida de la identidad |
+| Cadencia del latido (min) | 15 | **15** | |
+| Conservación de la telemetría (días) | 30 | **30** | Purga automática en el mantenimiento periódico |
+| Versión mínima del agente | vacío | La de la versión instalada, **fijada en esta pantalla** | Fijada aquí cuenta la gracia; fijada solo por entorno rige sin gracia |
+| Gracia para actualizar agentes (días) | 14 | **14** | |
+| Avisar de renovaciones desde IP distinta | activado | **activado** (desactivar solo tras NAT con varias salidas) | El asiento `agente_anomalia_ip` se registra igualmente |
+
+Detalle de cada ajuste en [`referencia-configuracion.md`](referencia-configuracion.md).
+
 **Ejemplo de configuración de correo guardada** (los campos marcados «configurado aquí» tienen un
 override en caliente; la contraseña SMTP se guarda cifrada y nunca se muestra):
 
@@ -953,6 +1005,22 @@ anteriores, ni pistas sobre ellos.
 | Contraseña de un activo compartido actualizada | Resto de usuarios con acceso a ese activo |
 | Rotación obligatoria próxima | Usuarios con acceso a la credencial (los que pueden rotarla) |
 | Acceso completado con OTP por correo | Equipo de seguridad (merece revisión) |
+| Rotación **revertida** o **fallada** por un agente (la contraseña registrada no cambió) (1.4.0) | Equipo de seguridad |
+| Rotación **sin confirmar**: el agente la recogió y no informó del resultado (1.4.0) | Equipo de seguridad |
+| Agente que **renueva su identidad desde otra IP** dentro de la misma vida del token (1.4.0; desactivable con `PASSWD_AGENTES_ALERTAR_IP_DISTINTA=false`) | Equipo de seguridad |
+| **Agente sin contacto** o con la identidad caducada (1.4.0) | Equipo de seguridad |
+
+**Avisos de los agentes (1.4.0).** Van a la lista de `Destinatarios`, como el resto de alertas al
+equipo de seguridad, y tampoco llevan secretos. Dos detalles de cuándo llegan:
+
+- **Agente sin contacto.** Lo detecta el **mantenimiento periódico**, que corre al arrancar y
+  después **cada 6 horas**: el aviso puede llegar hasta 6 horas después de cruzar el umbral. Se
+  envía **una vez por silencio**: no se repite mientras el agente siga callado, y vuelve a avisarse
+  solo si late de nuevo y se vuelve a callar. Los agentes pendientes de instalar o revocados no
+  avisan.
+- **Rotación sin confirmar.** Se marca pasada la ventana del trabajo más 15 minutos, en cuanto
+  alguien consulta el panel de Rotación, la rotación de una credencial, la lista de agentes o las
+  Métricas, o en el siguiente mantenimiento periódico, lo que ocurra antes.
 
 **Cómo se eligen los destinatarios.** Los avisos dirigidos a usuarios **no** usan una lista fija: se
 resuelven en tiempo de ejecución contra la **matriz de permisos**, reutilizando las mismas funciones
@@ -1137,6 +1205,13 @@ recientes y avisa por correo si falla. Complételo con:
 | Trimestral | Prueba de restauración en un entorno aislado |
 | Semestral | Revisión de usuarios, roles y concesiones vigentes |
 
+Además, la propia aplicación ejecuta un **mantenimiento periódico** al arrancar y después **cada 6
+horas**, sin cron: aplica la retención de la bitácora, purga las sesiones y códigos vencidos y,
+desde la 1.4.0, **cierra los trabajos de agente vencidos** (los no recogidos vuelven a quedar
+autorizados; los recogidos sin resultado pasan a «sin confirmar»), **purga la telemetría** de los
+agentes más antigua que su retención (30 días por defecto) y **avisa de los agentes sin contacto**.
+No requiere acción; basta con que el servicio esté en marcha.
+
 ### 20.8 Comprobación posterior al despliegue
 
 ```bash
@@ -1190,6 +1265,21 @@ docker compose exec app python -m app.cli restaurar --entrada /ruta/copia.passwd
 
 Documente en cada prueba: fecha, archivo utilizado, resultado, tiempo de restauración y responsable.
 
+**Qué hace el respaldo con los agentes (desde la 1.4.0)** ([`app/backup.py`](../app/backup.py)):
+
+| Dato | En el respaldo | Al restaurar |
+|---|---|---|
+| Agentes | **Sí, solo como historia**: nombre, activo, host, versión, huella de la clave y fechas. Nunca sus tokens, su token de instalación ni su clave pública | Vuelven **revocados**, también los que estaban activos: una identidad de máquina restaurada sería un acceso que nadie ha vuelto a conceder |
+| Credenciales con vía «agente» | Sí | Vuelven a la vía **manual** hasta que se enrole un agente nuevo |
+| Libro mayor | Sí, con el agente que ejecutó cada rotación | Una rotación que estaba **en ejecución** (despachada) vuelve a **autorizada**, con una nota que pide comprobar el activo y registrar la rotación a mano |
+| Trabajos de rotación | **Nunca** | — (un restore no resucita un trabajo con secretos y ventana vencida) |
+| Telemetría | **Nunca** | — |
+
+El resumen de la restauración indica cuántos agentes se repusieron revocados
+(`agentes_repuestos_revocados`) y cuántas rotaciones despachadas se reabrieron
+(`rotaciones_despachadas_reabiertas`). Tras restaurar en producción, dé de alta y reinstale los
+agentes que necesite, y resuelva las rotaciones reabiertas.
+
 ### 21.5 Respuesta a un posible incidente de exfiltración
 
 Disparadores: alerta de correo «posible exfiltración», acción `revelado_tasa_excedido` en la
@@ -1219,6 +1309,37 @@ bitácora, o un pico anómalo en **Top accesos a credenciales**.
    funcional (`python scripts/verificar_api_web.py`).
 4. Actualice producción en ventana acordada; el esquema se reconcilia al arrancar.
 5. Verifique con la lista de comprobación de la sección 20.8 y revise la bitácora del arranque.
+
+### 21.8 Agentes de rotación: sin contacto, sin confirmar o identidad sospechosa (1.4.0)
+
+**Agente sin contacto o con la identidad caducada** (aviso por correo, `agente_sin_contacto`,
+insignia «Sin contacto» o «Identidad caducada»):
+
+1. En el servidor, compruebe el servicio: `systemctl status passwd-agente` y
+   `journalctl -u passwd-agente`. Lo habitual es un servidor apagado, sin red hacia el backend o
+   con el servicio detenido.
+2. Si vuelve a latir, la insignia pasa sola a «Conectado»; no hay nada que cerrar.
+3. Si estuvo apagado más de lo que dura su identidad (24 h por defecto), la insignia sigue en
+   «Identidad caducada»: un administrador pulsa **«Reinstalar»** en la ficha del activo y se
+   reinstala con el token nuevo ([`guia-instalacion-agente-linux.md`](guia-instalacion-agente-linux.md)).
+4. Mientras tanto, las rotaciones de ese activo pueden hacerse a mano: autorizada la solicitud,
+   **«Registrar la rotación»** sigue disponible.
+
+**Rotación sin confirmar** (aviso por correo, `trabajo_rotacion_sin_confirmar`, Rotación →
+«Rotaciones sin confirmar»):
+
+1. Compruebe en el servidor qué contraseña acepta ahora la cuenta.
+2. Un administrador abre la credencial y pulsa **«Sí, quedó la nueva»** o **«No, sigue la
+   anterior»**, con reautenticación ([`manual-administrador.md`](manual-administrador.md) §4 ter.4).
+3. Hasta hacerlo, esa credencial **no admite otra rotación**: no lo deje para la revisión semanal.
+
+**Renovación desde otra IP** (aviso por correo, `agente_anomalia_ip`):
+
+1. Compare la IP del aviso con las del servidor. Un cambio de red, una IP flotante o un NAT con
+   varias salidas lo explican.
+2. Si no lo explica nada, trátelo como un token copiado: **revoque** el agente (efecto inmediato),
+   revise el servidor y, cuando esté limpio, dé de alta un agente nuevo e instálelo.
+3. Filtre la bitácora por `agente:<nombre>` para ver qué hizo esa identidad.
 
 ---
 
@@ -1353,6 +1474,12 @@ Antes de firmar la puesta en producción, compruebe punto por punto:
 | Auditoría y export CSV | `/auditoria` | auditor |
 | Tokens de API | `/tokens` | admin |
 | Configuración en caliente | `/configuracion` | admin |
+| Ver agentes de rotación y su cobertura (1.4.0) | `/agentes`, ficha del activo | operador o auditor |
+| Dar de alta, reinstalar o revocar un agente (1.4.0) | Ficha del servidor, hipervisor o VM | admin |
+| Elegir «Rotar con el agente» / «Rotar a mano» (1.4.0) | Rotación de la credencial | admin |
+| «Enviar al agente» una rotación autorizada (1.4.0) | Rotación de la credencial | operador |
+| Resolver una rotación «sin confirmar» (1.4.0) | Rotación de la credencial | admin |
+| API de los agentes (1.4.0) | `/api/agent/*` | identidad del agente |
 | API REST de integración | `/api/v1/*` | token con alcance |
 | Respaldo, restauración, recifrado, verificación | CLI | administrador del servidor |
 
@@ -1366,6 +1493,9 @@ Antes de firmar la puesta en producción, compruebe punto por punto:
 | [`referencia-configuracion.md`](referencia-configuracion.md) | Todas las variables `PASSWD_*` |
 | [`referencia-cli.md`](referencia-cli.md) | Comandos de la CLI |
 | [`referencia-api-rest.md`](referencia-api-rest.md) | API REST `/api/v1` |
+| [`referencia-api-agent.md`](referencia-api-agent.md) | API de los agentes `/api/agent` (1.4.0) |
+| [`arquitectura-agentes.md`](arquitectura-agentes.md) · [`contrato-agente.md`](contrato-agente.md) | Cómo funciona el agente de rotación y qué tiene prohibido (1.4.0) |
+| [`guia-instalacion-agente-linux.md`](guia-instalacion-agente-linux.md) | Instalación del agente en un servidor Linux (1.4.0) |
 | [`guia-implementacion.md`](guia-implementacion.md) | Instalación, UAT y paso a producción |
 | [`guia-nginx-tls.md`](guia-nginx-tls.md) | HTTPS, certificados y rotación |
 | [`ambientes.md`](ambientes.md) | Plantillas por ambiente y TLS sin dominio |

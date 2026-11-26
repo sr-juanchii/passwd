@@ -8,6 +8,9 @@ lea primero [`arquitectura.md`](arquitectura.md).
 
 - **Python 3.11+** (el backend).
 - **Node.js ≥ 20** y **pnpm** (solo si trabaja en el frontend Next.js).
+- **Go** (solo si trabaja en el agente de rotación, `agente/`): la versión la fija
+  [`agente/go.mod`](../agente/go.mod) (`toolchain go1.27.4`). El *helper* root enlaza PAM, así que
+  hacen falta sus cabeceras (`libpam0g-dev` en Debian/Ubuntu).
 - Opcional: **Docker** y Docker Compose v2 para levantar el stack completo.
 
 ## 2. Backend: entorno local
@@ -70,6 +73,52 @@ Ejercita de extremo a extremo la API `/api/web` (auth+MFA, inventario, credencia
 historial, notas, acceso por objeto, usuarios, tokens, auditoría con export CSV, métricas, búsqueda,
 importación CSV y cascadas).
 
+### Agente de rotación (Go)
+
+Desde `agente/`:
+
+```bash
+gofmt -l .                                   # debe salir vacío
+go vet ./... && go vet -tags integracion ./...
+go test -race ./...                          # unitarias, con detector de carreras
+```
+
+Las unitarias incluyen la interoperabilidad con el backend: `internal/sobre` abre el mismo vector
+(`tests/vectores/cifrado_agente.json`) que abre Python en `tests/test_servicio_agentes.py`. Si
+cambia el sellado de un lado, las dos suites deben seguir pasando.
+
+**Integración con cuentas Linux reales.** Crean cuentas con `useradd`, cambian contraseñas con
+`chpasswd` y verifican con PAM, así que **solo en una máquina desechable** y como root. Llevan la
+etiqueta de compilación `integracion` y necesitan el *helper* compilado:
+
+```bash
+go build -o /tmp/passwd-agente-helper ./cmd/passwd-agente-helper
+sudo PASSWD_INTEGRACION=1 PASSWD_HELPER_BIN=/tmp/passwd-agente-helper \
+  "$(command -v go)" test -count=1 -tags integracion -run Integracion -v ./internal/ejecutor/
+```
+
+Con `PASSWD_INTEGRACION=1`, la falta de un requisito (root, PAM, el *helper*) es un **fallo**, no
+una prueba omitida: así no puede pasar en verde sin haberse ejecutado.
+
+**Vulnerabilidades** (dependencias y biblioteca estándar). Fije la *toolchain* de `go.mod` para
+que el análisis corresponda a la versión con la que se publica, aunque tenga otra instalada:
+
+```bash
+GOTOOLCHAIN=go1.27.4 go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+```
+
+**Agente instalado con systemd.** [`scripts/prueba_agente_sistema.py`](../scripts/prueba_agente_sistema.py)
+tiene dos fases que comparten la base de datos con el backend (`PASSWD_DATA_DIR`): `preparar` da
+de alta el inventario y el agente y deja el token de instalación en un archivo; entre las dos se
+instala con `sudo agente/instalacion/instalar.sh … --token - < <archivo>`; y `rotar` autoriza una
+rotación con dos administradores y comprueba que la cuenta Linux real autentica con la contraseña
+que quedó en el inventario. Instalar modifica el sistema (usuario de servicio, unidades systemd):
+hágalo solo en una máquina desechable, siguiendo los pasos del job `agente-sistema` de la CI.
+
+La trazabilidad completa de los criterios de aceptación de la 1.4.0 (qué prueba cubre cada uno,
+en Python o en Go) está en la cabecera de
+[`tests/test_aceptacion_agentes.py`](../tests/test_aceptacion_agentes.py).
+
 ### Pruebas de navegador (Playwright)
 
 Ejercitan el sistema entero con un navegador de verdad: backend, frontend **compilado para
@@ -114,7 +163,7 @@ Lo que conviene saber antes de añadir una prueba:
 ## 5. Integración continua
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) ejecuta, en cada **push** y **pull
-request**, cinco jobs:
+request**, siete jobs:
 
 1. **calidad-y-pruebas** (backend): `ruff` → `bandit` → `pip-audit` → `pytest` con **cobertura**
    (umbral 70 %) sobre Python 3.12.
@@ -123,21 +172,33 @@ request**, cinco jobs:
 3. **frontend**: `eslint` → `tsc --noEmit` → **`vitest`** → `next build` → `pnpm audit`.
 4. **navegador**: Playwright contra backend + frontend + SMTP simulado. Si falla, sube el informe
    y las trazas como artefacto.
-5. **cadena-de-suministro**: escaneo de secretos (**gitleaks**) y de vulnerabilidades/config
+5. **agente** (1.4.0): en `agente/`, `gofmt` → `go vet` (también con la etiqueta `integracion`) →
+   `go test -race` → integración como root con cuentas Linux reales (`PASSWD_INTEGRACION=1`) →
+   **govulncheck** → compilación del agente para linux/amd64 y linux/arm64 y del *helper* para
+   linux/amd64, con la versión del backend.
+6. **agente-sistema** (1.4.0): compila los binarios y su `SHA256SUMS`, arranca el backend con
+   `PASSWD_AGENTES_ENABLED=true`, crea una cuenta Linux real, instala el agente con `instalar.sh`
+   (unidades systemd endurecidas, comprobadas con `systemd-analyze security`) y ejecuta una
+   rotación autorizada con `scripts/prueba_agente_sistema.py`. Es lo único que prueba que el
+   endurecimiento de las unidades deja hacer el trabajo.
+7. **cadena-de-suministro**: escaneo de secretos (**gitleaks**) y de vulnerabilidades/config
    (**Trivy**, sistema de archivos).
 
 Antes de abrir un PR, ejecute localmente los comandos de la §4 y, en `frontend/`, `pnpm lint`,
-`pnpm typecheck`, `pnpm test`, `pnpm build` y `pnpm test:e2e`.
+`pnpm typecheck`, `pnpm test`, `pnpm build` y `pnpm test:e2e`. Si toca `agente/`, además
+`gofmt`, `go vet` y `go test -race ./...`.
 
 ## 6. Estructura del repositorio
 
 ```
 app/            # backend FastAPI (ver arquitectura.md §3)
 frontend/       # frontend Next.js (App Router, React 19, shadcn/ui)
+agente/         # agente de rotación en Go (1.4.0): cmd/ (agente y helper), internal/, instalacion/
 tests/          # suite pytest (+ conftest.py y rutas.py, enumeración del registro de rutas)
 frontend/e2e/   # pruebas de navegador (Playwright) y sus ayudantes
 scripts/        # verificar_api_web.py (verificación funcional de /api/web),
-                # buzon_pruebas.py (receptor SMTP del banco de pruebas)
+                # buzon_pruebas.py (receptor SMTP del banco de pruebas),
+                # prueba_agente_sistema.py (agente instalado con systemd, 1.4.0)
 infrastructure/ # nginx (plantillas TLS) y scripts de certificados
 docs/           # esta documentación
 .github/        # workflow de CI

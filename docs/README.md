@@ -12,6 +12,8 @@ corresponda a su rol.
 | [`arquitectura.md`](arquitectura.md) | **Cómo está construido y de qué se compone**: componentes, capas, modelo de seguridad y flujos. |
 | [`modelo-datos.md`](modelo-datos.md) | Esquema relacional (entidades, relaciones, reglas de integridad). |
 | [`control-acceso.md`](control-acceso.md) | Roles (RBAC) y control de acceso por objeto (concesiones a analistas). |
+| [`arquitectura-agentes.md`](arquitectura-agentes.md) | **Agentes de rotación** (desde la 1.4.0): piezas, identidad de vida corta, despacho cifrado, helper root y por qué cada decisión. |
+| [`contrato-agente.md`](contrato-agente.md) | **Contrato normativo del agente**: qué puede hacer, qué tiene prohibido y cómo se prueba cada prohibición. |
 | [`glosario-faq.md`](glosario-faq.md) | Glosario de términos y preguntas frecuentes. |
 
 ## 👤 Manuales de uso
@@ -29,6 +31,7 @@ corresponda a su rol.
 | [`guia-implementacion.md`](guia-implementacion.md) | Instalación, plan de pruebas (UAT), paso a producción y operación continua. |
 | [`guia-nginx-tls.md`](guia-nginx-tls.md) | HTTPS con nginx, certificados y rotación sin caída. |
 | [`ambientes.md`](ambientes.md) | Plantillas por ambiente (dev/QA/preprod/prod) y TLS sin dominio (por IP). |
+| [`guia-instalacion-agente-linux.md`](guia-instalacion-agente-linux.md) | Instalación del **agente Linux** con `instalar.sh` (systemd endurecido), verificación, reinstalación y retirada. |
 
 ## 📚 Referencias técnicas
 
@@ -37,6 +40,7 @@ corresponda a su rol.
 | [`referencia-configuracion.md`](referencia-configuracion.md) | Todas las variables de entorno `PASSWD_*` con sus valores por defecto. |
 | [`referencia-cli.md`](referencia-cli.md) | Comandos de la CLI (`init-db`, `crear-admin`, `respaldo`, `restaurar`). |
 | [`referencia-api-rest.md`](referencia-api-rest.md) | API REST de solo lectura (`/api/v1`) para SIEM/automatización. |
+| [`referencia-api-agent.md`](referencia-api-agent.md) | API de los agentes de rotación (`/api/agent`): enrolamiento, latido, trabajos, resultado y telemetría. |
 | [`../frontend/API_CONTRACT.md`](../frontend/API_CONTRACT.md) | Contrato de la API JSON del frontend (`/api/web`). |
 | [`guia-desarrollo.md`](guia-desarrollo.md) | Entorno de desarrollo, pruebas, CI y convenciones. |
 
@@ -56,6 +60,7 @@ corresponda a su rol.
 
 | Documento | Para qué |
 |---|---|
+| [`notas-version-1.4.0.md`](notas-version-1.4.0.md) | **Notas de la versión 1.4.0**: agente de rotación para Linux, protocolo `/api/agent`, panel de agentes, pasos de actualización desde la 1.3.0, verificación y limitaciones conocidas. |
 | [`notas-version-1.3.0.md`](notas-version-1.3.0.md) | **Notas de la versión 1.3.0**: gobernanza de rotación, bitácora firmada, pasos de actualización desde la 1.2.0, verificación y limitaciones conocidas. |
 | [`notas-version-1.2.0.md`](notas-version-1.2.0.md) | **Notas de la versión 1.2.0**: catálogo de cambios, pasos de actualización desde la 1.1.0, verificación y limitaciones conocidas. |
 | [`plan-v2.0.md`](plan-v2.0.md) | **Plan de la versión 2.0** (propuesta): objetivos, qué rompe, alcance por bloques, orden, riesgos y decisiones pendientes. |
@@ -75,4 +80,5 @@ corresponda a su rol.
 - **Necesito integrarlo con un SIEM** → [`referencia-api-rest.md`](referencia-api-rest.md).
 - **Me piden la evidencia de cumplimiento** → [`verificacion-cumplimiento.md`](verificacion-cumplimiento.md).
 - **Quiero saber cómo se rotarán las contraseñas y con qué controles** → [`plan-rotacion-agentes.md`](plan-rotacion-agentes.md).
+- **Voy a instalar un agente de rotación en un servidor Linux** → [`guia-instalacion-agente-linux.md`](guia-instalacion-agente-linux.md) + [`manual-administrador.md`](manual-administrador.md) §4 ter.
 </content>

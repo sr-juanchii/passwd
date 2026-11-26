@@ -4,9 +4,17 @@ API **de solo lectura** autenticada por **token Bearer**, pensada para **SIEM y 
 (ingerir la bitácora, consultar el inventario de forma programática). Está implementada en
 [`app/routes/api.py`](../app/routes/api.py) y es independiente de la interfaz web.
 
-> **No hay otra API REST de escritura.** El frontend Next.js usa una API JSON distinta (`/api/web`),
-> basada en sesión por cookie y CSRF, documentada en
-> [`../frontend/API_CONTRACT.md`](../frontend/API_CONTRACT.md).
+> **No hay otra API REST de escritura para integraciones.** El frontend Next.js usa una API JSON
+> distinta (`/api/web`), basada en sesión por cookie y CSRF, documentada en
+> [`../frontend/API_CONTRACT.md`](../frontend/API_CONTRACT.md). Los agentes de rotación (desde la
+> 1.4.0) tienen **su propia API**, `/api/agent`, que solo admite la identidad de un agente enrolado
+> y no sirve para integraciones: ver [`referencia-api-agent.md`](referencia-api-agent.md).
+
+> **`/api/v1` no cambia en la 1.4.0.** Las rutas, los parámetros y las claves de las respuestas son
+> exactamente los de la 1.3.0 (lo comprueba `tests/test_aceptacion_agentes.py::test_la_api_v1_no_cambia`).
+> Los agentes, sus trabajos y su telemetría **no** se exponen por esta API; sus acciones sí
+> aparecen en `GET /api/v1/auditoria`, como cualquier otro registro de la bitácora (usuario
+> `agente:<nombre>`).
 
 ## Características de seguridad
 

@@ -28,6 +28,12 @@ Tiene **dos interfaces** que conviven sobre el **mismo backend y el mismo modelo
 Además expone una **API REST de solo lectura** (`/api/v1`) con tokens Bearer para SIEM y
 automatización, que nunca devuelve secretos.
 
+Desde la **1.4.0** hay una tercera pieza, opcional y apagada por defecto: los **agentes de
+rotación**. Un agente Go instalado en un servidor Linux aplica las rotaciones que ya autorizaron dos
+personas y habla con el backend por su propia API (`/api/agent`). Se describe aparte, en
+[`arquitectura-agentes.md`](arquitectura-agentes.md) (§2 bis de este documento resume dónde
+encaja).
+
 ---
 
 ## 2. Componentes
@@ -73,7 +79,40 @@ automatización, que nunca devuelve secretos.
 | **Proxy** | nginx 1.31 | Termina TLS, enruta, fija HSTS y la IP real del cliente |
 | **Base de datos** | SQLite (defecto) o MySQL 8.4 | Persistencia; secretos cifrados en reposo |
 | **CLI** | `python -m app.cli` | Alta de admin, respaldo y restauración cifrados |
+| **Agente de rotación** (1.4.0, opcional) | Go, binario estático + *helper* root, systemd | Instalado en cada servidor Linux que rota por agente; aplica, verifica y revierte las rotaciones autorizadas. Ver [`arquitectura-agentes.md`](arquitectura-agentes.md) |
 | **Certbot** | certbot (opcional) | Emisión y renovación automática de Let's Encrypt |
+
+### 2 bis. Agentes de rotación (desde la 1.4.0)
+
+```
+ servidor Linux (activo del inventario)              passwd
+┌────────────────────────────────────────┐  HTTPS  ┌──────────────────────────────────┐
+│ passwd-agente (sin privilegios)        │ ──────► │ nginx ─► app   /api/agent/*       │
+│   identidad de vida corta, journal     │         │   servicios/agentes.py            │
+│   cifrado, telemetría acotada          │         │   servicios/rotacion.py (único    │
+│        │ socket local                  │         │   escritor de la contraseña)      │
+│        ▼                               │         └──────────────────────────────────┘
+│ passwd-agente-helper (root, sin red,   │
+│   una petición por conexión)           │
+└────────────────────────────────────────┘
+```
+
+- **El agente siempre inicia la conexión** (latido, recogida de trabajos, resultado, telemetría):
+  el backend nunca abre conexiones hacia los servidores ni necesita alcanzarlos.
+- **Nada se despacha sin `AUTORIZADA`.** El agente recibe un trabajo solo cuando la rotación ya
+  pasó la gobernanza de la 1.3.0; la contraseña nueva la genera el backend, viaja **sellada** a la
+  clave X25519 del agente y no se escribe en el inventario hasta que el agente confirma, por el
+  mismo punto único de escritura (`servicios/rotacion.py`).
+- **`/api/agent`** se autentica con el token de vida corta de cada agente (Bearer, sin cookies ni
+  CSRF), tiene topes de cuerpo y límites de tasa propios y responde 404 con los agentes apagados
+  (`PASSWD_AGENTES_ENABLED`). Referencia en [`referencia-api-agent.md`](referencia-api-agent.md);
+  contrato normativo del agente en [`contrato-agente.md`](contrato-agente.md).
+- El panel (`/api/web/agentes` y la página `/agentes` del frontend) da de alta, reinstala y revoca
+  agentes; la cobertura que muestran sus insignias se **deriva** de las fechas, no de un proceso de
+  fondo.
+
+Diseño completo, flujos y decisiones en [`arquitectura-agentes.md`](arquitectura-agentes.md);
+instalación en [`guia-instalacion-agente-linux.md`](guia-instalacion-agente-linux.md).
 
 ---
 
@@ -91,9 +130,11 @@ app/
 ├── rbac.py            # matriz de permisos por rol (estática)
 ├── access.py          # control de acceso por objeto (concesiones a analistas)
 ├── audit.py           # registrar() y purgar_antiguos(); cadena firmada con HMAC
-├── servicios/         # casos de uso: rotacion.py (gobernanza y ÚNICO escritor de
-│                      #   password_cifrada), autenticacion.py (reautenticación),
-│                      #   patrones.py (reglas sobre el libro mayor)
+├── servicios/         # casos de uso: rotacion.py (gobernanza, despacho a agentes y ÚNICO
+│                      #   escritor de password_cifrada), autenticacion.py (reautenticación),
+│                      #   patrones.py (reglas sobre el libro mayor), agentes.py (alta,
+│                      #   enrolamiento, identidad, cobertura, telemetría; 1.4.0) y
+│                      #   cifrado_agente.py (sellado X25519 + HKDF + Fernet; 1.4.0)
 ├── notifications.py   # alertas por correo (opt-in, sin secretos)
 ├── backup.py          # exportar()/restaurar() cifrados (scrypt + Fernet)
 ├── cli.py             # comandos: init-db, crear-admin, respaldo, restaurar
@@ -102,13 +143,14 @@ app/
 ├── routes/            # interfaz web Jinja (auth, inventory, credentials, users,
 │                      #   accesos, notes, search, metrics, audit_view, importer, tokens) + api.py (/api/v1)
 ├── api_web/           # API JSON (/api/web) que consume el frontend (mismos módulos + deps/serializers)
+├── api_agent/         # API de los agentes de rotación (/api/agent, 1.4.0): solo traduce HTTP ↔ servicio
 ├── templates/         # plantillas Jinja2 (HTML) en español
 └── static/            # CSS y JS compatibles con la CSP estricta
 ```
 
 ### Capas (de fuera hacia dentro)
 
-1. **Routers** (`routes/`, `api_web/`, `routes/api.py`): definen los endpoints HTTP. Los de `routes/`
+1. **Routers** (`routes/`, `api_web/`, `routes/api.py`, `api_agent/`): definen los endpoints HTTP. Los de `routes/`
    devuelven HTML (Jinja) y redirigen a `/login`; los de `api_web/` devuelven JSON y responden con
    códigos HTTP (401/403/404…).
 2. **Dependencias de seguridad** (`deps.py`, `api_web/deps.py`): resuelven la sesión activa, exigen
@@ -142,6 +184,7 @@ app/
 | Anti-abuso | Bloqueo de cuenta (5 fallos), rate limit por IP y **límite anti-exfiltración** por usuario | `security/ratelimit.py`, `routes/auth.py` |
 | Endurecimiento | CSP estricta, X-Frame-Options, nosniff, COOP/CORP, límite de tamaño de petición, docs API ocultas | `app/main.py` |
 | Auditoría | Cada evento con usuario, IP, agente y resultado; retención ≥ 90 días | `audit.py`, `models.py` |
+| Identidad de máquina (1.4.0) | Token de instalación de un solo uso (1 h); identidad de vida corta renovada en el latido, de la que solo se guarda el hash; trabajos sellados a la clave X25519 de cada agente; un agente solo ve los trabajos de su activo | `servicios/agentes.py`, `servicios/cifrado_agente.py`, `api_agent/` |
 
 Detalle de cumplimiento normativo en [`cumplimiento-cis-v8.1.md`](cumplimiento-cis-v8.1.md),
 [`cumplimiento-iso-27003.md`](cumplimiento-iso-27003.md) y
@@ -229,6 +272,9 @@ punto de entrada es nginx por el 443. Guías: [`guia-implementacion.md`](guia-im
 - **Análisis estático:** `ruff` (incluye reglas de seguridad `S`) y `bandit` (SAST, severidad ≥ media).
 - **Dependencias:** `pip-audit` contra avisos de PyPA.
 - **CI:** `.github/workflows/ci.yml` ejecuta todo lo anterior en cada push y PR.
+- **Agente Go (1.4.0):** `gofmt`, `go vet`, `go test -race`, integración como root con cuentas
+  Linux reales, `govulncheck` y, en el job `agente-sistema`, el agente instalado con systemd
+  rotando una cuenta real. Cómo ejecutarlas en [`guia-desarrollo.md`](guia-desarrollo.md) §4.
 - **Verificación funcional de la API JSON:** `python scripts/verificar_api_web.py` ejercita la API
   `/api/web` de extremo a extremo.
 

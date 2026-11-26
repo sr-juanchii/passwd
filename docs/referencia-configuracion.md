@@ -140,6 +140,38 @@ significado, a propósito: dos verdades sobre lo mismo acaban divergiendo.
 | `PASSWD_ROTACION_EMERGENCIA_MAX_POR_MES` | `3` | Emergencias sin segundo par admitidas en 30 días antes de señalarlo como patrón de abuso. Nunca bloquea una contención en curso: solo la señala. |
 | `PASSWD_ROTACION_PATRONES_MODO_OBSERVACION` | `true` | Las reglas de patrón se evalúan y se ven en métricas, pero **no envían avisos**. Déjelo activo hasta calibrar los umbrales con datos reales. |
 
+### Agentes de rotación (desde la 1.4.0)
+
+Un agente instalado en un servidor Linux aplica la rotación **ya autorizada** por dos personas, la
+verifica y la revierte si falla. Todo queda tras un interruptor **apagado por defecto**: con
+`AGENTES_ENABLED=false` el prefijo `/api/agent` responde 404, no se dan de alta agentes y toda
+rotación sigue el flujo manual de la 1.3.0. Arquitectura en
+[`arquitectura-agentes.md`](arquitectura-agentes.md) e instalación en
+[`guia-instalacion-agente-linux.md`](guia-instalacion-agente-linux.md).
+
+Los diez son editables en caliente desde **Configuración → Agentes de rotación** (columna «En
+caliente»); el interruptor surte efecto en la siguiente petición, sin reiniciar.
+
+| Variable | Tipo | Por defecto | En caliente | Descripción |
+|---|---|---|:-:|---|
+| `PASSWD_AGENTES_ENABLED` | booleano | `false` | ✔ | **Interruptor general.** Apagado, ningún agente se enrola ni recibe trabajos, la API del agente no existe (404) y toda rotación es manual. Al apagarlo con agentes instalados, sus peticiones reciben 404 y no pueden renovar su identidad: si sigue apagado más que `AGENTES_TOKEN_VIDA_HORAS`, al volver a encenderlo habrá que reinstalarlos. Las rotaciones que se autoricen mientras tanto quedan **autorizadas sin despachar** (la decisión de dos personas se conserva). |
+| `PASSWD_ROTACION_VENTANA_JOB_MIN` | entero (1–1440 min) | `30` | ✔ | Validez de un trabajo despachado: minutos que tiene el agente para recogerlo y empezarlo. Debe ser claramente mayor que la cadencia del latido, o un trabajo despachado justo después de un latido vencería sin recogerse. Pasado el plazo sin recogerse, el trabajo expira y la rotación **vuelve a quedar autorizada**; el agente tampoco aplica un trabajo vencido. |
+| `PASSWD_ROTACION_ANTI_THRASH_HORAS` | entero (0–720 h) | `24` | ✔ | Intervalo mínimo entre rotaciones por agente: una credencial rotada hace menos de estas horas no se despacha. Solo una solicitud de **emergencia** lo salta, y queda en la bitácora (`rotacion_anti_thrash_saltado`). `0` lo desactiva. |
+| `PASSWD_AGENTES_TOKEN_VIDA_HORAS` | entero (1–720 h) | `24` | ✔ | Vida de la identidad de un agente. Se renueva sola en el latido cuando entra en su último cuarto de vida, y el token anterior vale 30 minutos más. Un agente apagado más tiempo que esto pasa a «Identidad caducada» y hay que reinstalarlo con un token nuevo. |
+| `PASSWD_AGENTES_UMBRAL_SIN_CONTACTO_HORAS` | entero (1–720 h) | `1` | ✔ | Horas sin latido tras las cuales la insignia del agente pasa a «Sin contacto» y el mantenimiento periódico avisa al equipo de seguridad (una vez por silencio). Debe ser menor que `AGENTES_TOKEN_VIDA_HORAS`: la caducidad se comprueba antes, y con valores iguales el agente pasaría directamente a «Identidad caducada». |
+| `PASSWD_AGENTES_TELEMETRIA_INTERVALO_MIN` | entero (1–1440 min) | `15` | ✔ | Cadencia de latido y telemetría que el servidor indica a los agentes al enrolarse y en cada latido. |
+| `PASSWD_AGENTES_RETENCION_TELEMETRIA_DIAS` | entero (1–3650 días) | `30` | ✔ | Días que se conserva la telemetría (CPU, RAM, disco, tiempo encendido, sistema operativo). El mantenimiento periódico purga lo anterior. No afecta a la bitácora ni al libro mayor. |
+| `PASSWD_AGENTES_VERSION_MINIMA` | texto (`X.Y.Z` o vacío) | `""` | ✔ | Versión mínima de agente que recibe trabajos. Vacío: cualquiera. Un agente por debajo sigue latiendo, pero no recibe trabajos al acabar la gracia. |
+| `PASSWD_AGENTES_GRACIA_VERSION_DIAS` | entero (0–365 días) | `14` | ✔ | Días durante los que un agente por debajo de la mínima sigue recibiendo trabajos. **Cuentan desde que la mínima se fija en la consola**; fijada solo por entorno no hay fecha de la que contar y **rige sin gracia**. |
+| `PASSWD_AGENTES_ALERTAR_IP_DISTINTA` | booleano | `true` | ✔ | Avisa por correo cuando un agente renueva su identidad desde una IP distinta de la renovación anterior dentro de la misma vida del token: puede ser un token copiado. Detrás de un NAT con varias salidas da falsos positivos. Apagado, el asiento `agente_anomalia_ip` **se sigue registrando**; solo deja de enviarse el correo. |
+
+> **Topes del protocolo del agente (no configurables).** Además del límite global
+> `PASSWD_MAX_REQUEST_BYTES`, la API `/api/agent` aplica topes propios, muy por debajo: como máximo
+> **4 KiB** por petición y **16 KiB** en la telemetría (413 si se excede), y aplica límites de tasa propios (120 peticiones por agente y 300
+> por IP cada 5 minutos; 10 intentos de enrolamiento por IP cada 15 minutos). Están fijados en
+> [`app/api_agent/__init__.py`](../app/api_agent/__init__.py) y documentados en
+> [`referencia-api-agent.md`](referencia-api-agent.md).
+
 ---
 
 ## 7 bis. Configuración obsoleta (se retira en la 2.0)
@@ -290,9 +322,13 @@ fija su valor base:
 | Límites anti-abuso | `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW_MINUTES`, `REVEAL_RATE_LIMIT`, `REVEAL_RATE_WINDOW_MINUTES` |
 | Inventario y auditoría | `ROTATION_MAX_DAYS`, `PASSWORD_HISTORY_MAX`, `AUDIT_RETENTION_DAYS` (mín. 90) |
 | Gobernanza de rotación | `ROTACION_TEMPRANA_PCT`, `ROTACION_EMERGENCIA_VENTANA_MIN`, `ROTACION_EMERGENCIA_MAX_POR_MES`, `ROTACION_PATRONES_MODO_OBSERVACION` |
+| Agentes de rotación (1.4.0) | `AGENTES_ENABLED`, `ROTACION_VENTANA_JOB_MIN`, `ROTACION_ANTI_THRASH_HORAS`, `AGENTES_TOKEN_VIDA_HORAS`, `AGENTES_UMBRAL_SIN_CONTACTO_HORAS`, `AGENTES_TELEMETRIA_INTERVALO_MIN`, `AGENTES_RETENCION_TELEMETRIA_DIAS`, `AGENTES_VERSION_MINIMA` (formato `X.Y.Z`), `AGENTES_GRACIA_VERSION_DIAS`, `AGENTES_ALERTAR_IP_DISTINTA` |
 
 La **retención de auditoría** se aplica al arrancar y después cada 6 horas, de modo que un
-cambio desde la consola surte efecto sin reiniciar. La **CLI** (`respaldo`, `avisar-rotacion`)
+cambio desde la consola surte efecto sin reiniciar. El mismo mantenimiento periódico purga la
+**telemetría de los agentes**, cierra los trabajos vencidos y avisa de los agentes sin contacto.
+La **gracia de la versión mínima** de los agentes cuenta desde que la mínima se guarda en esta
+pantalla; fijada solo por entorno rige sin gracia. La **CLI** (`respaldo`, `avisar-rotacion`)
 también aplica los ajustes guardados aquí.
 
 `ACTIVITY_THROTTLE_SECONDS` dejó de ser editable en pantalla: es un ajuste técnico que se
