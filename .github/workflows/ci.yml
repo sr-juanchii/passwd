@@ -257,7 +257,6 @@ jobs:
     # endurecimiento de las unidades (helper sin red, agente sin privilegios,
     # filtro de llamadas al sistema) deja hacer el trabajo.
     env:
-      PASSWD_DATA_DIR: ${{ runner.temp }}/datos
       PASSWD_AGENTES_ENABLED: "true"
       PASSWD_COOKIE_SECURE: "false"
       # Latido cada minuto, para que la prueba no espere los 15 por defecto.
@@ -267,6 +266,10 @@ jobs:
     steps:
       - name: Obtener el código
         uses: actions/checkout@v4
+
+      # El contexto «runner» no existe en el env de un job: la ruta se fija aquí.
+      - name: Directorio de datos compartido por el backend y la prueba
+        run: echo "PASSWD_DATA_DIR=$RUNNER_TEMP/datos" >> "$GITHUB_ENV"
 
       - name: Configurar Python
         uses: actions/setup-python@v5
