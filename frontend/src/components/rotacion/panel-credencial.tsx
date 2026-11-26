@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, History, Loader2, RotateCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Bot, History, Loader2, RotateCw, Send, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { RotacionAsiento, RotacionDeCredencial, TipoRotacion } from "@/lib/types";
-import { ETIQUETA_ESTADO, ETIQUETA_TIPO, fecha, textoDesvio } from "@/lib/rotacion";
+import { ETIQUETA_ESTADO, ETIQUETA_TIPO, ETIQUETA_VERIFICACION, fecha, textoDesvio } from "@/lib/rotacion";
 import { useSession } from "@/lib/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,22 @@ function Asiento({ a }: { a: RotacionAsiento }) {
         {a.autorizado_por && ` · autorizada por ${a.autorizado_por}`}
         {a.confirmado_en && ` · aplicada el ${fecha(a.confirmado_en)}`}
       </p>
+      {a.agente_nombre && (
+        <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+          <Bot className="size-3" /> Ejecutada por el agente {a.agente_nombre}
+          {a.estado === "cerrada" && ` · ${ETIQUETA_VERIFICACION[a.verificacion]}`}
+        </p>
+      )}
+      {a.verificacion === "local" && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Verificación local: la contraseña nueva autentica la cuenta en el sistema operativo. No
+          se ha comprobado contra el servicio declarado (SSH, RDP…), que puede tener sus propias
+          restricciones.
+        </p>
+      )}
+      {a.estado === "cerrada" && a.detalle_error && (
+        <p className="mt-1 text-xs text-muted-foreground">{a.detalle_error}</p>
+      )}
       {textoDesvio(a) && <p className="mt-1 text-xs text-muted-foreground">{textoDesvio(a)}</p>}
       {a.motivo_rechazo && (
         <p className="mt-1 text-xs text-destructive">Rechazo: {a.motivo_rechazo}</p>
@@ -96,6 +112,8 @@ export function PanelRotacionCredencial({ credencialId }: { credencialId: number
 
   const abierta = data.solicitud_abierta;
   const esSolicitante = abierta?.solicitado_por === usuario?.username;
+  const porAgente = data.via_rotacion === "agente";
+  const trabajo = data.trabajo_en_curso;
 
   return (
     <Card className="mt-6">
@@ -127,6 +145,36 @@ export function PanelRotacionCredencial({ credencialId }: { credencialId: number
           )}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Vía de rotación:</span>
+          <Badge variant="outline">
+            {porAgente ? (
+              <>
+                <Bot className="size-3" /> Agente del activo
+              </>
+            ) : (
+              "Manual"
+            )}
+          </Badge>
+          {puede("agentes.gestionar") && !abierta && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={ocupado}
+              onClick={() =>
+                ejecutar(
+                  () => api.cambiarViaRotacion(credencialId, porAgente ? "manual" : "agente"),
+                  porAgente
+                    ? "La credencial se rotará a mano."
+                    : "La credencial se rotará con el agente de su activo.",
+                )
+              }
+            >
+              {porAgente ? "Rotar a mano" : "Rotar con el agente"}
+            </Button>
+          )}
+        </div>
+
         {data.usada_por && (
           <p className="flex items-start gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
@@ -138,7 +186,13 @@ export function PanelRotacionCredencial({ credencialId }: { credencialId: number
 
         {!abierta && puede("rotacion.solicitar") && (
           <div className="space-y-3 rounded-lg border p-3">
-            <p className="text-sm font-medium">Solicitar rotación</p>
+            <p className="text-sm font-medium">{porAgente ? "Rotar ahora" : "Solicitar rotación"}</p>
+            {porAgente && (
+              <p className="text-xs text-muted-foreground">
+                El agente del activo la aplicará en cuanto otro administrador la autorice. Hasta
+                entonces no se toca nada.
+              </p>
+            )}
             {data.temprana_si_se_rota_ahora && (
               <p className="text-xs text-destructive">
                 Sería una rotación temprana: la contraseña está muy por debajo de su vigencia,
@@ -180,7 +234,7 @@ export function PanelRotacionCredencial({ credencialId }: { credencialId: number
               }
             >
               {ocupado && <Loader2 className="size-4 animate-spin" />}
-              Solicitar rotación
+              {porAgente ? "Rotar ahora" : "Solicitar rotación"}
             </Button>
           </div>
         )}
@@ -238,6 +292,74 @@ export function PanelRotacionCredencial({ credencialId }: { credencialId: number
               >
                 Cancelar la solicitud
               </Button>
+            )}
+
+            {abierta.estado === "autorizada" && porAgente && puede("rotacion.solicitar") && (
+              <div className="space-y-2 rounded-md bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">
+                  Autorizada, pero el agente aún no la tiene (estaba sin contacto o el trabajo
+                  venció sin recogerse). Puede volver a enviársela, o cambiarla a mano y
+                  registrarla abajo.
+                </p>
+                <Button
+                  size="sm"
+                  disabled={ocupado}
+                  onClick={() => ejecutar(() => api.rotacionDespachar(abierta.id), "Enviada al agente.")}
+                >
+                  <Send className="size-4" /> Enviar al agente
+                </Button>
+              </div>
+            )}
+
+            {abierta.estado === "despachada" && trabajo && !trabajo.sin_confirmar && (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                En manos del agente {trabajo.agente}
+                {trabajo.estado === "pendiente"
+                  ? ` · debe recogerla antes de las ${new Date(trabajo.ventana_expira_en).toLocaleTimeString()}`
+                  : " · recogida, esperando su resultado"}
+              </p>
+            )}
+
+            {abierta.estado === "despachada" && trabajo?.sin_confirmar && (
+              <div className="space-y-2 rounded-md border border-destructive/40 p-3">
+                <p className="flex items-center gap-2 text-sm font-medium text-destructive">
+                  <AlertTriangle className="size-4" /> Sin confirmar
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  El agente {trabajo.agente} recogió la rotación y no informó del resultado: la
+                  contraseña pudo cambiar en el activo o no. Compruébelo en el servidor y diga qué
+                  quedó. Hasta entonces esta credencial no admite otra rotación.
+                </p>
+                {puede("rotacion.autorizar") && (
+                  <div className="flex flex-wrap gap-2">
+                    <DialogoAutorizar
+                      titulo="La contraseña nueva SÍ quedó aplicada"
+                      descripcion="Se registrará la contraseña nueva en el inventario. Confirme su identidad."
+                      textoBoton="Confirmar"
+                      disparador={<Button size="sm">Sí, quedó la nueva</Button>}
+                      onConfirmar={async (password, codigo) => {
+                        await ejecutar(
+                          () => api.rotacionResolverTrabajo(trabajo.id, { aplicada: true, password, codigo }),
+                          "Registrada la contraseña nueva.",
+                        );
+                      }}
+                    />
+                    <DialogoAutorizar
+                      titulo="La contraseña nueva NO quedó aplicada"
+                      descripcion="El inventario conserva la contraseña anterior y la rotación se cierra como fallida. Confirme su identidad."
+                      textoBoton="Confirmar"
+                      disparador={<Button size="sm" variant="outline">No, sigue la anterior</Button>}
+                      onConfirmar={async (password, codigo) => {
+                        await ejecutar(
+                          () => api.rotacionResolverTrabajo(trabajo.id, { aplicada: false, password, codigo }),
+                          "Rotación cerrada como fallida; el inventario conserva la anterior.",
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
 
             {abierta.estado === "autorizada" && puede("rotacion.solicitar") && (

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Bot,
   Activity,
   Bell,
   CheckCircle2,
@@ -51,6 +52,7 @@ const ICONO_GRUPO: Record<string, React.ComponentType<{ className?: string }>> =
   Notificaciones: Bell,
   "Límites anti-abuso": Activity,
   "Inventario y auditoría": ServerCog,
+  "Agentes de rotación": Bot,
 };
 
 const GRUPO_SMTP = "Servidor de correo (SMTP)";

@@ -3,7 +3,7 @@ import path from "node:path";
 
 // Puertos propios del banco de pruebas: no chocan con un backend (8000) ni un
 // frontend (3000) que alguien tenga levantados mientras desarrolla.
-const PUERTO_BACKEND = 8111;
+export const PUERTO_BACKEND = 8111;
 const PUERTO_FRONTEND = 3111;
 const PUERTO_SMTP = 8125;
 
@@ -22,6 +22,9 @@ export const ADMIN = {
 
 const entornoBackend = {
   PASSWD_DATA_DIR: DATOS,
+  // Agentes de rotación (v1.4.0): activados en el banco para probar su panel.
+  // Ninguna credencial rota por agente salvo que una prueba lo pida.
+  PASSWD_AGENTES_ENABLED: "true",
   PASSWD_COOKIE_SECURE: "false",
   PASSWD_ADMIN_USERNAME: ADMIN.usuario,
   PASSWD_ADMIN_EMAIL: ADMIN.correo,

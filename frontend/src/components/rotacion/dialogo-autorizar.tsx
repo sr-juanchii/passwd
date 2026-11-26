@@ -49,6 +49,9 @@ export function DialogoAutorizar({
       setAbierto(false);
       setPassword("");
       setCodigo("");
+    } catch {
+      // Quien llama ya avisó del error. El diálogo sigue abierto para reintentar
+      // (p. ej. con un código nuevo) sin volver a escribir la contraseña.
     } finally {
       setEnviando(false);
     }

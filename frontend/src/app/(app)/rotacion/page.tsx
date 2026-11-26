@@ -124,6 +124,36 @@ export default function RotacionPage() {
         </Card>
       )}
 
+      {data.sin_confirmar.length > 0 && (
+        <Card className="mb-6 border-destructive/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base text-destructive">
+              <AlertTriangle className="size-4" /> Rotaciones sin confirmar
+            </CardTitle>
+            <CardDescription>
+              Un agente recogió estas rotaciones y no informó del resultado: la contraseña pudo
+              cambiar en el activo o no. Compruebe cada servidor y resuélvalo desde su credencial;
+              mientras tanto, esas credenciales no admiten otra rotación.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {data.sin_confirmar.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-center gap-2 border-b py-2 text-sm last:border-0">
+                <Link href={`/credenciales/${t.credencial_id}/editar`} className="font-medium hover:underline">
+                  {t.usuario_acceso}@{t.activo_nombre}
+                </Link>
+                <Badge variant="outline">Agente {t.agente}</Badge>
+                {t.entregado_en && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    Recogida el {fecha(t.entregado_en)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {data.revisiones_pendientes.length > 0 && (
         <Card className="mb-6 border-destructive/40">
           <CardHeader>

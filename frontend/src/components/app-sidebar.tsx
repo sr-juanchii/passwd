@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bot,
   Activity,
   KeyRound,
   Lock,
@@ -48,6 +49,7 @@ const PRINCIPAL: Item[] = [
   { titulo: "Dispositivos de red", url: "/dispositivos", icono: Network, permiso: "inventario.ver" },
   { titulo: "Mi vault", url: "/vault", icono: Wallet, permiso: "vault.usar" },
   { titulo: "Rotación", url: "/rotacion", icono: RotateCw, permiso: "rotacion.ver" },
+  { titulo: "Agentes", url: "/agentes", icono: Bot, permiso: "agentes.ver" },
   { titulo: "Buscar", url: "/buscar", icono: Search, permiso: "inventario.ver" },
   { titulo: "Importar", url: "/importar", icono: Upload, permiso: "inventario.gestionar" },
 ];

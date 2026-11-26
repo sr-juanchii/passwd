@@ -28,6 +28,8 @@ export type Permiso =
   | "rotacion.solicitar"
   | "rotacion.autorizar"
   | "rotacion.revisar"
+  | "agentes.ver"
+  | "agentes.gestionar"
   | "accesos.gestionar"
   | "tokens.gestionar"
   | "configuracion.gestionar";
@@ -427,6 +429,8 @@ export interface RotacionAsiento {
   via: ViaRotacion;
   verificacion: VerificacionRotacion;
   detalle_error: string;
+  /** Agente que la ejecutó (vacío si fue a mano). */
+  agente_nombre: string;
 }
 
 export interface SenalPatron {
@@ -459,6 +463,8 @@ export interface EstadoGobernanza {
 }
 
 export interface PanelRotacion {
+  /** Trabajos que un agente recogió y nunca confirmó: alguien debe decir qué quedó. */
+  sin_confirmar: TrabajoAgente[];
   gobernanza: EstadoGobernanza;
   pendientes_de_autorizar: RotacionAsiento[];
   pendientes_de_ejecutar: RotacionAsiento[];
@@ -477,7 +483,93 @@ export interface RotacionDeCredencial {
   fecha_programada: string;
   temprana_si_se_rota_ahora: boolean;
   solicitud_abierta: RotacionAsiento | null;
+  /** Si la solicitud abierta está en manos de un agente, su trabajo. */
+  trabajo_en_curso: TrabajoAgente | null;
   historial: RotacionAsiento[];
+}
+
+// --- Agentes de rotación (v1.4.0) -----------------------------------------
+//
+// Un agente instalado en el servidor aplica las rotaciones YA autorizadas: la
+// regla de dos personas no cambia. La cobertura se deriva de las fechas en el
+// servidor; la interfaz solo la nombra.
+
+export type CoberturaAgente = "sin_agente" | "pendiente" | "conectado" | "sin_contacto" | "caducado";
+export type EstadoAgente = "pendiente" | "activo" | "revocado";
+export type TipoActivoAgente = "fisico" | "hipervisor" | "vm";
+
+export interface TrabajoAgente {
+  id: number;
+  rotacion_id: number;
+  credencial_id: number;
+  estado: "pendiente" | "entregado" | "aplicado" | "revertido" | "fallado" | "expirado" | "cancelado";
+  agente: string;
+  activo_nombre: string;
+  usuario_acceso: string;
+  ventana_expira_en: string;
+  entregado_en: string | null;
+  intentos: number;
+  /** El agente lo recogió y no informó: la contraseña pudo cambiar o no. */
+  sin_confirmar: boolean;
+}
+
+export interface Agente {
+  id: number;
+  nombre: string;
+  estado: EstadoAgente;
+  cobertura: CoberturaAgente;
+  activo: { tipo: TipoActivoAgente; id: number; nombre: string };
+  nombre_host: string;
+  version_agente: string;
+  version_admitida: boolean;
+  version_en_gracia: boolean;
+  ultimo_contacto_en: string | null;
+  ip_ultimo_contacto: string;
+  token_expira_en: string | null;
+  enrolado_en: string | null;
+  enrolamiento_expira_en: string | null;
+  clave_huella: string;
+  rotacion_habilitada: boolean;
+  creado_en: string | null;
+  revocado_en: string | null;
+  trabajo_en_curso: {
+    id: number;
+    estado: string;
+    rotacion_id: number;
+    usuario_acceso: string;
+    ventana_expira_en: string | null;
+    sin_confirmar: boolean;
+  } | null;
+  telemetria: {
+    fecha: string | null;
+    cpu_pct: number | null;
+    ram_pct: number | null;
+    disco_pct: number | null;
+    uptime_s: number | null;
+    sistema_operativo: string;
+    kernel: string;
+    recortada: boolean;
+  } | null;
+}
+
+export interface ListaAgentes {
+  /** Interruptor general de los agentes (configuración). */
+  habilitados: boolean;
+  agentes: Agente[];
+}
+
+export interface CoberturaActivo {
+  cobertura: CoberturaAgente;
+  /** Los dispositivos de red no admiten agente. */
+  admite_agente: boolean;
+  agente: Agente | null;
+}
+
+export interface TokenInstalacion {
+  agente: Agente;
+  /** Se muestra UNA vez: el servidor solo guarda su hash. */
+  token_enrolamiento: string;
+  token_expira_en: string | null;
 }
 
 export interface ResultadoLote {

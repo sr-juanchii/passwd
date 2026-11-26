@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/page-header";
 import { EstadoBadge } from "@/components/estado-badge";
 import { Propiedades } from "@/components/propiedades";
 import { CredencialesTabla } from "@/components/credenciales-tabla";
+import { PanelAgenteActivo } from "@/components/agentes/panel-agente-activo";
 import { NotasPanel } from "@/components/notas-panel";
 import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
@@ -221,6 +222,13 @@ export default function HipervisorDetallePage() {
           tipo="hipervisor"
           activoId={hid}
           onCambio={cargar}
+        />
+
+        <PanelAgenteActivo
+          tipo="hipervisor"
+          activoId={hid}
+          nombreActivo={d.nombre}
+          cuentas={d.credenciales.map((c) => c.usuario_acceso)}
         />
 
         <NotasPanel tipo="hipervisor" activoId={hid} tieneNotas={d.tiene_notas} puedeGestionar={d.puede_gestionar} />

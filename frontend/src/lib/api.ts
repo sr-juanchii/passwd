@@ -3,7 +3,12 @@
 // sola (mismo origen vía proxy de Next).
 
 import type {
+  Agente,
   AuditoriaPagina,
+  CoberturaActivo,
+  ListaAgentes,
+  TipoActivoAgente,
+  TokenInstalacion,
   Concesion,
   ConfiguracionResp,
   CredencialDetalle,
@@ -343,6 +348,35 @@ export const api = {
     request<RotacionAsiento>(`/rotacion/solicitudes/${id}/revisar`, {
       method: "POST",
       body: { nota },
+      csrf: true,
+    }),
+  /** Vuelve a enviar al agente una rotación ya autorizada (no añade autoridad). */
+  rotacionDespachar: (id: number) =>
+    request<RotacionAsiento>(`/rotacion/solicitudes/${id}/despachar`, { method: "POST", csrf: true }),
+  /** Una persona dice qué contraseña quedó tras un trabajo sin confirmar. */
+  rotacionResolverTrabajo: (id: number, b: { aplicada: boolean; password: string; codigo: string }) =>
+    request<RotacionAsiento>(`/rotacion/trabajos/${id}/resolver`, {
+      method: "POST",
+      body: b,
+      csrf: true,
+    }),
+
+  // --- Agentes de rotación (v1.4.0) ---
+  agentes: (revocados = false) =>
+    request<ListaAgentes>(`/agentes${revocados ? "?revocados=true" : ""}`),
+  coberturaActivo: (tipo: TipoActivoAgente, id: number) =>
+    request<CoberturaActivo>(`/agentes/activo/${tipo}/${id}`),
+  /** Exige reautenticación: crea una identidad de máquina. */
+  altaAgente: (b: { tipo_activo: TipoActivoAgente; activo_id: number; nombre: string; password: string; codigo: string }) =>
+    request<TokenInstalacion>("/agentes", { method: "POST", body: b, csrf: true }),
+  reemitirInstalacion: (id: number, b: { password: string; codigo: string }) =>
+    request<TokenInstalacion>(`/agentes/${id}/enrolamiento`, { method: "POST", body: b, csrf: true }),
+  revocarAgente: (id: number) =>
+    request<{ agente: Agente }>(`/agentes/${id}/revocar`, { method: "POST", csrf: true }),
+  cambiarViaRotacion: (credencialId: number, via: "agente" | "manual") =>
+    request<{ credencial_id: number; via_rotacion: string }>(`/agentes/credenciales/${credencialId}/via`, {
+      method: "POST",
+      body: { via },
       csrf: true,
     }),
 

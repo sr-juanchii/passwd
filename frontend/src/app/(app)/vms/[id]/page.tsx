@@ -9,6 +9,7 @@ import type { VmDetalle } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { Propiedades } from "@/components/propiedades";
 import { CredencialesTabla } from "@/components/credenciales-tabla";
+import { PanelAgenteActivo } from "@/components/agentes/panel-agente-activo";
 import { NotasPanel } from "@/components/notas-panel";
 import { AccesosPanel } from "@/components/accesos-panel";
 import { BotonEliminar } from "@/components/boton-eliminar";
@@ -133,6 +134,13 @@ export default function VmDetallePage() {
           tipo="vm"
           activoId={vid}
           onCambio={cargar}
+        />
+
+        <PanelAgenteActivo
+          tipo="vm"
+          activoId={vid}
+          nombreActivo={d.nombre}
+          cuentas={d.credenciales.map((c) => c.usuario_acceso)}
         />
 
         <NotasPanel tipo="vm" activoId={vid} tieneNotas={d.tiene_notas} puedeGestionar={d.puede_gestionar} />
