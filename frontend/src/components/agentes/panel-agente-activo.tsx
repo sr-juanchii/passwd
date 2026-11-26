@@ -118,7 +118,14 @@ export function PanelAgenteActivo({ tipo, activoId, nombreActivo, cuentas }: {
           </dl>
         )}
 
-        {gestiona && !agente && datos.admite_agente && (
+        {!agente && datos.admite_agente && !datos.habilitados && (
+          <p className="text-sm text-muted-foreground">
+            Los agentes de rotación están desactivados en esta instalación. Un administrador puede
+            activarlos en Configuración, grupo «Agentes de rotación».
+          </p>
+        )}
+
+        {gestiona && !agente && datos.admite_agente && datos.habilitados && (
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-2">
               <Label htmlFor="nombre-agente">Nombre del agente</Label>

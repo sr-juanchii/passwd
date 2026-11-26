@@ -157,7 +157,8 @@ def cobertura_de_activo(
     """Insignia de cobertura de un activo, para su ficha."""
     if tipo not in servicio.MODELOS_ACTIVO:
         # Los dispositivos de red no admiten agente: siempre sin cobertura.
-        return {"cobertura": servicio.COBERTURA_SIN_AGENTE, "admite_agente": False, "agente": None}
+        return {"cobertura": servicio.COBERTURA_SIN_AGENTE, "admite_agente": False,
+                "habilitados": servicio.habilitados(), "agente": None}
     modelo, _etiqueta = servicio.MODELOS_ACTIVO[tipo]
     if db.get(modelo, activo_id) is None or not access.puede_ver_activo(db, usuario, tipo, activo_id):
         raise HTTPException(status_code=404, detail="El activo no existe.")
@@ -165,6 +166,9 @@ def cobertura_de_activo(
     return {
         "cobertura": servicio.cobertura(agente),
         "admite_agente": True,
+        # Con el interruptor apagado no se puede dar de alta ninguno: la ficha lo dice
+        # en vez de ofrecer un formulario que fallaría al enviarlo.
+        "habilitados": servicio.habilitados(),
         "agente": _serializar(db, agente) if agente is not None else None,
     }
 

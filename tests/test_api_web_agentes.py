@@ -144,6 +144,10 @@ def test_con_los_agentes_apagados_no_se_dan_de_alta(client):
 
     autenticar_admin(client)
     assert client.get("/api/web/agentes").json()["habilitados"] is False
+    # La ficha del activo también lo dice, para no ofrecer un alta que fallaría.
+    servidor_id, _ = _servidor()
+    ficha = client.get(f"/api/web/agentes/activo/fisico/{servidor_id}").json()
+    assert ficha["habilitados"] is False and ficha["admite_agente"] is True
 
 
 # ---------------------------------------------------------------------------

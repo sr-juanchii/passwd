@@ -578,6 +578,8 @@ export interface CoberturaActivo {
   cobertura: CoberturaAgente;
   /** Los dispositivos de red no admiten agente. */
   admite_agente: boolean;
+  /** El interruptor `agentes_enabled`: apagado, no se puede dar de alta ninguno. */
+  habilitados: boolean;
   agente: Agente | null;
 }
 
