@@ -4,7 +4,10 @@ go 1.27.0
 
 toolchain go1.27.4
 
-require github.com/shirou/gopsutil/v4 v4.26.10
+require (
+	github.com/msteinert/pam/v2 v2.1.0
+	github.com/shirou/gopsutil/v4 v4.26.10
+)
 
 require (
 	github.com/ebitengine/purego v0.11.2 // indirect

@@ -5,8 +5,8 @@
 //	passwd-agente version
 //
 // Ver docs/plan-rotacion-agentes.md §4 para lo que el agente puede y no puede
-// hacer. En esta versión todavía no cambia contraseñas: sin helper configurado
-// solo late y envía telemetría.
+// hacer. Las contraseñas no las cambia él: se lo pide al helper root por su
+// socket local. Sin helper configurado, solo late y envía telemetría.
 package main
 
 import (
@@ -26,6 +26,7 @@ import (
 	"github.com/sr-juanchii/passwd/agente/internal/ejecutor"
 	"github.com/sr-juanchii/passwd/agente/internal/identidad"
 	"github.com/sr-juanchii/passwd/agente/internal/journal"
+	"github.com/sr-juanchii/passwd/agente/internal/rotador"
 	"github.com/sr-juanchii/passwd/agente/internal/telemetria"
 )
 
@@ -144,11 +145,9 @@ func ejecutar(args []string) error {
 		},
 	}
 	if cfg.Helper != "" {
-		// El rotador real (helper root + PAM) llega en la siguiente entrega.
-		return errors.New("«helper» está configurado, pero esta versión del agente aún no rota " +
-			"contraseñas: deje «helper» vacío")
+		e.Rotador = &rotador.Socket{Ruta: cfg.Helper}
 	}
-	registro.Info("agente en marcha", "agente", id.Nombre, "version", version, "rotacion", false)
+	registro.Info("agente en marcha", "agente", id.Nombre, "version", version, "rotacion", e.Rotador != nil)
 	ctx, parar := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer parar()
 	if err := e.Ejecutar(ctx); err != nil && !errors.Is(err, context.Canceled) {

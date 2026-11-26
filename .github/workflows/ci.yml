@@ -203,25 +203,41 @@ jobs:
           go-version-file: agente/go.mod
           cache-dependency-path: agente/go.sum
 
+      # El helper root verifica contraseñas con PAM (cgo): necesita sus cabeceras.
+      # El agente, en cambio, se compila sin cgo y no depende de nada del sistema.
+      - name: Cabeceras de PAM para el helper
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libpam0g-dev
+
       - name: Formato (gofmt)
         run: |
           sin_formato=$(gofmt -l .)
           if [ -n "$sin_formato" ]; then echo "Sin gofmt:"; echo "$sin_formato"; exit 1; fi
 
       - name: Análisis estático (go vet)
-        run: go vet ./...
+        run: go vet ./... && go vet -tags integracion ./...
 
       # Incluye la interoperabilidad con el backend: internal/sobre abre el
       # mismo vector (tests/vectores/cifrado_agente.json) que abre Python.
       - name: Pruebas (con detector de carreras)
         run: go test -race ./...
 
+      # Integración REAL en el runner, que es una máquina desechable: cuentas
+      # Linux creadas con useradd, PAM y chpasswd de verdad, y el helper servido
+      # por conexión como lo hará systemd. Con PASSWD_INTEGRACION=1, la falta de
+      # un requisito es un fallo: no puede pasar en verde sin ejecutarse.
+      - name: Integración con cuentas reales (root, PAM y chpasswd)
+        run: |
+          go build -o "$RUNNER_TEMP/passwd-agente-helper" ./cmd/passwd-agente-helper
+          sudo PASSWD_INTEGRACION=1 PASSWD_HELPER_BIN="$RUNNER_TEMP/passwd-agente-helper" \
+            "$(command -v go)" test -count=1 -tags integracion -run Integracion -v ./internal/ejecutor/
+
       - name: Vulnerabilidades en dependencias y biblioteca estándar (govulncheck, OWASP A06)
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
 
-      # Binario estático (sin cgo) para las dos arquitecturas, con la versión
-      # del backend: agente y servidor declaran la misma.
-      - name: Compilación linux/amd64 y linux/arm64
+      # El agente: binario estático (sin cgo) para las dos arquitecturas. El
+      # helper enlaza libpam (cgo); se compila para la arquitectura del runner.
+      # Los dos llevan la versión del backend: agente y servidor declaran la misma.
+      - name: Compilación (agente linux/amd64 y linux/arm64; helper linux/amd64)
         run: |
           version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' ../app/__init__.py)
           for arch in amd64 arm64; do
@@ -229,7 +245,10 @@ jobs:
               -ldflags "-s -w -X main.version=$version" \
               -o "bin/passwd-agente-linux-$arch" ./cmd/passwd-agente
           done
+          CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.version=$version" \
+            -o bin/passwd-agente-helper-linux-amd64 ./cmd/passwd-agente-helper
           ./bin/passwd-agente-linux-amd64 version
+          ./bin/passwd-agente-helper-linux-amd64 --version
 
   cadena-de-suministro:
     name: Escaneo de secretos e imagen (OWASP A05/A06/A08)

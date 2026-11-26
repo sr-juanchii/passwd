@@ -34,7 +34,8 @@ type Config struct {
 	// Archivos de estado. Deben vivir en un directorio solo del agente.
 	Identidad string `json:"identidad"`
 	Journal   string `json:"journal"`
-	// Ruta del helper root de acción única. Vacío: el agente solo late y envía
+	// Socket del helper root de acción única (lo crea systemd:
+	// /run/passwd-agente/helper.sock). Vacío: el agente solo late y envía
 	// telemetría, sin pedir trabajos que no podría ejecutar.
 	Helper string `json:"helper"`
 	// Intervalo mínimo local entre dos rotaciones de la misma cuenta, en
@@ -96,6 +97,9 @@ func (c *Config) Validar() error {
 		}
 	default:
 		return fmt.Errorf("esquema no admitido en «backend»: %q", u.Scheme)
+	}
+	if c.Helper != "" && !strings.HasPrefix(c.Helper, "/") {
+		return errors.New("«helper» debe ser la ruta absoluta del socket del helper")
 	}
 	if c.AntiThrashMin < 0 {
 		return errors.New("«anti_thrash_min» no puede ser negativo")

@@ -161,6 +161,7 @@ Trazabilidad de la revisión: qué asumía el plan, qué dice el código de la v
 | H12 | El respaldo «incluye las tablas nuevas» | `app/backup.py:154-164, 328-336` repone `password_rotada_en` | §8.0 precisa: se repone el libro mayor y los agentes, **nunca** trabajos pendientes |
 | H13 | El alcance es el inventario | `EntradaVault` también tiene `password_rotada_en` (`app/models.py:792`) | §10 lo declara fuera de alcance explícitamente |
 | H14 | El trabajo se guarda «cifrado al par del agente» como defensa en reposo (§3.1) | Al confirmar `aplicado`, el backend escribe la contraseña nueva en la credencial (`app/servicios/rotacion.py`), y no tiene la clave privada del agente | En reposo, Fernet del backend como cualquier credencial; el **sellado** al par del agente se hace al **entregar** el trabajo (`app/servicios/cifrado_agente.py`). Hallado al diseñar los servicios de la v1.4.0 |
+| H15 | El agente sin privilegios llama a un helper root con `sudo` y su unidad tiene `CapabilityBoundingSet=` vacía (§4.2) | Con el conjunto de capacidades vacío —y con `NoNewPrivileges`— un binario setuid como `sudo` no puede convertirse en root: el helper nunca se ejecutaría | **Sin sudo ni setuid** (decisión del usuario): el helper es un servicio root aparte, activado por un socket local que solo el usuario del agente puede abrir (`SO_PEERCRED`), sin red; la lista de cuentas que puede rotar vive en un archivo de root. El agente conserva todo el endurecimiento |
 
 ---
 
@@ -579,11 +580,16 @@ consulta antes, como manda el proyecto.
 
 ### 4.2 Privilegios y sandboxing por SO
 
-- **Linux (por defecto): agente sin privilegios + helper root de una sola acción.** Servicio como
-  `passwd-agente` (sin shell, sin home con secretos). El cambio se hace vía `sudo` con allowlist
-  exacta: `NOPASSWD: /usr/local/sbin/passwd-agente-helper rotate <cuenta> --stdin`. El helper
-  valida parámetros, aplica por PAM, verifica y devuelve resultado JSON. Una RCE en el código de
-  red del agente **no es root**. Alternativa documentada: modo root endurecido para entornos sin sudo.
+- **Linux (por defecto): agente sin privilegios + helper root de una sola acción (corregido por
+  H15).** Servicio como `passwd-agente` (sin shell, sin home con secretos), **sin sudo ni setuid**.
+  El helper es un servicio root aparte que systemd arranca por cada conexión a un socket local
+  (`passwd-agente-helper.socket`, `Accept=yes`, 0660 con el grupo del agente); comprueba por
+  `SO_PEERCRED` que quien llama es el usuario del agente, atiende una petición (`verificar`,
+  `aplicar`, `restaurar`) y termina. Solo toca las cuentas de su lista (`/etc/passwd-agente/helper.json`,
+  de root) y que existan; antes de aplicar comprueba que la contraseña actual del inventario sigue
+  valiendo. Verifica con PAM (servicio propio, solo `pam_unix`) y fija con `chpasswd`. Corre **sin
+  red**. Una RCE en el código de red del agente **no es root**, y además no tiene a mano ningún
+  binario setuid.
 - **Unidad systemd endurecida**: `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`,
   `CapabilityBoundingSet=` (vacía para el agente), `RestrictAddressFamilies`, `IPAddressAllow` del
   backend, `MemoryDenyWriteExecute`.
@@ -1201,7 +1207,8 @@ versión se cierra con lo que entregó y con lo que no.
 | 2026-11-25 | v1.4.0 | Servicios (3a): telemetría | `6d3ef75` | `pytest tests/test_servicio_agentes.py` (22), suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; el acotado quitado a mano y su prueba falla | Pieza de servicio que faltaba para la ruta de telemetría: acota porcentajes, discos y textos, y marca `recortada` en vez de ocultarlo. Commit propio para no mezclar capas con la API |
 | 2026-11-25 | v1.4.0 | API del agente (3b): `/api/agent` | `36d4410` | `pytest tests/test_api_agente.py` (9), matriz de permisos y barrido pre-MFA, suite, `ruff`, `bandit`, `scripts/verificar_api_web.py`; cuatro garantías quitadas a mano y su prueba falla (una no fallaba: la prueba de superficie corría sin agentes en la base y se endureció) | Cinco rutas, 404 con el interruptor apagado, límite por IP y por agente, tope propio de 16 KB para la telemetría y rechazos auditados que sobreviven al rollback. `saludo` pasa a POST. `/api/agent` se excluye de la matriz como `/api/v1`, con su propia prueba que enumera el prefijo |
 | 2026-11-25 | v1.4.0 | API del panel (3c): `/api/web/agentes` | `deaff3b` | `pytest tests/test_api_web_agentes.py` (8), matriz de permisos, suite, `ruff`, `bandit`, `scripts/verificar_api_web.py` con el ciclo del agente; tres garantías quitadas a mano y su prueba falla | Permisos `agentes.ver`/`agentes.gestionar`; **reautenticación** para el alta y para reemitir el token de instalación (decisión del usuario), y para resolver a mano un «sin confirmar»; despachar de nuevo una rotación autorizada; el smoke recorre por HTTP alta → enrolar → despacho → resultado → revocación, sobre MySQL en la CI |
-| 2026-11-26 | v1.4.0 | Agente Go (4a): núcleo | (este) | `gofmt`, `go vet`, `go test -race` (8 paquetes), `govulncheck` sin hallazgos, compilación estática amd64/arm64; el binario contra el backend real (uvicorn): enrolamiento, token de un uso rechazado al segundo intento, identidad 0600, latido y telemetría registrados, parada limpia con SIGTERM; cinco garantías quitadas a mano y su prueba falla (una no fallaba: faltaba probar que el journal se escribe ANTES de tocar la cuenta) | Go 1.27 (la 1.24 del contenedor ya no tiene soporte). Cripto de la biblioteca estándar, Fernet descifrado según su especificación: la única biblioteca existente no tiene versiones. Única dependencia: `gopsutil`. Interoperabilidad probada con el vector del backend. Sin helper todavía: el agente solo late y envía telemetría |
+| 2026-11-26 | v1.4.0 | Agente Go (4a): núcleo | `71954db` | `gofmt`, `go vet`, `go test -race` (8 paquetes), `govulncheck` sin hallazgos, compilación estática amd64/arm64; el binario contra el backend real (uvicorn): enrolamiento, token de un uso rechazado al segundo intento, identidad 0600, latido y telemetría registrados, parada limpia con SIGTERM; cinco garantías quitadas a mano y su prueba falla (una no fallaba: faltaba probar que el journal se escribe ANTES de tocar la cuenta) | Go 1.27 (la 1.24 del contenedor ya no tiene soporte). Cripto de la biblioteca estándar, Fernet descifrado según su especificación: la única biblioteca existente no tiene versiones. Única dependencia: `gopsutil`. Interoperabilidad probada con el vector del backend. Sin helper todavía: el agente solo late y envía telemetría |
+| 2026-11-26 | v1.4.0 | Agente Go (4b): helper root y rotación real | (este) | `gofmt`, `go vet` (también con la etiqueta de integración), `go test -race`, `govulncheck` sin hallazgos; **integración real como root**: cuentas creadas con `useradd`, PAM y `chpasswd` de verdad y el helper servido por conexión como systemd (ciclo completo, reversión, recuperación tras reinicio, cuenta inexistente que no se crea, cuenta fuera de la lista, actual que no coincide, UID ajeno); cuatro garantías del helper quitadas a mano y su prueba falla | **H15**: sin sudo ni setuid, helper activado por socket (decisión del usuario). Helper con cgo y libpam (`msteinert/pam/v2` v2.1.0); el agente sigue estático. La CI ejecuta la integración con `sudo` en el runner |
 
 Al arrancar cada versión se añaden sus filas según el desglose de §8. Una versión cerrada no deja
 filas pendientes.
