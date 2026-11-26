@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { soloFecha } from "@/lib/fechas";
 
 // Vista del analista: solo sus concesiones sobre dispositivos de red.
 function VistaAnalista({ concesiones }: { concesiones: Concesion[] }) {
@@ -67,7 +68,7 @@ function VistaAnalista({ concesiones }: { concesiones: Concesion[] }) {
                 </Badge>
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {c.expira_en ? new Date(c.expira_en).toLocaleDateString() : "Sin caducidad"}
+                {c.expira_en ? soloFecha(c.expira_en) : "Sin caducidad"}
               </TableCell>
             </TableRow>
           ))}

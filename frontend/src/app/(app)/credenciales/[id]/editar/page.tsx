@@ -13,6 +13,7 @@ import { ErrorRecurso } from "@/components/error-recurso";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { fechaHora } from "@/lib/fechas";
 
 function FilaHistorial({ credId, h }: { credId: number; h: HistorialEntrada }) {
   const [pwd, setPwd] = useState<string | null>(null);
@@ -39,7 +40,7 @@ function FilaHistorial({ credId, h }: { credId: number; h: HistorialEntrada }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b py-2 text-sm last:border-0">
-      <span className="text-muted-foreground">{new Date(h.rotada_en).toLocaleString()}</span>
+      <span className="text-muted-foreground">{fechaHora(h.rotada_en)}</span>
       <span>· {h.rotada_por}</span>
       <Button size="sm" variant="outline" className="ml-auto" onClick={revelar} disabled={cargando}>
         {cargando ? (

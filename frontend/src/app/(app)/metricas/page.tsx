@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { fechaHora } from "@/lib/fechas";
 
 function MetricTile({
   icono: Icono,
@@ -260,7 +261,7 @@ export default function MetricasPage() {
                     <Lock className="size-4 text-muted-foreground" />
                     <Mono className="text-[13px] font-medium">{b.username}</Mono>
                     <span className="text-xs text-muted-foreground">
-                      hasta {new Date(b.bloqueado_hasta).toLocaleString()}
+                      hasta {fechaHora(b.bloqueado_hasta)}
                     </span>
                   </div>
                 ))}
@@ -347,7 +348,7 @@ export default function MetricasPage() {
                         <Badge variant="secondary">{c.nivel_label}</Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {c.expira_en ? new Date(c.expira_en).toLocaleString() : "—"}
+                        {fechaHora(c.expira_en)}
                       </TableCell>
                     </TableRow>
                   ))}

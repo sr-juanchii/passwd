@@ -44,9 +44,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
+import { fechaHora, instante, soloFecha } from "@/lib/fechas";
 
 function fecha(valor: string | null): string {
-  return valor ? new Date(valor).toLocaleString() : "—";
+  return fechaHora(valor);
 }
 
 export default function TokensPage() {
@@ -227,12 +228,12 @@ export default function TokensPage() {
                   <TableCell
                     className={
                       t.activo && !t.caducado && t.expira_en &&
-                      new Date(t.expira_en).getTime() - ahora < 14 * 86_400_000
+                      instante(t.expira_en).getTime() - ahora < 14 * 86_400_000
                         ? "font-medium text-warning"
                         : "text-muted-foreground"
                     }
                   >
-                    {t.expira_en ? new Date(t.expira_en).toLocaleDateString() : "—"}
+                    {t.expira_en ? soloFecha(t.expira_en) : "—"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{fecha(t.ultimo_uso)}</TableCell>
                   <TableCell>

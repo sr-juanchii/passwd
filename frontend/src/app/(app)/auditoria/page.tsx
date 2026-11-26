@@ -30,13 +30,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { instante } from "@/lib/fechas";
 
 const TODAS = "_todas";
 
 function agrupar(registros: RegistroAuditoria[]): [string, RegistroAuditoria[]][] {
   const mapa = new Map<string, RegistroAuditoria[]>();
   for (const r of registros) {
-    const fecha = new Date(r.fecha).toLocaleDateString(undefined, {
+    const fecha = instante(r.fecha).toLocaleDateString(undefined, {
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -48,7 +49,7 @@ function agrupar(registros: RegistroAuditoria[]): [string, RegistroAuditoria[]][
 }
 
 function FilaAuditoria({ r }: { r: RegistroAuditoria }) {
-  const hora = new Date(r.fecha).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const hora = instante(r.fecha).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const danger = !r.exito;
   return (
     // En pantallas estrechas la rejilla se pliega: hora+icono arriba y el

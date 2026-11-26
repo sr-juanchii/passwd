@@ -39,6 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { soloFecha } from "@/lib/fechas";
 
 export function AccesosPanel({
   tipo,
@@ -138,7 +139,7 @@ export function AccesosPanel({
                     <TableCell>
                       {a.expira_en ? (
                         <span className={a.expirada ? "text-destructive" : "text-muted-foreground"}>
-                          {new Date(a.expira_en).toLocaleDateString()}
+                          {soloFecha(a.expira_en)}
                           {a.expirada && " · expirada"}
                         </span>
                       ) : (

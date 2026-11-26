@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { soloFecha } from "@/lib/fechas";
 
 function VistaAnalista({ concesiones }: { concesiones: Concesion[] }) {
   if (concesiones.length === 0) {
@@ -63,7 +64,7 @@ function VistaAnalista({ concesiones }: { concesiones: Concesion[] }) {
                 </Badge>
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {c.expira_en ? new Date(c.expira_en).toLocaleDateString() : "Sin caducidad"}
+                {c.expira_en ? soloFecha(c.expira_en) : "Sin caducidad"}
               </TableCell>
             </TableRow>
           ))}

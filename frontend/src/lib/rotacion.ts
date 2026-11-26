@@ -6,6 +6,7 @@
 // la interfaz no hable en jerga de base de datos.
 
 import type { EstadoRotacion, RotacionAsiento, TipoRotacion, VerificacionRotacion } from "./types";
+import { fechaHora } from "./fechas";
 
 export const ETIQUETA_ESTADO: Record<EstadoRotacion, string> = {
   solicitada: "Esperando autorización",
@@ -41,5 +42,5 @@ export function textoDesvio(asiento: RotacionAsiento): string {
 }
 
 export function fecha(valor: string | null): string {
-  return valor ? new Date(valor).toLocaleString() : "—";
+  return fechaHora(valor);
 }

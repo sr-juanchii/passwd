@@ -73,6 +73,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { fechaHora } from "@/lib/fechas";
 
 const ROLES = Object.keys(ETIQUETAS_ROL) as Rol[];
 
@@ -321,7 +322,7 @@ export default function UsuariosPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-[12.5px] text-muted-foreground">
-                    {u.ultimo_acceso ? new Date(u.ultimo_acceso).toLocaleString() : "Nunca"}
+                    {u.ultimo_acceso ? fechaHora(u.ultimo_acceso) : "Nunca"}
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
