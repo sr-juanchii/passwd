@@ -123,6 +123,7 @@ def _serializar_trabajo(trabajo: TrabajoRotacion | None) -> dict | None:
     return {
         "id": trabajo.id,
         "rotacion_id": trabajo.rotacion_id,
+        "credencial_id": trabajo.credencial_id,
         "estado": trabajo.estado,
         "agente": trabajo.agente.nombre,
         "activo_nombre": trabajo.credencial.nombre_activo,

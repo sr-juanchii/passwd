@@ -216,6 +216,8 @@ def test_resolver_un_sin_confirmar_exige_reautenticacion(http):
     db.close()
     panel = http.get("/api/web/rotacion/panel").json()
     assert [t["id"] for t in panel["sin_confirmar"]] == [trabajo_id]
+    # La interfaz enlaza a la credencial desde el aviso: el trabajo la nombra.
+    assert panel["sin_confirmar"][0]["credencial_id"] == credencial_id
 
     r = http.post(f"/api/web/rotacion/trabajos/{trabajo_id}/resolver", headers=cabecera_csrf(http),
                   json={"aplicada": True})
