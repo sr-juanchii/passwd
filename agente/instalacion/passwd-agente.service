@@ -7,7 +7,7 @@
 # (passwd-agente.service.d/red.conf), IPAddressAllow con sus direcciones.
 [Unit]
 Description=Agente de rotación de passwd
-Documentation=https://github.com/sr-juanchii/passwd/blob/main/docs/plan-rotacion-agentes.md
+Documentation=https://github.com/sr-juanchii/passwd/blob/main/docs/guia-instalacion-agente-linux.md
 Wants=network-online.target passwd-agente-helper.socket
 After=network-online.target passwd-agente-helper.socket
 

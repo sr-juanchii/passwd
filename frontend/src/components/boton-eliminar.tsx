@@ -39,7 +39,7 @@ export function BotonEliminar({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={() => onConfirmar()}>Eliminar</AlertDialogAction>
+          <AlertDialogAction onClick={() => onConfirmar()}>{etiqueta}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

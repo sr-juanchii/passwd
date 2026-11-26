@@ -154,8 +154,8 @@ def reautenticar(db: Session, usuario: Usuario, password: str, codigo: str) -> N
     if usuario.mfa_metodo != MFA_TOTP and recovery.codigos_restantes(db, usuario) == 0:
         raise ErrorReautenticacion(
             "Esta acción exige una aplicación autenticadora. El código por correo no "
-            "sirve para autorizar una rotación: configure el segundo factor en «Mi "
-            "seguridad» antes de autorizar.",
+            "sirve para confirmarla (autorizar una rotación, dar de alta un agente…): "
+            "configure el segundo factor en «Mi seguridad» antes de continuar.",
         )
     password_ok = verificar_password(usuario.password_hash, password)
     resultado = segundo_factor.comprobar(db, usuario, codigo, permitir_correo=False)

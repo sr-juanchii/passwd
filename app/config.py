@@ -160,16 +160,20 @@ class Settings:
     # y toda rotación sigue el flujo manual de la 1.3.0.
     agentes_enabled: bool = field(default_factory=lambda: _env_bool("AGENTES_ENABLED", False))
     # Validez de un trabajo despachado: el agente no lo aplica pasado este plazo.
-    rotacion_ventana_job_min: int = field(default_factory=lambda: _env_int("ROTACION_VENTANA_JOB_MIN", 15))
+    # Debe holgar sobre la cadencia del latido (15 min): con un plazo igual, un
+    # trabajo despachado justo después de un latido vencería sin recogerse.
+    rotacion_ventana_job_min: int = field(default_factory=lambda: _env_int("ROTACION_VENTANA_JOB_MIN", 30))
     # Una credencial rotada hace menos de esto no se vuelve a despachar a un
     # agente (anti-bucle). Solo la vía de emergencia lo salta, y queda registrado.
     rotacion_anti_thrash_horas: int = field(default_factory=lambda: _env_int("ROTACION_ANTI_THRASH_HORAS", 24))
     # Vida de la identidad de un agente. Se renueva en cada latido, de modo que
     # un token robado del disco de un servidor caduca en horas, no en años.
     agentes_token_vida_horas: int = field(default_factory=lambda: _env_int("AGENTES_TOKEN_VIDA_HORAS", 24))
-    # Sin latido durante este tiempo, el agente se muestra «sin contacto».
+    # Sin latido durante este tiempo, el agente se muestra «sin contacto». Muy por
+    # debajo de la vida de la identidad: si fueran iguales, un agente callado
+    # pasaría directamente a «caducado» y el aviso intermedio no se vería nunca.
     agentes_umbral_sin_contacto_horas: int = field(
-        default_factory=lambda: _env_int("AGENTES_UMBRAL_SIN_CONTACTO_HORAS", 24))
+        default_factory=lambda: _env_int("AGENTES_UMBRAL_SIN_CONTACTO_HORAS", 1))
     # Cadencia de latido y telemetría que se indica a los agentes.
     agentes_telemetria_intervalo_min: int = field(
         default_factory=lambda: _env_int("AGENTES_TELEMETRIA_INTERVALO_MIN", 15))
@@ -354,10 +358,10 @@ OVERRIDABLES: dict[str, tuple[str, str, object]] = {
     "rotacion_emergencia_max_por_mes": ("ROTACION_EMERGENCIA_MAX_POR_MES", "entero", 3),
     "rotacion_patrones_modo_observacion": ("ROTACION_PATRONES_MODO_OBSERVACION", "booleano", True),
     "agentes_enabled": ("AGENTES_ENABLED", "booleano", False),
-    "rotacion_ventana_job_min": ("ROTACION_VENTANA_JOB_MIN", "entero", 15),
+    "rotacion_ventana_job_min": ("ROTACION_VENTANA_JOB_MIN", "entero", 30),
     "rotacion_anti_thrash_horas": ("ROTACION_ANTI_THRASH_HORAS", "entero", 24),
     "agentes_token_vida_horas": ("AGENTES_TOKEN_VIDA_HORAS", "entero", 24),
-    "agentes_umbral_sin_contacto_horas": ("AGENTES_UMBRAL_SIN_CONTACTO_HORAS", "entero", 24),
+    "agentes_umbral_sin_contacto_horas": ("AGENTES_UMBRAL_SIN_CONTACTO_HORAS", "entero", 1),
     "agentes_telemetria_intervalo_min": ("AGENTES_TELEMETRIA_INTERVALO_MIN", "entero", 15),
     "agentes_retencion_telemetria_dias": ("AGENTES_RETENCION_TELEMETRIA_DIAS", "entero", 30),
     "agentes_version_minima": ("AGENTES_VERSION_MINIMA", "texto", ""),

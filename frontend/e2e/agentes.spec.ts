@@ -106,6 +106,6 @@ test("la página de agentes lista el parque con su estado", async () => {
 test("revocar devuelve el activo a «sin agente»", async () => {
   await page.goto(urlServidor);
   await page.getByRole("button", { name: "Revocar" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Eliminar" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Revocar" }).click();
   await expect(badge("Sin agente")).toBeVisible({ timeout: 15_000 });
 });

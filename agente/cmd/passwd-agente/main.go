@@ -10,14 +10,17 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -58,7 +61,7 @@ func main() {
 
 func uso() {
 	fmt.Fprintln(os.Stderr, `uso:
-  passwd-agente enrolar --token <token de instalación> [--config ruta] [--forzar]
+  passwd-agente enrolar --token - [--config ruta] [--forzar]   (el token, por la entrada estándar)
   passwd-agente ejecutar [--config ruta]
   passwd-agente version`)
 }
@@ -66,10 +69,18 @@ func uso() {
 func enrolar(args []string) error {
 	banderas := flag.NewFlagSet("enrolar", flag.ContinueOnError)
 	rutaConfig := banderas.String("config", config.RutaPorDefecto, "archivo de configuración")
-	token := banderas.String("token", "", "token de instalación emitido en el panel (un solo uso)")
+	token := banderas.String("token", "", "token de instalación emitido en el panel (un solo uso); "+
+		"«-» lo lee de la entrada estándar, para que no quede a la vista de ps")
 	forzar := banderas.Bool("forzar", false, "sustituir una identidad existente")
 	if err := banderas.Parse(args); err != nil {
 		return err
+	}
+	if *token == "-" {
+		leido, err := leerToken(os.Stdin)
+		if err != nil {
+			return err
+		}
+		*token = leido
 	}
 	if *token == "" {
 		return errors.New("falta --token: emítalo desde el panel, en la ficha del activo")
@@ -107,6 +118,16 @@ func enrolar(args []string) error {
 	_ = os.Remove(cfg.Journal)
 	fmt.Printf("Agente «%s» enrolado. Identidad guardada en %s.\n", r.Nombre, cfg.Identidad)
 	return nil
+}
+
+// leerToken lee el token de instalación de la primera línea de r. Acotado: un
+// token cabe de sobra en 512 bytes, y nada justifica leer más de la entrada.
+func leerToken(r io.Reader) (string, error) {
+	linea, err := bufio.NewReader(io.LimitReader(r, 512)).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("no se pudo leer el token de la entrada estándar: %w", err)
+	}
+	return strings.TrimSpace(linea), nil
 }
 
 func ejecutar(args []string) error {

@@ -110,6 +110,8 @@ elif [[ $BACKEND =~ ^http://(127\.0\.0\.1|localhost|\[::1\])(:[0-9]+)?(/.*)?$ ]]
 else
 	fallo "el backend debe usar https (http solo hacia loopback, para pruebas)"
 fi
+# Va dentro de un JSON: nada de comillas, barras invertidas ni espacios.
+[[ $BACKEND =~ [\"\\[:space:]] ]] && fallo "el backend contiene caracteres no admitidos"
 
 [[ -n $CUENTAS ]] || fallo "falta --cuentas: la lista exacta de cuentas que el agente podrá rotar"
 IFS=',' read -r -a LISTA_CUENTAS <<<"$CUENTAS"
@@ -132,9 +134,19 @@ done
 echo "    sumas SHA-256 correctas"
 
 if [[ -n $CA_FILE ]]; then [[ -f $CA_FILE ]] || fallo "no existe --ca-file $CA_FILE"; fi
+# El pin es el SHA-256 en base64 de la clave pública del servidor: 44 caracteres.
+if [[ -n $PIN ]]; then
+	[[ $PIN =~ ^[A-Za-z0-9+/]{43}=$ ]] || fallo "--pin debe ser el SHA-256 en base64 de la clave pública del servidor (44 caracteres)"
+fi
 
 if [[ $TOKEN == "-" ]]; then
-	IFS= read -r TOKEN || true
+	if [[ -t 0 ]]; then
+		# Pegado a mano: sin eco, para que no quede en la pantalla.
+		IFS= read -r -s -p "Token de instalación (no se mostrará): " TOKEN || true
+		echo
+	else
+		IFS= read -r TOKEN || true
+	fi
 fi
 [[ -n $TOKEN ]] || fallo "falta el token de instalación (--token - o PASSWD_AGENTE_TOKEN)"
 
@@ -212,9 +224,12 @@ hacer systemctl enable --now passwd-agente-helper.socket
 
 paso "Enrolamiento"
 if [[ $SIMULAR -eq 1 ]]; then
-	echo "    + runuser -u $USUARIO -- $BIN_AGENTE enrolar --config $DIR_CONFIG/config.json --token ***"
+	echo "    + runuser -u $USUARIO -- $BIN_AGENTE enrolar --config $DIR_CONFIG/config.json --token - --forzar  (token por la entrada estándar)"
 else
-	runuser -u "$USUARIO" -- "$BIN_AGENTE" enrolar --config "$DIR_CONFIG/config.json" --token "$TOKEN" --forzar
+	# El token va por una tubería (printf es interno de bash): nunca aparece en
+	# la línea de órdenes de ningún proceso, así que ps no lo ve.
+	printf '%s\n' "$TOKEN" |
+		runuser -u "$USUARIO" -- "$BIN_AGENTE" enrolar --config "$DIR_CONFIG/config.json" --token - --forzar
 fi
 
 paso "Arranque"

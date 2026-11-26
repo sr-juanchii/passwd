@@ -416,3 +416,18 @@ def test_con_los_agentes_apagados_no_hay_alertas(bd, admin, monkeypatch):
     agente.ultimo_contacto_en = ahora_utc() - timedelta(hours=48)
     monkeypatch.setattr(get_settings(), "agentes_enabled", False)
     assert agentes.avisar_sin_contacto(bd) == 0
+
+
+def test_los_valores_por_omision_dejan_ver_cada_estado():
+    """Relaciones entre ajustes que, rotas, esconden estados sin que nada falle.
+
+    Con el umbral de «sin contacto» igual a la vida de la identidad, un agente
+    callado pasaría directamente a «caducado»; con la ventana del trabajo igual
+    al latido, un trabajo despachado justo después de un latido vencería sin
+    recogerse.
+    """
+    from app.config import OVERRIDABLES
+
+    por_omision = {clave: valor[2] for clave, valor in OVERRIDABLES.items()}
+    assert por_omision["agentes_umbral_sin_contacto_horas"] < por_omision["agentes_token_vida_horas"]
+    assert por_omision["rotacion_ventana_job_min"] > por_omision["agentes_telemetria_intervalo_min"]

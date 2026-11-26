@@ -3,7 +3,8 @@
 Es la única superficie que habla con los agentes. Se autentica con la identidad
 de cada agente (``Authorization: Bearer``), sin cookies ni CSRF, y **solo
 traduce HTTP ↔ servicio**: las reglas viven en ``app/servicios/agentes.py`` y
-``app/servicios/rotacion.py``. Contrato en docs/plan-rotacion-agentes.md §3.3.
+``app/servicios/rotacion.py``. Contrato normativo en docs/contrato-agente.md y
+referencia de cada ruta en docs/referencia-api-agent.md.
 
 Con ``agentes_enabled`` apagado, todo el prefijo responde 404: la superficie no
 existe hasta que alguien decide activarla.

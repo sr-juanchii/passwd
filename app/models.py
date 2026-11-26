@@ -423,8 +423,8 @@ class Credencial(Base):
     actualizado_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc, onupdate=ahora_utc)
     # Fecha de la última rotación de la contraseña (alertas de antigüedad)
     password_rotada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=ahora_utc)
-    # Vía por la que se rota esta credencial. Hasta que existan agentes y
-    # conectores, todas son "manual". Sin CHECK a propósito: añadir una
+    # Vía por la que se rota esta credencial: "manual" (por omisión, como en la
+    # 1.3.0) o "agente" (el de su activo, desde la 1.4.0). Sin CHECK a propósito: añadir una
     # restricción a una tabla existente no es un cambio aditivo y el
     # reconciliador de esquema no lo haría; la validación vive en el servicio.
     via_rotacion: Mapped[str] = mapped_column(

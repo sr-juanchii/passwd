@@ -92,7 +92,7 @@ export function DialogoAutorizar({
                 onChange={(e) => setCodigo(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                El código enviado por correo no sirve para autorizar una rotación.
+                El código enviado por correo no sirve para confirmar esta acción.
               </p>
             </div>
           </div>

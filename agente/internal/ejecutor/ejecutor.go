@@ -44,8 +44,8 @@ const (
 // IntervaloPorDefecto se usa hasta que el backend indique otro.
 const IntervaloPorDefecto = 15 * time.Minute
 
-// Rotador cambia y comprueba contraseñas de cuentas locales. Su implementación
-// real (helper root de acción única + PAM) llega en el commit 4b.
+// Rotador cambia y comprueba contraseñas de cuentas locales. La implementación
+// real es internal/rotador, que se lo pide al helper root por su socket.
 type Rotador interface {
 	Aplicar(ctx context.Context, usuario, actual, nueva string) error
 	Verificar(ctx context.Context, usuario, password string) (bool, error)
