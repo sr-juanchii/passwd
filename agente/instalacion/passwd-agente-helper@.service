@@ -1,0 +1,46 @@
+# Helper root de passwd-agente: atiende UNA petición y termina.
+#
+# Es el único componente con privilegios. Corre sin red (PrivateNetwork), con
+# las capacidades justas para chpasswd y PAM, y solo puede escribir en /etc,
+# que es donde viven /etc/shadow y sus archivos de bloqueo.
+[Unit]
+Description=Helper root de passwd-agente (una petición)
+CollectMode=inactive-or-failed
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/passwd-agente-helper --config /etc/passwd-agente/helper.json
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=60
+
+# Sin red: el helper no tiene nada que decirle a nadie salvo por su socket.
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+# Lo justo para chpasswd (dueño y grupo de /etc/shadow, archivos de bloqueo) y
+# para el registro de auditoría de PAM.
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_AUDIT_WRITE
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+
+ProtectSystem=strict
+ReadWritePaths=/etc
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

@@ -1,0 +1,8 @@
+# Servicio PAM del helper de passwd-agente (/etc/pam.d/passwd-agente-helper).
+#
+# Solo pam_unix: verifica la contraseña de la cuenta LOCAL. A propósito no
+# incluye common-auth: no debe contar fallos para bloquear la cuenta
+# (faillock) ni pedir otros factores. «nodelay» evita la espera tras un fallo:
+# el helper comprueba, no es una pantalla de acceso.
+auth     required  pam_unix.so nodelay
+account  required  pam_unix.so

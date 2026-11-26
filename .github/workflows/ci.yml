@@ -250,6 +250,81 @@ jobs:
           ./bin/passwd-agente-linux-amd64 version
           ./bin/passwd-agente-helper-linux-amd64 --version
 
+  agente-sistema:
+    name: Agente instalado con systemd rotando una cuenta real
+    runs-on: ubuntu-latest
+    # El runner arranca con systemd: es lo único que prueba que el
+    # endurecimiento de las unidades (helper sin red, agente sin privilegios,
+    # filtro de llamadas al sistema) deja hacer el trabajo.
+    env:
+      PASSWD_DATA_DIR: ${{ runner.temp }}/datos
+      PASSWD_AGENTES_ENABLED: "true"
+      PASSWD_COOKIE_SECURE: "false"
+      # Latido cada minuto, para que la prueba no espere los 15 por defecto.
+      PASSWD_AGENTES_TELEMETRIA_INTERVALO_MIN: "1"
+      CUENTA: pa-e2e
+      PASSWORD_INICIAL: Inicial-Sistema-2026!
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Configurar Go (versión de agente/go.mod)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: agente/go.mod
+          cache-dependency-path: agente/go.sum
+
+      - name: Dependencias
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq libpam0g-dev
+
+      - name: Compilar los binarios y publicar sus sumas
+        working-directory: agente
+        run: |
+          mkdir -p "$RUNNER_TEMP/dist"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/dist/passwd-agente" ./cmd/passwd-agente
+          CGO_ENABLED=1 go build -trimpath -o "$RUNNER_TEMP/dist/passwd-agente-helper" ./cmd/passwd-agente-helper
+          (cd "$RUNNER_TEMP/dist" && sha256sum passwd-agente passwd-agente-helper > SHA256SUMS)
+
+      - name: Cuenta Linux real que el agente rotará
+        run: |
+          sudo useradd -M -N -s /usr/sbin/nologin "$CUENTA"
+          echo "$CUENTA:$PASSWORD_INICIAL" | sudo chpasswd
+
+      - name: Backend con los agentes activados
+        run: |
+          nohup python -m uvicorn --factory app.main:create_app --host 127.0.0.1 --port 8000 \
+            > "$RUNNER_TEMP/backend.log" 2>&1 &
+          for _ in $(seq 30); do curl -fsS http://127.0.0.1:8000/healthz && break; sleep 1; done
+
+      - name: Preparar el inventario y el alta del agente
+        run: |
+          python scripts/prueba_agente_sistema.py preparar --cuenta "$CUENTA" \
+            --password "$PASSWORD_INICIAL" --token-archivo "$RUNNER_TEMP/token"
+
+      - name: Instalar con instalar.sh (systemd, unidades endurecidas)
+        run: |
+          sudo agente/instalacion/instalar.sh --backend http://127.0.0.1:8000 --cuentas "$CUENTA" \
+            --binarios "$RUNNER_TEMP/dist" --sumas "$RUNNER_TEMP/dist/SHA256SUMS" \
+            --token - < "$RUNNER_TEMP/token"
+          systemd-analyze security passwd-agente.service | tail -1
+
+      - name: Rotación autorizada, ejecutada por el agente instalado
+        run: python scripts/prueba_agente_sistema.py rotar --cuenta "$CUENTA"
+
+      - name: Registros si algo falló
+        if: failure()
+        run: |
+          sudo journalctl -u passwd-agente.service -u 'passwd-agente-helper@*' --no-pager | tail -100
+          tail -50 "$RUNNER_TEMP/backend.log"
+
   cadena-de-suministro:
     name: Escaneo de secretos e imagen (OWASP A05/A06/A08)
     runs-on: ubuntu-latest

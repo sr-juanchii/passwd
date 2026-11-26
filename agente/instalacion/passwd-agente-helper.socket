@@ -1,0 +1,21 @@
+# Socket del helper root de passwd-agente (v1.4.0, hallazgo H15).
+#
+# Solo el usuario del agente puede abrirlo (grupo passwd-agente, 0660), y el
+# helper comprueba además por SO_PEERCRED quién llama. Cada conexión arranca
+# una instancia de passwd-agente-helper@.service que atiende una petición.
+[Unit]
+Description=Socket del helper root de passwd-agente
+
+[Socket]
+ListenStream=/run/passwd-agente/helper.sock
+SocketUser=root
+SocketGroup=passwd-agente
+SocketMode=0660
+# El directorio lo crea systemd como root: tiene que poder atravesarlo el
+# agente. Lo que protege es el socket (0660, grupo del agente) y SO_PEERCRED.
+DirectoryMode=0755
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

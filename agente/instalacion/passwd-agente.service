@@ -1,0 +1,63 @@
+# Agente de rotación de passwd (v1.4.0). docs/plan-rotacion-agentes.md §4.2.
+#
+# Corre SIN privilegios y no puede ganarlos: ni capacidades, ni setuid, ni
+# nuevos privilegios. Las contraseñas no las cambia él: se lo pide al helper
+# root por /run/passwd-agente/helper.sock. Solo sale a la red hacia el backend:
+# IPAddressDeny=any aquí y, en el drop-in que escribe el instalador
+# (passwd-agente.service.d/red.conf), IPAddressAllow con sus direcciones.
+[Unit]
+Description=Agente de rotación de passwd
+Documentation=https://github.com/sr-juanchii/passwd/blob/main/docs/plan-rotacion-agentes.md
+Wants=network-online.target passwd-agente-helper.socket
+After=network-online.target passwd-agente-helper.socket
+
+[Service]
+Type=simple
+User=passwd-agente
+Group=passwd-agente
+ExecStart=/usr/local/bin/passwd-agente ejecutar --config /etc/passwd-agente/config.json
+Restart=on-failure
+RestartSec=30s
+
+# Identidad y journal: solo el agente los lee y escribe.
+StateDirectory=passwd-agente
+StateDirectoryMode=0700
+UMask=0077
+
+# Sin privilegios, y sin forma de conseguirlos.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+
+# Sistema de archivos: solo lectura salvo su directorio de estado.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Oculta los procesos ajenos; /proc/stat y /proc/meminfo, que lee la
+# telemetría, siguen visibles.
+ProtectProc=invisible
+
+# Red: solo IP (hacia el backend) y el socket local del helper.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Sin @resources: el runtime de Go ajusta RLIMIT_NOFILE al arrancar.
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target
