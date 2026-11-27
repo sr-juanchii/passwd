@@ -466,14 +466,21 @@ tipo `emergencia`: se despacha, y el salto **DEBE** quedar en la bitácora
 **AG-80.** El agente **DEBE** aplicar además un intervalo mínimo **local** entre dos rotaciones
 aplicadas de la misma cuenta, como defensa ante un backend que martillee. Un trabajo que lo
 incumple se informa como `fallado` (AG-40) y no se ejecuta. El intervalo es configuración local
-(`anti_thrash_min`, 60 minutos por omisión); el backend **NO PUEDE** cambiarlo.
-— `contrato_test.go::TestRechazosDelContrato` («anti-thrash»), `TestPasadoElIntervaloLocalSePuedeRotar`;
-`ejecutor_test.go::TestElAntiThrashLocalFrenaLaSegundaRotacion`.
+(`anti_thrash_min`, 60 minutos por omisión); el backend **NO PUEDE** cambiarlo. La única
+excepción es la misma que en el backend: un trabajo con `emergencia: true` (autorizado por la vía
+de emergencia, ruidosa y auditada) **DEBE** aceptarse aunque no haya pasado el intervalo local.
+— `contrato_test.go::TestRechazosDelContrato` («anti-thrash»), `TestPasadoElIntervaloLocalSePuedeRotar`,
+`TestUnaEmergenciaSaltaElAntiThrashLocal`; `ejecutor_test.go::TestElAntiThrashLocalFrenaLaSegundaRotacion`.
+
+**BE-81.** El backend **DEBE** marcar `emergencia: true` en el contenido sellado del trabajo cuando
+la rotación es de tipo `emergencia`, y `false` en cualquier otro caso.
+— `test_despacho_agentes.py::test_el_anti_thrash_frena_salvo_en_emergencia`, `test_api_agente.py::test_ciclo_completo_del_agente`.
 
 > En la implementación de referencia, `anti_thrash_min: 0` equivale al valor por omisión (60), no
 > a desactivarlo, y un valor negativo impide arrancar ([`config.go`](../agente/internal/config/config.go)).
-> Como el intervalo local es mucho menor que el del backend, no interfiere con la vía de
-> emergencia salvo que se rote la misma cuenta dos veces en menos de una hora.
+> Hasta la `1.4.0-rc.3` el trabajo no llevaba `emergencia` y el agente frenaba también una
+> emergencia sobre una cuenta que había rotado hace menos de una hora. Un agente de esas versiones
+> ignora el campo y se comporta así; el backend lo envía igual.
 
 ---
 

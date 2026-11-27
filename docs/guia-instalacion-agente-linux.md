@@ -264,12 +264,12 @@ Para ver qué haría sin hacerlo (cualquier token no vacío sirve: no se envía)
    PAM.
 4. **Unidades systemd** y el drop-in de red con las direcciones del backend y de los servidores DNS
    de `/etc/resolv.conf`; `daemon-reload` y `enable --now passwd-agente-helper.socket`.
-5. **Enrolamiento**: `runuser -u passwd-agente -- passwd-agente enrolar … --forzar`. El agente
-   genera su par de claves X25519, canjea el token y guarda su identidad. Muestra «Agente «…»
-   enrolado. Identidad guardada en /var/lib/passwd-agente/identidad.json.». Durante los segundos
-   que dura, el token aparece en la lista de procesos; es de un solo uso y queda anulado al
-   canjearse.
-6. **Arranque**: `enable --now passwd-agente.service`, espera 3 s y comprueba que el servicio y el
+5. **Enrolamiento**: `runuser -u passwd-agente -- passwd-agente enrolar --token - … --forzar`, con
+   el token **por una tubería**: nunca aparece en la lista de procesos. El agente genera su par de
+   claves X25519, canjea el token y guarda su identidad. Muestra «Agente «…» enrolado. Identidad
+   guardada en /var/lib/passwd-agente/identidad.json.» y **«Vinculado en el inventario a: …»**:
+   compruebe que es el activo donde está instalando. Si no, copió el token de otra ficha (§9.1).
+6. **Arranque**: `enable` y `restart passwd-agente.service` (reinicia un agente que ya corría con otra identidad), espera 3 s y comprueba que el servicio y el
    socket quedaron activos. Termina con «Agente instalado. Estado: systemctl status
    passwd-agente.service».
 
@@ -410,8 +410,8 @@ cuenta dos veces en menos de una hora, ni siquiera en emergencia.
 ### 9.1 Reinstalar (identidad caducada, servidor reinstalado, token de instalación caducado)
 
 1. Compruebe en **Agentes** que el agente no tiene un **trabajo en curso**. Reinstalar anula la
-   identidad al momento y el enrolamiento borra el journal: un trabajo entregado se quedaría sin
-   resultado y acabaría «sin confirmar».
+   identidad y el enrolamiento borra el journal, así que el panel **se niega** a emitir el token
+   mientras el agente tenga una rotación recogida: espere su resultado o resuélvala en la credencial.
 2. En la ficha del activo, **«Reinstalar»** → diálogo «Emitir un token de instalación nuevo» → su
    contraseña y código → **«Emitir token»**. La insignia vuelve a «Pendiente de instalar».
 3. En el servidor, vuelva a ejecutar `instalar.sh` con el token nuevo. Es idempotente: sustituye

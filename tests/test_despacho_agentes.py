@@ -180,6 +180,9 @@ def test_el_anti_thrash_frena_salvo_en_emergencia(esc):
     urgente = esc.autorizada(tipo=ROT_TIPO_EMERGENCIA)
     assert urgente.estado == ROT_DESPACHADA
     assert _acciones(esc.bd, audit.ROTACION_ANTI_THRASH_SALTADO)
+    # El agente también tiene que saberlo: su anti-thrash local la frenaría.
+    _trabajo, contenido = esc.entregar()
+    assert contenido["emergencia"] is True
 
 
 def test_una_credencial_recien_creada_se_puede_rotar_por_agente(esc):
@@ -410,3 +413,14 @@ def test_el_respaldo_repone_agentes_revocados_y_nunca_trabajos(esc):
     assert asiento.estado == ROT_AUTORIZADA          # no queda abierto para siempre
     assert "respaldo" in asiento.detalle_error
     assert asiento.agente_nombre == esc.agente.nombre
+
+
+def test_reinstalar_con_un_trabajo_recogido_se_niega(esc):
+    """Reenrolar borra el journal del agente: el resultado se perdería (hallado al documentar)."""
+    from app.servicios import agentes
+    from app.servicios.agentes import ErrorAgente
+
+    esc.autorizada()
+    esc.entregar()
+    with pytest.raises(ErrorAgente, match="tiene recogida la rotación de deploy"):
+        agentes.reemitir_enrolamiento(esc.bd, agente=esc.agente, usuario=esc.pide)

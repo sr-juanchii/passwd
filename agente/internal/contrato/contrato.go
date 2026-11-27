@@ -37,6 +37,10 @@ type Trabajo struct {
 	Nueva    string `json:"nueva"`
 	Actual   string `json:"actual"`
 	ExpiraEn string `json:"expira_en"`
+	// Emergencia: la rotación la autorizó el backend por la vía de emergencia,
+	// que es la única excepción al intervalo mínimo entre rotaciones (plan §4.1,
+	// prohibición 13). Ruidosa y auditada en el backend; el agente la respeta.
+	Emergencia bool `json:"emergencia,omitempty"`
 }
 
 // Errores del contrato. El mensaje viaja al backend como detalle del fallo:
@@ -88,7 +92,7 @@ func Validar(t Trabajo, c Contexto) error {
 	if t.Nueva == t.Actual {
 		return errors.New("la contraseña nueva es igual a la actual")
 	}
-	if c.Ultima != nil && c.AntiThrash > 0 {
+	if c.Ultima != nil && c.AntiThrash > 0 && !t.Emergencia {
 		if ultima, ok := c.Ultima(t.Usuario); ok && c.Ahora.Sub(ultima) < c.AntiThrash {
 			return ErrAntiThrash
 		}

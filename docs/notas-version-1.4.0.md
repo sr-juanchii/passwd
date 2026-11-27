@@ -89,6 +89,7 @@ Cada cambio lleva un identificador para poder citarlo en revisiones y auditoría
 | COR-05 | Si el helper rechaza el cambio sin tocar la cuenta, el agente informa ese motivo en vez de deducir «no autentica» y restaurar a ciegas; si el helper no contesta, no concluye nada y reintenta. Lo pendiente se entrega aunque la versión ya no se admita, y un resultado que el backend nunca admitirá deja de bloquear al agente. | `agente/internal/{helper,rotador,ejecutor}` |
 | COR-06 | Valores por omisión que escondían estados: el umbral de «sin contacto» pasa de 24 h (igual a la vida de la identidad, así que nunca se veía) a **1 h**, y la ventana del trabajo de 15 min (igual al latido) a **30 min**. Una prueba guarda ambas relaciones. | `app/config.py` |
 | COR-07 | **Hallados en calidad con la `rc.2`**: el helper amd64 exigía x86-64-v3 y no arrancaba en CPU sin AVX2 (los paquetes se compilan ahora en Ubuntu 24.04 y el empaquetado lo comprueba); reinstalar no reiniciaba el agente; la regla de 24 h contaba el alta de una credencial como una rotación; la ficha daba un motivo genérico cuando el agente no tenía la rotación. | `agente/empaquetar.sh`, `.github/workflows/binarios-agente.yml`, `agente/instalacion/instalar.sh`, `app/servicios/rotacion.py` |
+| COR-08 | **Mejoras antes de la versión final**: el enrolamiento dice a qué activo del inventario queda vinculado el agente; el trabajo lleva `emergencia` y el anti-thrash local del agente respeta esa vía, como el del backend; «Reinstalar» se niega con un trabajo recogido en lugar de dejarlo «sin confirmar»; el mensaje de nombre repetido explica que puede ser de un agente revocado. | `app/api_agent/`, `app/servicios/`, `agente/internal/contrato`, `agente/cmd/passwd-agente` |
 
 ### Calidad
 
@@ -177,8 +178,7 @@ ignora la caducidad, despacho de credenciales manuales y contraseña en la bitá
 
 - La **lista de cuentas** del helper es la frontera: el usuario del agente puede fijar la
   contraseña de cualquier cuenta que figure en ella. El instalador no impide incluir `root`.
-- **Reinstalar** un agente con un trabajo ya recogido deja esa rotación «sin confirmar», y el
-  anti-thrash local (1 h) no conoce la vía de emergencia.
+- **Reinstalar** un agente se niega mientras tiene un trabajo recogido, para no perder su resultado.
 
 La lista completa, con su porqué, está en
 [`arquitectura-agentes.md`](arquitectura-agentes.md) §12. El resto de limitaciones de la 1.3.0 sigue vigente. Todas están recogidas en la

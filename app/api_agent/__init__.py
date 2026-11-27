@@ -170,6 +170,9 @@ def enrolar(request: Request, db: BD, cuerpo: EnrolarCuerpo):
     return {
         "agente_id": agente.id,
         "nombre": agente.nombre,
+        # Para que quien instala vea a qué activo del inventario queda vinculado.
+        "activo": {"tipo": agentes.MODELOS_ACTIVO[agente.tipo_activo][1],
+                   "nombre": agentes.nombre_activo(agente)},
         "token": token,
         "token_expira_en": _fecha(agente.token_expira_en),
         "intervalo_min": agentes.saludo_intervalo_min(),

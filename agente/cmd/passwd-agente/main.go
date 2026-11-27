@@ -117,6 +117,10 @@ func enrolar(args []string) error {
 	// Un journal de una identidad anterior ya no es legible: se retira.
 	_ = os.Remove(cfg.Journal)
 	fmt.Printf("Agente «%s» enrolado. Identidad guardada en %s.\n", r.Nombre, cfg.Identidad)
+	if r.Activo.Nombre != "" {
+		// Compruébelo: si no es este servidor, el token salió de otra ficha.
+		fmt.Printf("Vinculado en el inventario a: %s «%s».\n", r.Activo.Tipo, r.Activo.Nombre)
+	}
 	return nil
 }
 

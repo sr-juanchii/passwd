@@ -161,6 +161,7 @@ def test_ciclo_completo_del_agente(http):
     assert r.status_code == 200
     contenido = cifrado_agente.abrir(privada, r.json()["sobre"])
     assert contenido["usuario"] == "deploy" and contenido["actual"] == "Actual-Api-2026!"
+    assert contenido["emergencia"] is False
 
     r = http.post(f"/api/agent/trabajos/{contenido['trabajo_id']}/resultado",
                   headers=_bearer(token), json={"estado": "aplicado", "verificacion": "local"})
@@ -174,6 +175,15 @@ def test_ciclo_completo_del_agente(http):
     r = http.post(f"/api/agent/trabajos/{contenido['trabajo_id']}/resultado",
                   headers=_bearer(token), json={"estado": "aplicado"})
     assert r.status_code == 409
+
+
+def test_el_enrolamiento_dice_a_que_activo_queda_vinculado(http):
+    """Hallado en calidad: un token copiado de otra ficha vinculó el agente al activo equivocado."""
+    _ids, enrolamiento = _alta("srv-vinculo")
+    _privada, publica = _par()
+    r = http.post("/api/agent/enrolar", json={"token_enrolamiento": enrolamiento, "clave_publica": publica})
+    assert r.status_code == 200, r.text
+    assert r.json()["activo"] == {"tipo": "servidor físico", "nombre": "srv-vinculo"}
 
 
 def test_el_token_de_enrolamiento_no_sirve_dos_veces(http):

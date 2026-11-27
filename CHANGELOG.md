@@ -87,6 +87,15 @@ Hallado en las pruebas funcionales en calidad con el pre-release `1.4.0-rc.2`:
 - La ficha de la credencial **decía un motivo genérico** cuando el agente no tenía la rotación, y
   «Ejecutada por el agente» antes de tener el resultado.
 
+Mejoras antes de la versión final:
+
+- El enrolamiento **dice a qué activo del inventario queda vinculado** el agente («Vinculado en el
+  inventario a: …»), para notar enseguida un token copiado de otra ficha.
+- El trabajo lleva **`emergencia`** y el anti-thrash local del agente respeta esa vía, como el del
+  backend.
+- **«Reinstalar» se niega** mientras el agente tiene una rotación recogida, en lugar de perder su
+  resultado y dejarla «sin confirmar».
+
 ### Seguridad
 
 - **Pruebas de aceptación** con la trazabilidad de cada criterio a su prueba: `/api/v1` congelada

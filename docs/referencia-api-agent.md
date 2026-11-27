@@ -158,11 +158,16 @@ Canjea el **token de enrolamiento de un solo uso** por la identidad del agente. 
 {
   "agente_id": 7,
   "nombre": "agente-srv-bd-nomina",
+  "activo": {"tipo": "servidor físico", "nombre": "srv-bd-nomina"},
   "token": "<token del agente>",
   "token_expira_en": "2026-11-27T10:00:00",
   "intervalo_min": 15
 }
 ```
+
+`activo` es el activo del inventario al que queda vinculado el agente: el token de instalación sale
+de su ficha. El agente lo muestra al enrolarse («Vinculado en el inventario a: …») para que quien
+instala note si copió el token de la ficha equivocada.
 
 | Campo | Descripción |
 |---|---|
@@ -285,9 +290,13 @@ confirmar»). Refresca el «último contacto».
   "usuario": "deploy",
   "nueva": "<contraseña nueva>",
   "actual": "<contraseña actual>",
-  "expira_en": "2026-11-26T10:15:00"
+  "expira_en": "2026-11-26T10:15:00",
+  "emergencia": false
 }
 ```
+
+`emergencia` es `true` solo si la rotación se autorizó por la vía de emergencia: es la única
+excepción al anti-thrash local del agente ([`contrato-agente.md`](contrato-agente.md), AG-80).
 
 `rotar_cuenta` es el único tipo. Las reglas que el agente aplica a cada campo están en
 [`contrato-agente.md`](contrato-agente.md) §5.2.

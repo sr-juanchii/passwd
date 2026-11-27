@@ -60,6 +60,13 @@ type RespEnrolar struct {
 	Token         string `json:"token"`
 	TokenExpiraEn string `json:"token_expira_en"`
 	IntervaloMin  int    `json:"intervalo_min"`
+	// El activo del inventario al que queda vinculado: el token de instalación
+	// sale de la ficha de un activo, y copiarlo de la equivocada vincula el
+	// agente al activo equivocado. Se muestra al enrolar para que se note.
+	Activo struct {
+		Tipo   string `json:"tipo"`
+		Nombre string `json:"nombre"`
+	} `json:"activo"`
 }
 
 // RespSaludo es la respuesta al latido.

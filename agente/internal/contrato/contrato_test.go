@@ -63,3 +63,18 @@ func TestPasadoElIntervaloLocalSePuedeRotar(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUnaEmergenciaSaltaElAntiThrashLocal(t *testing.T) {
+	// La vía de emergencia, autorizada y auditada en el backend, es la única
+	// excepción al intervalo mínimo: el agente la respeta igual que el backend.
+	c := ctx()
+	c.Ultima = func(string) (time.Time, bool) { return ahora.Add(-10 * time.Minute), true }
+	urgente := valido()
+	urgente.Emergencia = true
+	if err := Validar(urgente, c); err != nil {
+		t.Fatalf("una emergencia se frenó por el anti-thrash local: %v", err)
+	}
+	if err := Validar(valido(), c); !errors.Is(err, ErrAntiThrash) {
+		t.Fatalf("sin emergencia debía frenarse: %v", err)
+	}
+}

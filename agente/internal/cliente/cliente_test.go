@@ -124,3 +124,21 @@ func TestLaRespuestaDesmedidaSeCorta(t *testing.T) {
 		t.Fatal("aceptó una respuesta por encima del tope")
 	}
 }
+
+func TestElEnrolamientoDiceAQueActivoQuedaVinculado(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"agente_id": 3, "nombre": "agente-qa", "token": "t", "token_expira_en": "2026-11-28T10:00:00",
+			"intervalo_min": 15, "activo": map[string]string{"tipo": "máquina virtual", "nombre": "SRV-SAVE-QA"},
+		})
+	}))
+	defer srv.Close()
+	c, err := Nuevo(cfg(t, srv.URL), "", "1.4.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := c.Enrolar(context.Background(), "tok", "clave", "host", "1.4.0")
+	if err != nil || r.Activo.Nombre != "SRV-SAVE-QA" || r.Activo.Tipo != "máquina virtual" {
+		t.Fatalf("enrolamiento = %+v, %v", r, err)
+	}
+}

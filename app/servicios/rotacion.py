@@ -853,6 +853,8 @@ def entregar(
         "nueva": descifrar(trabajo.nueva_cifrada),     # type: ignore[arg-type]
         "actual": descifrar(trabajo.actual_cifrada),   # type: ignore[arg-type]
         "expira_en": trabajo.ventana_expira_en.isoformat(timespec="seconds"),
+        # La única excepción al anti-thrash local del agente, igual que al del backend.
+        "emergencia": trabajo.rotacion.tipo == ROT_TIPO_EMERGENCIA,
     })
     audit.registrar(
         db, audit.TRABAJO_ENTREGADO, request=request, username=agentes.sujeto(agente),

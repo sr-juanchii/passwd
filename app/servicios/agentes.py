@@ -185,7 +185,9 @@ def alta(
     if not nombre_limpio:
         raise ErrorAgente("El agente necesita un nombre.")
     if db.scalar(select(Agente.id).where(Agente.nombre == nombre_limpio)) is not None:
-        raise ErrorAgente("Ya existe un agente con ese nombre.", codigo=409)
+        raise ErrorAgente(
+            "Ya existe un agente con ese nombre, quizá uno revocado: los nombres no se "
+            "reutilizan, para que la bitácora no confunda dos agentes. Use otro.", codigo=409)
     if agente_vigente_de(db, tipo_activo, activo_id) is not None:
         raise ErrorAgente(
             f"Este {etiqueta} ya tiene un agente. Revóquelo antes de dar de alta otro.",
@@ -227,6 +229,17 @@ def reemitir_enrolamiento(
     if agente.revocado:
         raise ErrorAgente("Un agente revocado no se puede volver a enrolar: dé de alta otro.",
                           codigo=409)
+    from app.models import TRABAJO_ENTREGADO
+    from app.servicios import rotacion as servicio_rotacion
+
+    trabajo = servicio_rotacion.trabajo_activo_de(db, agente)
+    if trabajo is not None and trabajo.estado == TRABAJO_ENTREGADO:
+        # Reenrolar borra el journal del agente: el resultado de ese trabajo se
+        # perdería y la rotación quedaría «sin confirmar».
+        raise ErrorAgente(
+            f"El agente tiene recogida la rotación de {trabajo.credencial.usuario_acceso}: espere a "
+            "que informe el resultado, o resuélvala en la credencial, antes de reinstalarlo.",
+            codigo=409)
     token = _nuevo_token()
     agente.estado = AGENTE_PENDIENTE
     agente.enrolamiento_hash = _hash(token)

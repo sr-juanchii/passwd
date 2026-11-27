@@ -431,3 +431,14 @@ def test_los_valores_por_omision_dejan_ver_cada_estado():
     por_omision = {clave: valor[2] for clave, valor in OVERRIDABLES.items()}
     assert por_omision["agentes_umbral_sin_contacto_horas"] < por_omision["agentes_token_vida_horas"]
     assert por_omision["rotacion_ventana_job_min"] > por_omision["agentes_telemetria_intervalo_min"]
+
+
+def test_el_nombre_de_un_agente_revocado_no_se_reutiliza_y_el_error_lo_explica(bd, admin):
+    from app.servicios import agentes
+    from app.servicios.agentes import ErrorAgente
+
+    servidor = _servidor(bd, "srv-nombre")
+    agente, _ = _alta(bd, admin, servidor, nombre="agente-repetido")
+    agentes.revocar(bd, agente=agente, usuario=admin)
+    with pytest.raises(ErrorAgente, match="quizá uno revocado"):
+        _alta(bd, admin, servidor, nombre="agente-repetido")

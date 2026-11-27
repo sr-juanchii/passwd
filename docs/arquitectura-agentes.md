@@ -481,11 +481,9 @@ conserva `agentes_retencion_telemetria_dias` y la purga el mantenimiento.
   `faillock`). Es el alcance que se le da a propósito: quien controle `passwd-agente` ya puede
   rotar esas cuentas. Lo acota la **lista de cuentas**, que es de root; por eso conviene no incluir
   cuentas que no deban rotarse por agente. El instalador **no impide** incluir `root`.
-- El **anti-thrash local** (1 h) no conoce la vía de emergencia: una emergencia sobre una cuenta que
-  el agente rotó hace menos de una hora se rechaza como `fallado` y hay que rotarla a mano.
-- **Reinstalar** un agente con un trabajo ya recogido lo deja «sin confirmar»: la identidad nueva no
-  puede leer el journal de la anterior.
-- El **nombre** de un agente es único también entre los revocados: para volver a dar de alta un
-  activo, use otro nombre.
+- **Reinstalar** un agente se niega mientras tiene un trabajo recogido: reenrolar borra su journal
+  y el resultado se perdería. Hay que esperar el resultado o resolver la rotación antes.
+- El **nombre** de un agente es único también entre los revocados, para que la bitácora no confunda
+  dos agentes: para volver a dar de alta un activo, use otro nombre.
 - Con el interruptor apagado, un método no admitido en `/api/agent` responde 405 en vez de 404, y el
   422 de validación y el 413 del límite global de la aplicación no se auditan.
