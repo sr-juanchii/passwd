@@ -76,6 +76,17 @@ por omisión**: hasta que se activa, el sistema se comporta como la 1.3.0. Alcan
 - El diálogo de autorizar ya no se cierra cuando la petición falla.
 - Una prueba de TOTP fallaba de forma intermitente si un límite de 30 s caía en mitad de ella.
 
+Hallado en las pruebas funcionales en calidad con el pre-release `1.4.0-rc.2`:
+
+- El **helper del paquete amd64 no arrancaba** en CPU sin AVX2 («CPU ISA level is lower than
+  required»): se compilaba en Ubuntu 26.04, cuyos paquetes exigen x86-64-v3. Se compila ahora en
+  Ubuntu 24.04 y el empaquetado falla si un binario exige más que x86-64 base.
+- **Reinstalar un agente no lo reiniciaba**: seguía con la identidad anterior, ya revocada.
+- La **primera rotación por agente de una credencial recién creada** exigía una emergencia: la regla
+  de 24 h contaba el alta como si fuera una rotación.
+- La ficha de la credencial **decía un motivo genérico** cuando el agente no tenía la rotación, y
+  «Ejecutada por el agente» antes de tener el resultado.
+
 ### Seguridad
 
 - **Pruebas de aceptación** con la trazabilidad de cada criterio a su prueba: `/api/v1` congelada

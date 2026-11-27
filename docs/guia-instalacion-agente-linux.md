@@ -429,6 +429,29 @@ cuenta dos veces en menos de una hora, ni siquiera en emergencia.
 > quedará vinculado al activo equivocado. Si le pasa, revóquelo en esa ficha, dé de alta el agente
 > en la correcta y reinstale con el token nuevo.
 
+### 9.1 bis Actualizar a una versión nueva (sin reinstalar)
+
+Para cambiar los binarios por los de una versión nueva **no hace falta token ni reenrolar**: la
+identidad, el journal y la configuración se conservan, y un trabajo a medias se resuelve solo al
+arrancar. Descargue y compruebe el paquete nuevo (§2) y, desde su directorio:
+
+```bash
+sudo install -o root -g root -m 0755 passwd-agente /usr/local/bin/passwd-agente
+```
+
+```bash
+sudo install -o root -g root -m 0700 passwd-agente-helper /usr/local/sbin/passwd-agente-helper
+```
+
+```bash
+sudo systemctl restart passwd-agente.service
+```
+
+El helper no hace falta reiniciarlo: systemd lo arranca de nuevo en cada petición. Compruebe en
+`journalctl -u passwd-agente.service` que la línea «agente en marcha» lleva la versión nueva. Si
+la versión nueva cambia también las unidades de systemd o el servicio PAM, sus notas lo dirán: en
+ese caso reinstale (§9.1).
+
 ### 9.2 Cambiar la lista de cuentas
 
 Edite `/etc/passwd-agente/helper.json` como root, manteniéndolo de root y sin escritura para el

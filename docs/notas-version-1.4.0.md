@@ -10,7 +10,7 @@
 | **Fase de la hoja de ruta** | Serie de agentes de rotación ([`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §8.2), fuera de las fases 9–12 |
 | **Migración de datos** | `0011` (aditiva) |
 | **Compatibilidad** | API `/api/v1` sin cambios (rutas y claves congeladas por prueba); variables de entorno anteriores aceptadas; las credenciales manuales se comportan exactamente como en la 1.3.0 |
-| **Pre-release** | `v1.4.0-rc.2`, para pruebas funcionales en calidad. No hay una `rc.1` válida: su etiqueta se creó sobre un commit anterior al de versión y el flujo de publicación la rechazó |
+| **Pre-release** | `v1.4.0-rc.3`, para pruebas funcionales en calidad. La `rc.1` se etiquetó sobre un commit anterior al de versión y el flujo la rechazó; la `rc.2` destapó en calidad los defectos que corrige la `rc.3` (§1, «Correcciones») |
 
 El registro completo, entrada por entrada, está en [`CHANGELOG.md`](../CHANGELOG.md). Este
 documento cataloga los cambios, explica qué hacer al actualizar y deja constancia de cómo se
@@ -88,6 +88,7 @@ Cada cambio lleva un identificador para poder citarlo en revisiones y auditoría
 | COR-04 | El instalador ya no pasa el token de instalación por la línea de órdenes del enrolamiento (visible en `ps`): va por una tubería a `passwd-agente enrolar --token -`. Pegado a mano se pide sin eco, y `--backend` y `--pin` se validan antes de escribirse en la configuración. | `agente/instalacion/instalar.sh`, `agente/cmd/passwd-agente` |
 | COR-05 | Si el helper rechaza el cambio sin tocar la cuenta, el agente informa ese motivo en vez de deducir «no autentica» y restaurar a ciegas; si el helper no contesta, no concluye nada y reintenta. Lo pendiente se entrega aunque la versión ya no se admita, y un resultado que el backend nunca admitirá deja de bloquear al agente. | `agente/internal/{helper,rotador,ejecutor}` |
 | COR-06 | Valores por omisión que escondían estados: el umbral de «sin contacto» pasa de 24 h (igual a la vida de la identidad, así que nunca se veía) a **1 h**, y la ventana del trabajo de 15 min (igual al latido) a **30 min**. Una prueba guarda ambas relaciones. | `app/config.py` |
+| COR-07 | **Hallados en calidad con la `rc.2`**: el helper amd64 exigía x86-64-v3 y no arrancaba en CPU sin AVX2 (los paquetes se compilan ahora en Ubuntu 24.04 y el empaquetado lo comprueba); reinstalar no reiniciaba el agente; la regla de 24 h contaba el alta de una credencial como una rotación; la ficha daba un motivo genérico cuando el agente no tenía la rotación. | `agente/empaquetar.sh`, `.github/workflows/binarios-agente.yml`, `agente/instalacion/instalar.sh`, `app/servicios/rotacion.py` |
 
 ### Calidad
 
@@ -140,11 +141,11 @@ contraseña quedó en el servidor.
 
 ## 4. Verificación de la versión
 
-Estado del pre-release `v1.4.0-rc.2`; se completa al publicar la versión final.
+Estado del pre-release `v1.4.0-rc.3`; se completa al publicar la versión final.
 
 | Comprobación | Resultado |
 |---|---|
-| Pruebas del backend (`pytest`) | 472 superadas; cobertura 86,3 % |
+| Pruebas del backend (`pytest`) | 475 superadas; cobertura 86,3 % |
 | Análisis estático (`ruff`, `bandit`) | sin hallazgos |
 | Agente Go: `gofmt`, `go vet`, `go test -race`, `govulncheck` | correctos; 50 pruebas unitarias, sin vulnerabilidades |
 | Agente Go: integración real como root (PAM, `chpasswd`, cuentas reales) | correcta en local y en la CI |
@@ -152,7 +153,7 @@ Estado del pre-release `v1.4.0-rc.2`; se completa al publicar la versión final.
 | Frontend: tipos, compilación y pruebas unitarias | correctos (31 pruebas, también en las zonas de Caracas y Tokio) |
 | Frontend: linter | sin errores; 18 avisos de un tipo que ya existía |
 | Recorrido en navegador (backend + frontend + SMTP simulado) | 34 de 34, también con el navegador en hora de Caracas |
-| Versión en caliente (`GET /healthz`) | `1.4.0-rc.2` |
+| Versión en caliente (`GET /healthz`) | `1.4.0-rc.3` |
 
 Garantías quitadas a mano para comprobar que sus pruebas fallan: lista de cuentas del helper,
 comprobación de la contraseña actual antes de aplicar, UID de quien llama, cuenta inexistente,
