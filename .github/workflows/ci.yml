@@ -252,7 +252,9 @@ jobs:
 
   agente-sistema:
     name: Agente instalado con systemd rotando una cuenta real
-    runs-on: ubuntu-latest
+    # La misma versión de sistema con la que se compilan los paquetes publicados
+    # (binarios-agente.yml): la prueba instala exactamente lo que se publica.
+    runs-on: ubuntu-24.04
     # El runner arranca con systemd: es lo único que prueba que el
     # endurecimiento de las unidades (helper sin red, agente sin privilegios,
     # filtro de llamadas al sistema) deja hacer el trabajo.

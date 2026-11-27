@@ -8,6 +8,12 @@ name: Binarios del agente
 # Cada arquitectura se compila en un runner NATIVO: el helper enlaza libpam
 # (cgo) y no se compila cruzado. El runner arm64 (ubuntu-24.04-arm) no tiene
 # coste en un repositorio público.
+#
+# Versión del sistema FIJA, nunca «ubuntu-latest»: el helper hereda la glibc y
+# el nivel de instrucciones de la distribución donde se compila. Ubuntu 26.04
+# construye sus paquetes amd64 para x86-64-v3, y un helper compilado allí no
+# arranca en CPU sin AVX2 («CPU ISA level is lower than required»): así salió
+# la 1.4.0-rc.2. empaquetar.sh lo comprueba y falla si vuelve a ocurrir.
 
 on:
   workflow_call:
@@ -33,7 +39,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:

@@ -55,6 +55,21 @@ BANDERAS="-s -w -X main.version=$VERSION"
 [[ $("$DESTINO/passwd-agente" version) == "$VERSION" ]] || fallo "el agente no declara la versión $VERSION"
 [[ $("$DESTINO/passwd-agente-helper" --version) == "$VERSION" ]] || fallo "el helper no declara la versión $VERSION"
 
+# Nivel de instrucciones: el paquete amd64 debe arrancar en CUALQUIER x86-64,
+# también en CPU antiguas o virtuales (Proxmox con «kvm64»). El agente (Go puro,
+# GOAMD64=v1) lo cumple; el helper enlaza bibliotecas del sistema donde se
+# compila, y en una distribución construida para x86-64-v3 (Ubuntu 26.04 en los
+# runners de GitHub) hereda esa exigencia: el cargador se niega a ejecutarlo con
+# «CPU ISA level is lower than required». Así salió la 1.4.0-rc.2.
+if [[ $ARCH == amd64 ]]; then
+	command -v readelf >/dev/null || fallo "falta readelf (binutils) para comprobar el nivel de instrucciones"
+	for binario in passwd-agente passwd-agente-helper; do
+		if readelf -n "$DESTINO/$binario" | grep -Eq 'ISA needed:.*x86-64-v[234]'; then
+			fallo "$binario exige más que x86-64 base y no arrancaría en CPU antiguas: compílelo en una distribución x86-64 base (p. ej. Ubuntu 24.04)"
+		fi
+	done
+fi
+
 install -m 0755 "$DIR/instalacion/instalar.sh" "$DESTINO/instalar.sh"
 for archivo in passwd-agente.service passwd-agente-helper.socket passwd-agente-helper@.service \
 	passwd-agente-helper.pam; do

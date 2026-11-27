@@ -47,7 +47,7 @@ function Asiento({ a }: { a: RotacionAsiento }) {
       </p>
       {a.agente_nombre && (
         <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-          <Bot className="size-3" /> Ejecutada por el agente {a.agente_nombre}
+          <Bot className="size-3" /> {a.estado === "cerrada" ? "Ejecutada por el agente" : "En manos del agente"} {a.agente_nombre}
           {a.estado === "cerrada" && ` · ${ETIQUETA_VERIFICACION[a.verificacion]}`}
         </p>
       )}
