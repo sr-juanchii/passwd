@@ -10,7 +10,7 @@
 | **Fase de la hoja de ruta** | Serie de agentes de rotación ([`plan-rotacion-agentes.md`](plan-rotacion-agentes.md) §8.2), fuera de las fases 9–12 |
 | **Migración de datos** | `0011` (aditiva) |
 | **Compatibilidad** | API `/api/v1` sin cambios (rutas y claves congeladas por prueba); variables de entorno anteriores aceptadas; las credenciales manuales se comportan exactamente como en la 1.3.0 |
-| **Pre-release** | `v1.4.0-rc.3`, para pruebas funcionales en calidad. La `rc.1` se etiquetó sobre un commit anterior al de versión y el flujo la rechazó; la `rc.2` destapó en calidad los defectos que corrige la `rc.3` (§1, «Correcciones») |
+| **Pre-release** | `v1.4.0-rc.4`, para pruebas funcionales en calidad. La `rc.1` se etiquetó sobre un commit anterior al de versión y el flujo la rechazó; la `rc.2` destapó en calidad los defectos que corrige la `rc.3`, con la que se verificó en calidad una rotación real de punta a punta; la `rc.4` añade las mejoras de COR-08 |
 
 El registro completo, entrada por entrada, está en [`CHANGELOG.md`](../CHANGELOG.md). Este
 documento cataloga los cambios, explica qué hacer al actualizar y deja constancia de cómo se
@@ -142,11 +142,11 @@ contraseña quedó en el servidor.
 
 ## 4. Verificación de la versión
 
-Estado del pre-release `v1.4.0-rc.3`; se completa al publicar la versión final.
+Estado del pre-release `v1.4.0-rc.4`; se completa al publicar la versión final.
 
 | Comprobación | Resultado |
 |---|---|
-| Pruebas del backend (`pytest`) | 475 superadas; cobertura 86,3 % |
+| Pruebas del backend (`pytest`) | 478 superadas; cobertura 86,3 % |
 | Análisis estático (`ruff`, `bandit`) | sin hallazgos |
 | Agente Go: `gofmt`, `go vet`, `go test -race`, `govulncheck` | correctos; 50 pruebas unitarias, sin vulnerabilidades |
 | Agente Go: integración real como root (PAM, `chpasswd`, cuentas reales) | correcta en local y en la CI |
@@ -154,7 +154,7 @@ Estado del pre-release `v1.4.0-rc.3`; se completa al publicar la versión final.
 | Frontend: tipos, compilación y pruebas unitarias | correctos (31 pruebas, también en las zonas de Caracas y Tokio) |
 | Frontend: linter | sin errores; 18 avisos de un tipo que ya existía |
 | Recorrido en navegador (backend + frontend + SMTP simulado) | 34 de 34, también con el navegador en hora de Caracas |
-| Versión en caliente (`GET /healthz`) | `1.4.0-rc.3` |
+| Versión en caliente (`GET /healthz`) | `1.4.0-rc.4` |
 
 Garantías quitadas a mano para comprobar que sus pruebas fallan: lista de cuentas del helper,
 comprobación de la contraseña actual antes de aplicar, UID de quien llama, cuenta inexistente,

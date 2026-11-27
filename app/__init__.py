@@ -5,4 +5,4 @@
 # tests/test_version.py). Política e histórico: docs/versionado.md y
 # CHANGELOG.md. La expone GET /healthz y la metadata de la API, de modo que lo
 # que está desplegado siempre se puede identificar en caliente.
-__version__ = "1.4.0-rc.3"
+__version__ = "1.4.0-rc.4"

@@ -1,6 +1,6 @@
 [project]
 name = "gestor-passwd"
-version = "1.4.0-rc.3"
+version = "1.4.0-rc.4"
 description = "Gestor de contraseñas de servidores con inventario relacional, MFA y auditoría"
 requires-python = ">=3.11"
 
